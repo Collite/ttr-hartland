@@ -47,7 +47,9 @@ ttr-hartland/
 │   ├── stories/                             the answer key (public) · detectors/*.sql · probes/*.sql
 │   ├── reference/                           calendar · kraj/okres + affluence · regions/areas · weather · names ·
 │   │                                        catalogue · the OSM extract · promotion and letter templates
-│   ├── ddl/                                 schema.sql · indexes.sql · views/*.sql (generated, committed, drift-checked)
+│   ├── ddl/                                 schema.sql · indexes.sql · views/grants.sql (rendered from the inventory,
+│   │                                        committed, drift-checked) · views/<name>.sql (the views' SELECTs)
+│   ├── schemas/                             the JSON Schemas of world.yaml and inventory.yaml
 │   ├── sim/hartland_sim/ · sim/tests/       the generator
 │   ├── recon/                               invariants · R0 · R1
 │   ├── documents/<yyyy>/<mm>/               the rendered letters and sheets
@@ -60,8 +62,8 @@ ttr-hartland/
 └── scripts/
 ```
 
-The generator's skeleton and the reference data (`data/reference/`) exist today; each other folder arrives with
-the phase named above.
+The generator's skeleton, the reference data (`data/reference/`, the catalogue included), `world.yaml`, the inventory
+and its DDL exist today; each other folder arrives with the phase named above.
 
 ## How it is built
 

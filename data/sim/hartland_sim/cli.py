@@ -81,8 +81,34 @@ def _reference_check_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def ddl(args: argparse.Namespace) -> int:
+    from hartland_sim.config import ConfigError, InventoryConfig
+    from hartland_sim.io.ddl import drift, write
+
+    try:
+        inventory = InventoryConfig.load()
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+    if args.check:
+        problems = drift(inventory, args.ddl_dir)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        if problems:
+            print("hartland-sim ddl --check: run `just ddl` and commit data/ddl/", file=sys.stderr)
+            return 1
+        print(f"hartland-sim ddl --check: data/ddl/ matches data/inventory.yaml ({len(inventory.tables)} tables)")
+        return 0
+    changed = write(inventory, args.ddl_dir)
+    print(f"hartland-sim ddl: {', '.join(changed) or 'nothing'} {'written' if changed else 'changed'}")
+    return 0
+
+
 def _ddl_arguments(parser: argparse.ArgumentParser) -> None:
+    from hartland_sim.io.ddl import DDL_DIR
+
     parser.add_argument("--check", action="store_true", help="fail when data/ddl/ differs from the render (CI)")
+    parser.add_argument("--ddl-dir", type=Path, default=DDL_DIR, help="the DDL folder (default: the repo's data/ddl)")
 
 
 def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
@@ -141,7 +167,7 @@ VERBS: dict[str, Verb] = {
         _osm_extract_arguments,
         osm_extract,
     ),
-    "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments),
+    "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments, ddl),
     "build-world": Verb("the simulation → data/build/<run>/", "G1 S1.4", _build_world_arguments),
     "load-world": Verb("COPY in load order · views · indexes · the _sim_meta guard", "G5 S5.1", _load_world_arguments),
     "prolong": Verb("from the last checkpoint: the world reacts, appends", "G5 S5.3", _prolong_arguments),
