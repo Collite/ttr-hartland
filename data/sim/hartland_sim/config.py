@@ -2,9 +2,9 @@
 
 - `WorldConfig` ← `data/world.yaml`: every number of `01-company.md` (sites, channels, salesforce, pricing,
   promotions, policies, finance, calendar, dials, `master_seed`); validated by `data/schemas/world.schema.json`.
-- `StoriesConfig` ← `data/stories/s1…s6.yaml` + `anomalies.yaml`: the answer key (contracts §3). G0 S0.4 T3.
 - `InventoryConfig` ← `data/inventory.yaml`: one entry per table — the one source of the DDL, the load order and
-  the db layer (contracts §1). G0 S0.4 T4.
+  the db layer (contracts §1); validated by `data/schemas/inventory.schema.json`, then as a whole graph.
+- `StoriesConfig` ← `data/stories/s1…s6.yaml` + `anomalies.yaml`: the answer key (contracts §3). G0 S0.4 T3.
 
 A missing or mistyped key fails at load with its path, never later inside the simulation: `ConfigError` lists every
 problem of the file at once, each as `<file>: <path>: <what>`. The typed view is read-only — mappings are
@@ -61,17 +61,28 @@ def validate(data: Any, schema_name: str, what: str) -> None:
     """Every problem of `data` against `data/schemas/<schema_name>.schema.json`, raised as one `ConfigError`."""
     schema = json.loads((SCHEMA_DIR / f"{schema_name}.schema.json").read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
-    problems = sorted(_problem(error) for error in validator.iter_errors(data))
+    problems = sorted(_problem(error, data) for error in validator.iter_errors(data))
     if problems:
         raise ConfigError("\n".join(f"{what}: {problem}" for problem in problems))
 
 
-def _problem(error: Any) -> str:
-    path = [str(part) for part in error.absolute_path]
+def _problem(error: Any, data: Any) -> str:
+    path = _path(error.absolute_path, data)
     if error.validator == "required":
         missing = [name for name in error.validator_value if name not in error.instance]
         return f"{'.'.join([*path, missing[0]])}: missing"
     return f"{'.'.join(path) or '(top)'}: {error.message}"
+
+
+def _path(parts: Any, data: Any) -> list[str]:
+    """The path's parts as text; a list item with a `name` is called by it (`tables.customer.columns.code`)."""
+    out = []
+    node = data
+    for part in parts:
+        node = node[part] if isinstance(node, dict | list) else None
+        name = node.get("name") if isinstance(part, int) and isinstance(node, dict) else None
+        out.append(name if isinstance(name, str) else str(part))
+    return out
 
 
 def build[T](cls: type[T], data: Any) -> T:
@@ -388,7 +399,152 @@ class WorldConfig:
         return build(cls, data)
 
 
-# ── the other two (G0 S0.4 T3, T4) ───────────────────────────────────────────
+# ── InventoryConfig (data/inventory.yaml) ────────────────────────────────────
+
+INVENTORY_FILE = DATA_DIR / "inventory.yaml"
+
+Writer = Literal["setup", "daily", "month_end", "quarter_end", "year_end", "documents"]
+
+
+@dataclass(frozen=True)
+class Column:
+    name: str
+    type: str
+    nullable: bool = False
+    ref: str | None = None  # "<table>.<column>"
+    coded: str | None = None  # a name of `InventoryConfig.codes`
+    label_cs: str | None = None
+
+
+@dataclass(frozen=True)
+class ForeignKey:
+    column: str
+    table: str
+    target: str
+
+
+@dataclass(frozen=True)
+class Table:
+    name: str
+    group: str
+    grain: str
+    columns: tuple[Column, ...]
+    pk: tuple[str, ...]
+    load_order: int
+    writer: tuple[Writer, ...]
+    rows_expected: int
+    serves: tuple[str, ...]
+    id_key: tuple[str, ...] | None = None
+    unique: tuple[tuple[str, ...], ...] = ()
+    indexes: tuple[tuple[str, ...], ...] = ()
+
+    @property
+    def fks(self) -> tuple[ForeignKey, ...]:
+        """The foreign keys, one per column with a `ref`."""
+        return tuple(
+            ForeignKey(column.name, *column.ref.split(".", 1)) for column in self.columns if column.ref is not None
+        )
+
+    def column(self, name: str) -> Column:
+        (found,) = [column for column in self.columns if column.name == name]
+        return found
+
+
+@dataclass(frozen=True)
+class View:
+    name: str
+    kind: Literal["materialized_view", "view"]
+    group: str
+    grain: str
+    sql_file: str  # relative to data/ddl/
+    load_order: int
+    serves: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class InventoryConfig:
+    """`data/inventory.yaml`, validated: the codes, the tables in `load_order`, the views (contracts §1).
+
+    Beyond the schema, `load` checks what only the whole file can tell: names unique, every `ref` naming a table's
+    key column, every `coded` a code list, the key and index columns existing, and every foreign key pointing to a
+    lower `load_order` (or to its own table) — so the load order is a topological order of the graph."""
+
+    schema: str
+    codes: Mapping[str, Mapping[str, str]]  # name → value → Czech label
+    tables: tuple[Table, ...]  # in load_order
+    views: tuple[View, ...]  # in load_order
+
+    @classmethod
+    def load(cls, path: Path = INVENTORY_FILE) -> InventoryConfig:
+        data = read_yaml(path)
+        validate(data, "inventory", path.name)
+        for table in data["tables"]:
+            if isinstance(table["writer"], str):
+                table["writer"] = [table["writer"]]
+        data["tables"].sort(key=lambda table: table["load_order"])
+        data["views"].sort(key=lambda view: view["load_order"])
+        inventory = build(cls, data)
+        problems = inventory.problems()
+        if problems:
+            raise ConfigError("\n".join(f"{path.name}: {problem}" for problem in problems))
+        return inventory
+
+    def table(self, name: str) -> Table:
+        (found,) = [table for table in self.tables if table.name == name]
+        return found
+
+    def problems(self) -> list[str]:
+        problems = []
+        names = [table.name for table in self.tables] + [view.name for view in self.views]
+        problems += [f"{name}: named twice" for name in sorted({n for n in names if names.count(n) > 1})]
+        orders = [table.load_order for table in self.tables] + [view.load_order for view in self.views]
+        problems += [f"load_order {order}: used twice" for order in sorted({o for o in orders if orders.count(o) > 1})]
+        by_name = {table.name: table for table in self.tables}
+        for table in self.tables:
+            problems += self._table_problems(table, by_name)
+        last_table = max(table.load_order for table in self.tables)
+        problems += [
+            f"{view.name}: a view loads after every table" for view in self.views if view.load_order <= last_table
+        ]
+        return problems
+
+    def _table_problems(self, table: Table, by_name: Mapping[str, Table]) -> list[str]:
+        problems = []
+        columns = [column.name for column in table.columns]
+        problems += [
+            f"{table.name}.{name}: named twice" for name in sorted({n for n in columns if columns.count(n) > 1})
+        ]
+        named = [
+            ("pk", table.pk),
+            *(("unique", key) for key in table.unique),
+            *(("index", key) for key in table.indexes),
+        ]
+        for what, key in named:
+            problems += [f"{table.name}: {what} names no column {name!r}" for name in key if name not in columns]
+        if table.id_key is not None and len(table.pk) > 1:
+            problems += [f"{table.name}: an id_key with a composite pk {list(table.pk)}"]
+        for column in table.columns:
+            if column.coded is not None and column.coded not in self.codes:
+                problems.append(f"{table.name}.{column.name}: coded {column.coded!r} is no code list")
+            if column.coded is not None and column.type != "text":
+                problems.append(f"{table.name}.{column.name}: coded, but {column.type}")
+        for fk in table.fks:
+            target = by_name.get(fk.table)
+            if target is None:
+                problems.append(f"{table.name}.{fk.column}: ref {fk.table}.{fk.target} names no table")
+            elif target.pk != (fk.target,):
+                problems.append(f"{table.name}.{fk.column}: ref {fk.table}.{fk.target} is not {fk.table}'s primary key")
+            elif target.column(fk.target).type != table.column(fk.column).type:
+                problems.append(f"{table.name}.{fk.column}: {table.column(fk.column).type}, its ref {fk.target} not")
+            elif target.load_order >= table.load_order and target is not table:
+                problems.append(
+                    f"{table.name}.{fk.column}: ref {fk.table} loads at {target.load_order}, not before"
+                    f" {table.load_order}"
+                )
+        return problems
+
+
+# ── StoriesConfig (data/stories/) — G0 S0.4 T3 ───────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -398,12 +554,3 @@ class StoriesConfig:
     @classmethod
     def load(cls, directory: Path) -> StoriesConfig:
         raise NotImplementedError("G0 S0.4 T3")
-
-
-@dataclass(frozen=True)
-class InventoryConfig:
-    """`data/inventory.yaml`, validated: tables, columns, keys, `load_order` (contracts §1; G0 S0.4 T4)."""
-
-    @classmethod
-    def load(cls, path: Path) -> InventoryConfig:
-        raise NotImplementedError("G0 S0.4 T4")
