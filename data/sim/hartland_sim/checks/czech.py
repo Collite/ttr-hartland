@@ -82,6 +82,15 @@ def assert_czech(text: str, *, what: str = "text", allow: Iterable[str] = ()) ->
         raise AssertionError(f"{what}: {len(checked)} characters without a Czech diacritic in {preview!r}…")
 
 
+def is_czech(text: str, *, allow: Iterable[str] = ()) -> bool:
+    """`assert_czech` as a yes or no, for a caller that chooses rather than fails (a sample's preference)."""
+    try:
+        assert_czech(text, allow=allow)
+    except AssertionError:
+        return False
+    return True
+
+
 def assert_czech_all(texts: Iterable[str], *, what: str, allow: Iterable[str] = ()) -> None:
     """`assert_czech` on each text (`what[i]`), then the diacritic rule over the texts joined — for a column or a
     set of labels, where each label alone is too short to tell."""

@@ -8,8 +8,10 @@ owns its shop and café brands (Shell Select, OMV's Viva, Orlen's Stop Cafe, MOL
 as a separate object beside the pumps.
 
 Matching folds case and diacritics and compares whole words, so `Albertov` is not Albert. The brand decides first,
-then the name, then the operator. A fuel station is matched against the station chains only: a hypermarket's pumps
-(Tesco, Globus, Makro) are an independent station.
+then the name (OSM's `name` often carries the chain when `brand` holds a sub-brand). The operator is read only when
+there is no brand: a brand that names no chain is an independent network of its own (Robin Oil, run by Čepro, is not
+EuroOil). A fuel station is matched against the station chains only: a hypermarket's pumps (Tesco, Globus, Makro)
+are an independent station.
 """
 
 from __future__ import annotations
@@ -40,12 +42,12 @@ CHAINS: tuple[Chain, ...] = (
     Chain("PENNY", "Penny", "modern_trade", True, (r"penny( market)?", r"pennymarket")),
     Chain("BILLA", "Billa", "modern_trade", True, (r"billa",)),
     Chain("GLOBUS", "Globus", "modern_trade", True, (r"globus",)),
-    Chain("COOP", "COOP", "cooperative", True, (r"coop", r"jednota", r"konzum", r"tempo", r"terno")),
+    Chain("COOP", "COOP", "cooperative", True, (r"coop", r"jednota", r"konzum", r"tempo", r"terno", r"tuty")),
     Chain("MAKRO", "Makro", "modern_trade", True, (r"^makro",)),  # not "Mikro Makro", an independent
     Chain("OMV", "OMV", "petrol", True, (r"omv", r"viva")),
     Chain("SHELL", "Shell", "petrol", True, (r"shell( select)?",)),
     Chain("ORLEN", "Orlen", "petrol", False, (r"orlen", r"benzina", r"stop cafe")),
-    Chain("MOL", "MOL", "petrol", False, (r"mol", r"fresh corner")),
+    Chain("MOL", "MOL", "petrol", False, (r"mol", r"fresh corner", r"slovnaft")),
     Chain("EUROOIL", "EuroOil", "petrol", False, (r"euro ?oil", r"cepro")),
     Chain("TANKONO", "Tank ONO", "petrol", False, (r"tank ono",)),
     Chain("ZABKA", "Žabka", "convenience_franchise", False, (r"zabka",)),
@@ -71,7 +73,7 @@ def fold(text: str) -> str:
 
 def match(*, brand: str = "", name: str = "", operator: str = "", fuel: bool = False) -> Chain | None:
     """The chain of an OSM object, or None for an independent. `fuel`: the object is a station (`amenity=fuel`)."""
-    for text in (brand, name, operator):
+    for text in (brand, name, "" if fold(brand) else operator):
         folded = fold(text)
         if not folded:
             continue

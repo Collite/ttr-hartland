@@ -3,19 +3,26 @@ customers, stratified by okres population × affluence.
 
 A place is eligible when it is a restaurant, café, bar (a pub counts as a bar) or canteen — fast food is not taken —
 has a name, carries no brand (a chain café or a burger franchise is not Hartland's HoReCa customer), its name reads
-as Czech (NH-D8) and it lies in an okres. Each okres's quota is its share of population × affluence (largest
-remainder, capped at what the okres has; the excess goes to the others). Within an okres the places are taken in the
-order of a hash of their OSM id — fixed by the extract, not by the world's seed — the first ones as customers.
+as Czech and it lies in an okres. The Czech name is the sample's preference: the sample takes 2 600 of about
+25 000 eligible places, so it loses nothing by it. A place mapped twice (the same name within `SAME_NAME_M`, as in
+the store set) is one place, the first in OSM order. Each okres's quota is its share of population × affluence
+(largest remainder, capped at what the okres has; the excess goes to the others). Within an okres the places are
+taken in `osm_order` — fixed by the extract, not by the world's seed — the first ones as customers.
 """
 
 from __future__ import annotations
 
-import hashlib
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from hartland_sim.checks.czech import assert_czech
+import numpy as np
+
+from hartland_sim.checks.czech import is_czech
+from hartland_sim.setup.classifier import osm_order
+from hartland_sim.setup.classifier.chains import fold
+from hartland_sim.setup.classifier.place import SAME_NAME_M, mapped_twice
 
 KINDS = {"restaurant": "restaurant", "cafe": "cafe", "bar": "bar", "pub": "bar", "canteen": "canteen"}
 CUSTOMERS = 600
@@ -30,28 +37,19 @@ class Pick:
     role: str  # customer · potential
 
 
-def order(osm_id: str) -> str:
-    """The fixed order of the sample within an okres."""
-    return hashlib.blake2b(osm_id.encode(), digest_size=8).hexdigest()
-
-
-def eligible(place: Mapping[str, str]) -> bool:
-    if place["amenity"] not in KINDS or not place["name"] or place["brand"]:
-        return False
-    try:
-        assert_czech(place["name"])
-    except AssertionError:
-        return False
-    return True
+def eligible(place: Mapping[str, Any]) -> bool:
+    return place["amenity"] in KINDS and bool(place["name"]) and not place["brand"] and is_czech(place["name"])
 
 
 def quotas(weights: Mapping[str, float], total: int, cap: Mapping[str, int]) -> dict[str, int]:
     """`total` split over the keys in proportion to `weights` (largest remainder), none above its `cap`; what a capped
-    key cannot take goes to the others, round by round."""
+    key cannot take goes to the others, round by round. A key of weight 0 takes nothing."""
     given = dict.fromkeys(weights, 0)
-    remaining = min(total, sum(cap.values()))
+    remaining = min(total, sum(cap[key] for key in weights if weights[key] > 0))
     while remaining:
         open_keys = sorted(key for key in weights if given[key] < cap[key] and weights[key] > 0)
+        if not open_keys:
+            raise ValueError(f"no key can take the remaining {remaining}")
         weight = sum(weights[key] for key in open_keys)
         shares = {key: remaining * weights[key] / weight for key in open_keys}
         whole = {key: int(shares[key]) for key in open_keys}
@@ -66,7 +64,7 @@ def quotas(weights: Mapping[str, float], total: int, cap: Mapping[str, int]) -> 
 
 
 def sample(
-    places: Sequence[Mapping[str, str]],
+    places: Sequence[Mapping[str, Any]],
     okres_of: Sequence[str | None],
     weight: Mapping[str, float],
     *,
@@ -74,12 +72,17 @@ def sample(
     potential: int = POTENTIAL,
 ) -> list[Pick]:
     """The sample: `customers` + `potential` picks over the okresy of `weight` (population × affluence)."""
-    by_okres: dict[str, list[Mapping[str, str]]] = defaultdict(list)
-    for place, okres in zip(places, okres_of, strict=True):
-        if okres is not None and eligible(place):
+    candidates = [
+        (place, okres) for place, okres in zip(places, okres_of, strict=True) if okres is not None and eligible(place)
+    ]
+    points = np.array([(place["lon"], place["lat"]) for place, _ in candidates], dtype=float).reshape(-1, 2)
+    twice = mapped_twice([fold(place["name"]) for place, _ in candidates], points, SAME_NAME_M)
+    by_okres: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for i, (place, okres) in enumerate(candidates):
+        if i not in twice:
             by_okres[okres].append(place)
-    for candidates in by_okres.values():
-        candidates.sort(key=lambda place: order(place["osm_id"]))
+    for in_okres in by_okres.values():
+        in_okres.sort(key=lambda place: osm_order(place["osm_id"]))
     available = {okres: len(by_okres.get(okres, [])) for okres in weight}
     total = quotas(weight, customers + potential, available)
     as_customers = quotas(weight, customers, total)

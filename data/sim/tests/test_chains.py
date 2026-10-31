@@ -16,6 +16,7 @@ GOLDEN: list[tuple[str, str, str, bool, str | None]] = [
     ("Coop", "Coop Jednota", "", False, "COOP"),
     ("COOP TIP", "", "COOP Hořovice, družstvo", False, "COOP"),
     ("Coop Tuty", "Tuty", "", False, "COOP"),
+    ("TUTY", "Potraviny Tuty", "TEMPO, obchodní družstvo", False, "COOP"),
     ("Coop Konzum", "Konzum", "", False, "COOP"),
     ("", "Jednota, spotřební družstvo v Klatovech", "", False, "COOP"),
     ("Tempo", "Tempo", "", False, "COOP"),
@@ -53,6 +54,7 @@ GOLDEN: list[tuple[str, str, str, bool, str | None]] = [
     ("Stop Cafe", "Stop Cafe", "", False, "ORLEN"),
     ("MOL", "MOL", "", True, "MOL"),
     ("Fresh Corner", "MOL Fresh Corner", "", False, "MOL"),
+    ("Slovnaft", "Slovnaft", "MOL Česká republika, s.r.o.", True, "MOL"),
     ("EuroOil", "EuroOil", "", True, "EUROOIL"),
     ("", "Euro Oil", "", True, "EUROOIL"),
     ("", "Čerpací stanice", "ČEPRO, a.s.", True, "EUROOIL"),
@@ -60,7 +62,7 @@ GOLDEN: list[tuple[str, str, str, bool, str | None]] = [
     ("Tesco", "Tesco", "", True, None),  # a hypermarket's pumps
     ("Globus", "Čerpací stanice Globus", "", True, None),
     ("Makro", "Makro - čerpací stanice", "", True, None),
-    ("Robin Oil", "Robin Oil", "", True, None),
+    ("Robin Oil", "Robin Oil", "ČEPRO, a.s.", True, None),  # a brand of its own: its operator does not decide
     ("Avia", "AVIA", "", True, None),
     ("", "Potraviny U Lípy", "", False, None),
     ("", "Večerka", "", False, None),
@@ -71,8 +73,8 @@ GOLDEN: list[tuple[str, str, str, bool, str | None]] = [
 ]
 
 
-def test_sixty_variants() -> None:
-    assert len(GOLDEN) == 60
+def test_sixty_two_variants() -> None:
+    assert len(GOLDEN) == 62
 
 
 @pytest.mark.parametrize(("brand", "name", "operator", "fuel", "code"), GOLDEN)

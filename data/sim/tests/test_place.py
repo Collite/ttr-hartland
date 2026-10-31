@@ -70,6 +70,7 @@ def context() -> place.Context:
         hubs=pts((14.0, 50.03), (14.05, 50.0)),
         settlements=pts((14.0, 50.0), (14.3, 50.0), (14.6, 50.0)),
         settlement_kind=np.array(["city", "village", "town"]),
+        settlement_names=["Hartov", "Lhota", "Městečko"],
         towns=pts((14.0, 50.0), (14.6, 50.0), (14.0, 49.95)),
         quarters=pts((14.0, 49.95)),
     )
@@ -92,7 +93,23 @@ M = 1 / 111_320  # a metre of latitude, in degrees
     ],
 )
 def test_street_type(lon: float, lat: float, station: bool, street_type: str) -> None:
-    assert place.street_types(np.array([(lon, lat)]), np.array([station]), context()) == [street_type]
+    assert place.street_types(np.array([(lon, lat)]), np.array([station]), context()).types == [street_type]
+
+
+def test_a_quarter_centre_is_urban_whatever_settlement_is_nearest() -> None:
+    """Inside a city, the nearest settlement point is often an old village OSM keeps as `place=village`."""
+    old_village = place.Context(
+        malls=pts(),
+        hubs=pts(),
+        settlements=pts((14.0, 50.0), (14.3, 49.95 + 150 * M)),
+        settlement_kind=np.array(["city", "village"]),
+        settlement_names=["Hartov", "Lhota"],
+        towns=pts((14.0, 50.0), (14.3, 49.95)),
+        quarters=pts((14.3, 49.95)),
+    )
+    streets = place.street_types(pts((14.3, 49.95 + 100 * M)), np.array([False]), old_village)
+    assert streets.types == ["high_street"]
+    assert old_village.settlement_names[streets.settlement[0]] == "Lhota"
 
 
 @pytest.mark.parametrize(
@@ -132,7 +149,7 @@ def classify(ref: Path) -> list[dict[str, str]]:
     station = np.array(
         [o["amenity"] == "fuel" or (c is not None and c.is_station) for o, c in zip(objects, found, strict=True)]
     )
-    streets = place.street_types(points, station, place.Context.load(ref / "osm-context.csv"))
+    streets = place.street_types(points, station, place.Context.load(ref)).types
     rows = []
     for o, c, street in zip(objects, found, streets, strict=True):
         store_class = place.store_class(

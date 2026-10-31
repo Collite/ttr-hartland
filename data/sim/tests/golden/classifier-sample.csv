@@ -25,7 +25,7 @@ node/386194570,,residential,convenience,S,77,true
 node/410755562,OMV,petrol,petrol,S,112,true
 node/429519124,,petrol,petrol,S,,
 node/439750182,,village,village,S,,
-node/444716483,PENNY,residential,discount,M,,
+node/444716483,PENNY,high_street,discount,M,,
 node/451128581,,village,village,S,,
 node/458807728,ENAPO,shopping_centre,convenience,S,84,true
 node/477222783,MOL,petrol,petrol,S,168,true
@@ -108,7 +108,7 @@ node/2193089468,COOP,transport_hub,super,M,,
 node/2213447395,,residential,convenience,S,,
 node/2242671747,,petrol,petrol,S,112,true
 node/2260266182,,transport_hub,convenience,S,110,true
-node/2276003166,,residential,convenience,S,35,false
+node/2276003166,,high_street,convenience,S,35,false
 node/2293964636,,village,village,S,,
 node/2299361124,COOP,residential,convenience,S,,
 node/2306594680,,high_street,convenience,S,89,true
@@ -181,7 +181,7 @@ node/3761451258,OMV,petrol,petrol,S,101.5,true
 node/3774196069,,residential,convenience,S,,
 node/3817865862,,village,village,S,,
 node/3838117976,,petrol,petrol,S,89,true
-node/3840634958,,residential,convenience,S,,
+node/3840634958,,high_street,convenience,S,,
 node/3850293661,,village,village,S,,
 node/3872765093,,high_street,convenience,S,,
 node/3890887039,COOP,village,village,S,45.5,false
@@ -213,7 +213,7 @@ node/4554495527,HRUSKA,residential,convenience,S,,
 node/4578037303,,residential,convenience,S,,
 node/4601479590,,high_street,convenience,S,,
 node/4655172691,MUJOBCHOD,residential,super,M,99.33,true
-node/4690722331,ZABKA,residential,convenience,S,119,true
+node/4690722331,ZABKA,high_street,convenience,S,119,true
 node/4726087792,COOP,village,super,M,42.5,false
 node/4758146667,,high_street,super,M,,
 node/4791114056,,residential,convenience,S,,
@@ -258,14 +258,14 @@ node/6168268578,,petrol,petrol,S,84,true
 node/6174708829,BILLA,high_street,super,M,97,true
 node/6180879691,ALBERT,residential,super,M,91,true
 node/6222570292,,village,village,S,,
-node/6289608999,BRNENKA,residential,convenience,S,78,true
+node/6289608999,BRNENKA,high_street,convenience,S,78,true
 node/6361324886,,high_street,convenience,S,,
 node/6421954875,COOP,village,village,S,168,true
 node/6466896857,,shopping_centre,convenience,S,,
 node/6550841238,,village,village,S,4.75,true
 node/6639275578,PENNY,residential,discount,M,91,true
 node/6710351399,,village,village,S,,
-node/6783001785,,residential,convenience,S,,
+node/6783001785,,high_street,convenience,S,,
 node/6805070186,,residential,convenience,S,,
 node/6853467867,HRUSKA,village,village,S,,
 node/6919499781,COOP,village,village,S,60,false
@@ -275,7 +275,7 @@ node/7087003573,,village,village,S,80.5,true
 node/7109363577,,residential,convenience,S,93.5,true
 node/7145574647,,residential,convenience,S,95,true
 node/7217157009,,petrol,petrol,S,168,true
-node/7295308518,,residential,convenience,S,91,true
+node/7295308518,,high_street,convenience,S,91,true
 node/7366403304,MOL,petrol,petrol,S,168,true
 node/7447940766,ORLEN,petrol,petrol,S,168,true
 node/7519511856,,petrol,petrol,S,168,true
@@ -295,7 +295,7 @@ node/8159267110,BRNENKA,village,village,S,,
 node/8266246136,CBA,residential,convenience,S,,
 node/8339203965,,residential,convenience,S,,
 node/8489596088,,village,village,S,,
-node/8628278204,,residential,convenience,S,,
+node/8628278204,,high_street,convenience,S,,
 node/8639649832,COOP,village,village,S,,
 node/8669662389,,residential,convenience,S,,
 node/8732549901,COOP,village,village,S,,
@@ -307,7 +307,7 @@ node/9014355300,HRUSKA,village,village,S,39,false
 node/9070227381,,village,village,S,27,false
 node/9120104057,,residential,convenience,S,75,true
 node/9207015718,COOP,village,super,M,42,false
-node/9281601217,TESCO,residential,super,M,,
+node/9281601217,TESCO,high_street,super,M,,
 node/9337545069,,residential,minimarket,S,20,false
 node/9405898186,ALBERT,high_street,super,M,105,true
 node/9489559109,,village,village,S,,
@@ -334,7 +334,7 @@ node/11006147340,COOP,village,village,S,50,false
 node/11046966733,,residential,super,M,102.5,true
 node/11082738080,,petrol,petrol,S,119,true
 node/11113732814,,residential,convenience,S,96,true
-node/11155867398,,residential,convenience,S,,
+node/11155867398,,high_street,convenience,S,,
 node/11194731666,,high_street,convenience,S,30,false
 node/11225146786,,residential,minimarket,S,32.5,false
 node/11245403272,,high_street,convenience,S,91,true
@@ -362,7 +362,7 @@ node/12409857162,,high_street,convenience,S,,
 node/12460522238,BILLA,residential,super,M,97,true
 node/12492805026,COOP,village,village,S,,
 node/12536690266,COOP,residential,convenience,S,,
-node/12563525036,,residential,super,M,60,false
+node/12563525036,,high_street,super,M,60,false
 node/12620111054,BILLA,village,super,M,97,true
 node/12632867225,ORLEN,petrol,petrol,S,133,true
 node/12638808526,,petrol,petrol,S,168,true
@@ -454,9 +454,9 @@ way/89930108,MUJOBCHOD,village,village,S,,
 way/91722952,COOP,residential,super,M,73,true
 way/93185594,PENNY,residential,discount,M,91,true
 way/95800735,MOL,petrol,petrol,S,168,true
-way/98743878,,residential,minimarket,S,94,true
+way/98743878,,high_street,minimarket,S,94,true
 way/101545552,TESCO,residential,super,M,91,true
-way/104011967,PENNY,residential,discount,M,91,true
+way/104011967,PENNY,high_street,discount,M,91,true
 way/108486690,PENNY,residential,discount,M,,
 way/113080921,,residential,super,M,,
 way/115643544,PENNY,residential,discount,M,,

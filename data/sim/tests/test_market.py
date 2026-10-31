@@ -5,12 +5,26 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from hartland_sim.checks.czech import assert_czech
 from hartland_sim.io.reference import read
 from hartland_sim.setup.classifier import place
-from hartland_sim.setup.market import STORE_COLUMNS, Market, build
+from hartland_sim.setup.market import INDEPENDENT, STORE_COLUMNS, Market, Report, _weeks, build
+
+# The eligible HoReCa places that are grocery stores too (a shop tagged a café or a pub as well).
+IN_BOTH_EXTRACTS = (
+    "node/820168227",  # Cukrárna u Zdubů
+    "node/2385315906",  # Podbukovina
+    "node/2503668956",  # Koloniál U Zámku
+    "node/3243798662",  # Černomorka
+    "node/3243798663",  # La Bottega Bistroteka
+    "node/3448220174",  # La Cucina Tusarova
+    "node/7504671755",  # U Týnky
+    "node/10065096948",  # Dobrotéka
+    "way/1245375292",  # U draka
+)
 
 
 @pytest.fixture(scope="module")
@@ -66,6 +80,54 @@ def test_the_chains(market: Market) -> None:
     used = Counter(s["chain"] for s in market.stores if s["chain"])
     assert all(used[c["code"]] > 0 for c in market.chains)
     assert used["MAKRO"] >= 10  # the cash-and-carry stores
+
+
+def test_a_place_in_both_extracts_is_the_grocery_store(market: Market) -> None:
+    grocery = {s["osm_id"] for s in market.stores if s["store_class"] != "horeca"}
+    horeca = {s["osm_id"] for s in market.stores if s["store_class"] == "horeca"}
+    assert set(IN_BOTH_EXTRACTS) <= grocery
+    assert not grocery & horeca
+
+
+def test_a_station_without_a_shop_is_no_store(market: Market, ref: Path) -> None:
+    """`shop=no`: the station says it has no shop. With a brand it stays (the extract's brand rule), counted."""
+    no_shop = {r["osm_id"]: r for r in read("osm-stores", ref) if r["amenity"] == "fuel" and r["shop"] == "no"}
+    stores = {s["osm_id"] for s in market.stores}
+    assert all(row["brand"] for osm_id, row in no_shop.items() if osm_id in stores)
+    assert market.report.dropped["no shop"] == sum(not row["brand"] for row in no_shop.values()) == 10
+    assert market.report.kept["station shop=no, by its brand"] == len(stores & set(no_shop)) > 0
+
+
+def test_an_independent_brand_is_not_its_operators_chain(market: Market) -> None:
+    """Robin Oil's stations are run by Čepro, whose pattern is EuroOil's; the brand decides. The shops Čepro runs
+    beside them (`Senza Area`) are still the stations' own, not a second store."""
+    robin_oil = [s for s in market.stores if s["brand"] == "Robin Oil"]
+    assert len(robin_oil) >= 25 and all(s["chain"] is None for s in robin_oil)
+    assert not [s for s in market.stores if s["name"] == "Senza Area"]
+
+
+def test_an_independent_networks_station_mapped_twice_is_one_store(market: Market) -> None:
+    """The same brand within `SAME_CHAIN_M`, as for a chain: Tesco Plzeň's pumps are two nodes 40 m apart."""
+    stores = {s["osm_id"] for s in market.stores}
+    assert "node/7529712872" in stores and "node/12222064768" not in stores
+
+
+def test_a_store_beside_a_quarter_centre_is_on_the_high_street(market: Market, ref: Path) -> None:
+    """Unless a station, a mall or a hub claims it first (`place.street_types`' order)."""
+    quarters = place.Context.load(ref).quarters
+    distance, _ = place.nearest(quarters, np.array([(s["lon"], s["lat"]) for s in market.stores], dtype=float))
+    beside = [s for s, d in zip(market.stores, distance, strict=True) if d <= place.QUARTER_M]
+    assert len(beside) > 300
+    assert {s["street_type"] for s in beside} == {"high_street", "petrol", "shopping_centre", "transport_hub"}
+
+
+def test_untagged_hours_come_from_the_class_and_chain_where_it_can(market: Market) -> None:
+    assert market.report.hours_drawn["class and chain"] > market.report.hours_drawn["class"] > 0
+
+
+def test_hours_need_a_tagged_store_to_draw_from() -> None:
+    with pytest.raises(ValueError, match="no readable opening_hours"):
+        _weeks([""], ["node/1"], ["super"], [INDEPENDENT], Report())
 
 
 def test_a_stations_own_shop_is_not_a_second_store(market: Market) -> None:
