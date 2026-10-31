@@ -1,0 +1,25 @@
+# The seed of the letter templates (G0 S0.4 T6). DOC.1 defines the format and its loader and fills the library — at
+# least six templates per letter family; this one shows the shape: a return request, formal and complete, by email.
+family: return_request
+variant:
+  tone: formální
+  completeness: úplný
+channel: email
+slots:
+  customer: customer.name
+  contact: document.sender_name
+  invoice: invoice.number
+  sku: sku.name_cs
+  qty: return.qty_cases
+  reason: return.reason_cs
+  resolution: return_request.requested_resolution_cs
+injectors: [missing_invoice_number, nickname_for_sku, wrong_invoice_number]
+body: |
+  Dobrý den,
+
+  obracím se na Vás jménem provozovny {{ customer }} s reklamací dodávky k faktuře {{ invoice }}.
+  Z dodaného zboží {{ sku }} jsme museli vyřadit {{ qty }} kartonů, důvod: {{ reason }}.
+  Prosíme o {{ resolution }}. Poškozené zboží je připraveno k odvozu na naší provozovně.
+
+  Děkuji za vyřízení a jsem s pozdravem
+  {{ contact }}

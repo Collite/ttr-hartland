@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/schemas/promotion_templates.schema.json",
+  "title": "reference/promotion_templates.yaml — the promotion calendar's shapes (⚑NH-8), read by setup.promotions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "templates",
+    "exclusions"
+  ],
+  "properties": {
+    "templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "line",
+          "tag",
+          "month",
+          "start_week",
+          "weeks",
+          "mechanic",
+          "target_uplift_pct",
+          "eligibility",
+          "name_cs",
+          "goal_cs"
+        ],
+        "properties": {
+          "line": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]+$"
+          },
+          "tag": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]+$"
+          },
+          "month": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "start_week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52
+          },
+          "weeks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 8
+          },
+          "tv": {
+            "type": "boolean"
+          },
+          "mechanic": {
+            "enum": [
+              "price_off",
+              "conditional_price_off",
+              "free_goods_same",
+              "free_goods_other"
+            ]
+          },
+          "discount_pct": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          },
+          "condition_sku": {
+            "type": "string",
+            "pattern": "^29[0-9]{11}$"
+          },
+          "condition_qty": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reward_sku": {
+            "type": "string",
+            "pattern": "^29[0-9]{11}$"
+          },
+          "reward_qty": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "target_sku": {
+            "type": "string",
+            "pattern": "^29[0-9]{11}$"
+          },
+          "target_uplift_pct": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "pre_stocking": {
+            "type": "boolean"
+          },
+          "eligibility": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "channel": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              },
+              "chain": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              },
+              "region": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              },
+              "store_class": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              },
+              "phase": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              }
+            }
+          },
+          "name_cs": {
+            "type": "string",
+            "minLength": 1
+          },
+          "goal_cs": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mechanic": {
+                  "const": "price_off"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "discount_pct"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mechanic": {
+                  "const": "conditional_price_off"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "condition_sku",
+                "condition_qty",
+                "reward_sku",
+                "discount_pct"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mechanic": {
+                  "const": "free_goods_same"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "condition_qty",
+                "reward_qty"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mechanic": {
+                  "const": "free_goods_other"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "condition_sku",
+                "condition_qty",
+                "reward_sku",
+                "reward_qty"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+-[A-Z0-9]+$"
+        }
+      }
+    }
+  }
+}
