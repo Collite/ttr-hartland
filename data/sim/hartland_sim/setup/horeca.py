@@ -3,8 +3,9 @@ customers, stratified by okres population × affluence.
 
 A place is eligible when it is a restaurant, café, bar (a pub counts as a bar) or canteen — fast food is not taken —
 has a name, carries no brand (a chain café or a burger franchise is not Hartland's HoReCa customer), its name reads
-as Czech and it lies in an okres. The Czech name is the sample's preference: the sample takes 2 600 of about
-25 000 eligible places, so it loses nothing by it. A place mapped twice (the same name within `SAME_NAME_M`, as in
+as Czech and it lies in an okres. The Czech name is the sample's preference, not NH-D8's scope: the sample takes
+2 600 of about 25 000 eligible places, so it loses nothing by it, while the store set keeps every OSM name (a proper
+noun, ⚑NH-2). A place mapped twice (the same name within `SAME_NAME_M`, as in
 the store set) is one place, the first in OSM order. Each okres's quota is its share of population × affluence
 (largest remainder, capped at what the okres has; the excess goes to the others). Within an okres the places are
 taken in `osm_order` — fixed by the extract, not by the world's seed — the first ones as customers.

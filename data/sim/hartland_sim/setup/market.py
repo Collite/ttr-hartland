@@ -6,8 +6,10 @@ From `osm-stores.csv`, in order:
 2. **the chain** (`classifier.chains`);
 3. **no shop**: a station tagged `shop=no` without a brand is dropped (it has no shelf to sell from); one with a
    brand stays, as the extract's brand rule takes it, and the report counts those;
-4. **NH-D8**: an object whose name fails the Czech guard is dropped — the OSM names are kept verbatim (⚑NH-2), so
-   the world takes the store only when its name reads as Czech;
+4. **names**: an OSM name is a proper noun and stays verbatim (⚑NH-2), whatever the Czech guard says of it: the
+   Vietnamese minimarkets (`Potraviny An Duc`) and a station's `MOL, Praha 6 - Evropská (in)` are real Czech
+   stores. NH-D8 guards the world's own words around a name; a renderer passes the name as `allow` (⚑R188-A). The
+   report counts the names the guard would flag. A name the market makes up (an unnamed store's) reads as Czech;
 5. **duplicates**: a station chain's shop or café mapped beside its own pumps (within `STATION_SHOP_M`; the pumps are
    the chain's by brand or by operator) is the station's shop, not a second store; the same chain (or brand of an
    independent network, such as Robin Oil) within `SAME_CHAIN_M`, or an independent's same name within `SAME_NAME_M`,
@@ -135,12 +137,13 @@ def build(root: Path = REFERENCE_DIR) -> Market:
             report.dropped["outside"] += 1
         elif _no_shop(row) and not row["brand"]:
             report.dropped["no shop"] += 1
-        elif row["name"] and not is_czech(row["name"]):
-            report.dropped["name not Czech"] += 1
         else:
             kept.append((row, chain, code))
     kept = _without_duplicates(kept, report)
     report.kept["station shop=no, by its brand"] = sum(_no_shop(row) for row, _, _ in kept)
+    report.kept["OSM name kept verbatim (⚑NH-2)"] = sum(
+        bool(row["name"]) and not is_czech(row["name"]) for row, _, _ in kept
+    )
 
     rows = [row for row, _, _ in kept]
     points = _points(rows)

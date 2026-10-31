@@ -58,11 +58,21 @@ def test_the_codes_are_the_tables(market: Market) -> None:
     assert all(0 < s["weekly_hours"] <= 168 for s in market.stores)
 
 
-def test_every_name_in_the_world_reads_as_czech(market: Market) -> None:
-    """NH-D8 where the OSM names enter the world; the generated ones (`Potraviny Lhota`) included."""
-    for store in market.stores:
+def test_every_generated_name_reads_as_czech(market: Market, ref: Path) -> None:
+    """NH-D8 on the names the market makes up for an unnamed store (`Potraviny Lhota`, a chain's name)."""
+    unnamed = {row["osm_id"] for row in read("osm-stores", ref) if not row["name"]}
+    generated = [store for store in market.stores if store["osm_id"] in unnamed]
+    assert len(generated) > 1000
+    for store in generated:
         assert_czech(store["name"], what=store["osm_id"])
-    assert market.report.dropped["name not Czech"] > 0
+
+
+def test_an_osm_name_is_a_proper_noun(market: Market) -> None:
+    """⚑NH-2: no store is dropped for its name; the report counts the names the Czech guard would flag."""
+    names = {store["name"] for store in market.stores}
+    assert {"Potraviny An Duc", "MOL, Praha 6 - Evropská (in)", "MOL, Praha 6 - Evropská (out)"} <= names
+    assert "name not Czech" not in market.report.dropped
+    assert market.report.kept["OSM name kept verbatim (⚑NH-2)"] >= 20
 
 
 def test_the_station_split(market: Market) -> None:
