@@ -1,0 +1,1182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/schemas/world.schema.json",
+  "title": "world.yaml — the company's numbers (design 01), read by config.WorldConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "master_seed",
+    "history",
+    "company",
+    "sites",
+    "suppliers",
+    "channels",
+    "salesforce",
+    "pricing",
+    "promotions",
+    "policies",
+    "finance",
+    "calendar",
+    "field",
+    "delivery",
+    "dials"
+  ],
+  "properties": {
+    "master_seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "warm_up_from",
+        "first_day",
+        "until"
+      ],
+      "properties": {
+        "warm_up_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "first_day": {
+          "type": "string",
+          "format": "date"
+        },
+        "until": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "company": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "center",
+        "factories",
+        "currency",
+        "timezone",
+        "locale",
+        "fiscal_year_start_month"
+      ],
+      "properties": {
+        "center": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+        },
+        "factories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "currency": {
+          "const": "CZK"
+        },
+        "timezone": {
+          "const": "Europe/Prague"
+        },
+        "locale": {
+          "const": "cs"
+        },
+        "fiscal_year_start_month": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        }
+      }
+    },
+    "sites": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hq",
+        "dcs",
+        "own_shops"
+      ],
+      "properties": {
+        "hq": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+        },
+        "dcs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+            },
+            "uniqueItems": true
+          },
+          "minProperties": 1
+        },
+        "own_shops": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "suppliers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coffee_split",
+        "fallback",
+        "lead_time_days",
+        "reliability_pct"
+      ],
+      "properties": {
+        "coffee_split": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minProperties": 1
+        },
+        "fallback": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+        },
+        "lead_time_days": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minProperties": 1
+        },
+        "reliability_pct": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "minProperties": 1
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "big_retail",
+        "small_retail",
+        "special_retail",
+        "gas_ka",
+        "own_shops",
+        "web",
+        "vending",
+        "horeca",
+        "listings"
+      ],
+      "properties": {
+        "big_retail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "accounts",
+            "dc_level_orders",
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "accounts": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+              },
+              "uniqueItems": true
+            },
+            "dc_level_orders": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+              },
+              "uniqueItems": true
+            },
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "small_retail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "customers",
+            "active_share_at_start",
+            "since_from",
+            "since_until",
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "customers": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "active_share_at_start": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "since_from": {
+              "type": "string",
+              "format": "date"
+            },
+            "since_until": {
+              "type": "string",
+              "format": "date"
+            },
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "special_retail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "gas_ka": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "accounts",
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "accounts": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+              },
+              "uniqueItems": true
+            },
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "own_shops": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "web": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "consumers",
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "consumers": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "vending": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operators",
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "operators": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "horeca": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "direct_customers",
+            "wholesalers",
+            "potential",
+            "order_grain",
+            "order_cycle_days"
+          ],
+          "properties": {
+            "direct_customers": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "wholesalers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "potential": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "order_grain": {
+              "enum": [
+                "case",
+                "piece"
+              ]
+            },
+            "order_cycle_days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "listings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "retail",
+              "professional"
+            ],
+            "properties": {
+              "retail": {
+                "oneOf": [
+                  {
+                    "const": "all"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z0-9]+$"
+                    },
+                    "uniqueItems": true
+                  }
+                ]
+              },
+              "professional": {
+                "oneOf": [
+                  {
+                    "const": "all"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z0-9]+$"
+                    },
+                    "uniqueItems": true
+                  }
+                ]
+              }
+            }
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "big_retail",
+              "small_retail",
+              "special_retail",
+              "gas_ka",
+              "own_shops",
+              "web",
+              "vending",
+              "horeca"
+            ]
+          }
+        }
+      }
+    },
+    "salesforce": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reps",
+        "area_managers",
+        "head_of_key_accounts",
+        "kams",
+        "product_managers",
+        "dispatchers",
+        "supply",
+        "finance",
+        "marketing",
+        "management",
+        "shop_managers",
+        "rep_area_moves"
+      ],
+      "properties": {
+        "reps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "area_managers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "head_of_key_accounts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kams": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "big_retail",
+              "gas_ka",
+              "vending",
+              "horeca"
+            ]
+          }
+        },
+        "product_managers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dispatchers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "supply": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finance": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "marketing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "management": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "shop_managers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rep_area_moves": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel_factor",
+        "hero_overrides",
+        "tiers",
+        "max_agreed_discount_pct",
+        "budgets",
+        "retro_bonus_pct"
+      ],
+      "properties": {
+        "channel_factor": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 2
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "big_retail",
+              "small_retail",
+              "special_retail",
+              "gas_ka",
+              "own_shops",
+              "web",
+              "vending",
+              "horeca"
+            ]
+          }
+        },
+        "hero_overrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sku",
+              "channel",
+              "factor"
+            ],
+            "properties": {
+              "sku": {
+                "type": "string",
+                "pattern": "^29[0-9]{11}$"
+              },
+              "channel": {
+                "enum": [
+                  "big_retail",
+                  "small_retail",
+                  "special_retail",
+                  "gas_ka",
+                  "own_shops",
+                  "web",
+                  "vending",
+                  "horeca"
+                ]
+              },
+              "factor": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 2
+              }
+            }
+          }
+        },
+        "tiers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "volume",
+            "cross_sell",
+            "cross_sell_both_brands_pct",
+            "cross_sell_max_pct"
+          ],
+          "properties": {
+            "volume": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code",
+                  "min_net_revenue",
+                  "pct"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+                  },
+                  "min_net_revenue": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "pct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                }
+              }
+            },
+            "cross_sell": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code",
+                  "min_lines",
+                  "pct"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+                  },
+                  "min_lines": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "pct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                }
+              }
+            },
+            "cross_sell_both_brands_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "cross_sell_max_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "max_agreed_discount_pct": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "minProperties": 1
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rep_discount_pct_of_planned_gross",
+            "kam_discount_pct_of_planned_gross"
+          ],
+          "properties": {
+            "rep_discount_pct_of_planned_gross": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "kam_discount_pct_of_planned_gross": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "retro_bonus_pct": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "minProperties": 1,
+          "required": [
+            "default"
+          ]
+        }
+      }
+    },
+    "promotions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "per_year",
+        "tv_share",
+        "weeks",
+        "mechanics",
+        "exclusion_pairs_per_year",
+        "key_account_exclusive_per_year",
+        "code"
+      ],
+      "properties": {
+        "per_year": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tv_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "weeks": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "mechanics": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "price_off",
+              "conditional_price_off",
+              "free_goods_same",
+              "free_goods_other"
+            ]
+          }
+        },
+        "exclusion_pairs_per_year": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "key_account_exclusive_per_year": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^PR-\\{year\\}-"
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stock",
+        "credit_limit",
+        "lifecycle",
+        "prompt_caps",
+        "seasonal_exclusion"
+      ],
+      "properties": {
+        "stock": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "min_days",
+              "max_days"
+            ],
+            "properties": {
+              "min_days": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_days": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "default",
+              "professional"
+            ]
+          }
+        },
+        "credit_limit": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "big_retail",
+              "small_retail",
+              "special_retail",
+              "gas_ka",
+              "vending",
+              "horeca"
+            ]
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "phases",
+            "lookback_months",
+            "regular_min_order_months",
+            "vip_min_net_revenue"
+          ],
+          "properties": {
+            "phases": {
+              "const": [
+                "potential",
+                "occasional",
+                "regular",
+                "vip"
+              ]
+            },
+            "lookback_months": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "regular_min_order_months": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "vip_min_net_revenue": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "prompt_caps": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "potential",
+              "occasional",
+              "regular",
+              "vip"
+            ]
+          }
+        },
+        "seasonal_exclusion": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12
+            }
+          },
+          "minProperties": 1
+        }
+      }
+    },
+    "finance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payment_terms_days",
+        "payment_behaviour",
+        "hold",
+        "dunning_days_overdue",
+        "return_line_share",
+        "vat_pct"
+      ],
+      "properties": {
+        "payment_terms_days": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "big_retail",
+              "small_retail",
+              "special_retail",
+              "gas_ka",
+              "own_shops",
+              "web",
+              "vending",
+              "horeca"
+            ]
+          }
+        },
+        "payment_behaviour": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "on_time",
+            "late_14",
+            "late_30",
+            "late_more"
+          ],
+          "properties": {
+            "on_time": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "late_14": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "late_30": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "late_more": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "hold": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "overdue_days_over",
+            "exposure_over_limit"
+          ],
+          "properties": {
+            "overdue_days_over": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "exposure_over_limit": {
+              "type": "boolean"
+            }
+          }
+        },
+        "dunning_days_overdue": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "return_line_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "vat_pct": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "goods",
+            "served"
+          ],
+          "properties": {
+            "goods": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "served": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
+    "calendar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "standard_price_list",
+        "channel_price_list",
+        "price_drift_pct",
+        "coffee_jump"
+      ],
+      "properties": {
+        "standard_price_list": {
+          "const": "quarterly"
+        },
+        "channel_price_list": {
+          "const": "monthly"
+        },
+        "price_drift_pct": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "coffee_jump": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "starts",
+            "business",
+            "pct"
+          ],
+          "properties": {
+            "starts": {
+              "type": "string",
+              "format": "date"
+            },
+            "business": {
+              "type": "string",
+              "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+            },
+            "pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cycle_weeks",
+        "adherence",
+        "visit_minutes"
+      ],
+      "properties": {
+        "cycle_weeks": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              2,
+              4,
+              8
+            ]
+          },
+          "minProperties": 1
+        },
+        "adherence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "visit_minutes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "carriers_per_dc",
+        "parcel_carriers",
+        "inbound_carriers",
+        "events_per_route_day"
+      ],
+      "properties": {
+        "carriers_per_dc": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "parcel_carriers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inbound_carriers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "events_per_route_day": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "dials": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipts_per_shop_day",
+        "observation_lines",
+        "stock_movement_picks"
+      ],
+      "properties": {
+        "receipts_per_shop_day": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observation_lines": {
+          "enum": [
+            "all",
+            "store_class"
+          ]
+        },
+        "stock_movement_picks": {
+          "enum": [
+            "per_line",
+            "per_order"
+          ]
+        }
+      }
+    }
+  }
+}

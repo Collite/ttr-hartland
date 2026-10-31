@@ -1,0 +1,221 @@
+# The company's numbers — every number of design 01 (the company), one key each. `config.WorldConfig` loads this
+# file and validates it against `schemas/world.schema.json`; the generator reads its parameters from here, never
+# from literals. Hidden simulation parameters (skills, elasticities, seasonal curves) are not here: they are the
+# answer key's (`stories/`). Amounts in CZK without VAT unless a key says otherwise; percentages as numbers (2 = 2 %).
+
+master_seed: 31102026
+
+history:
+  warm_up_from: 2023-01-01 # the loop runs from here with its output suppressed (contracts §2)
+  first_day: 2024-01-01 # the first written day
+  until: 2026-10-31 # the default end of a build; `prolong` goes further
+
+company:
+  center: HCZ # legal_entity.csv
+  factories: [HKO, HHO, HCH]
+  currency: CZK
+  timezone: Europe/Prague
+  locale: cs
+  fiscal_year_start_month: 1
+
+sites:
+  hq: HQ-PRAHA
+  # Each DC serves whole sales regions: Jirny Bohemia, Modřice Moravia and Silesia (01 §2).
+  dcs:
+    DC-JIRNY: [PHA, SJC, ZSC, VCH]
+    DC-MODRICE: [JMV, SMS]
+  own_shops: 12
+
+suppliers:
+  # Hodonín makes Classic, Gold and 3v1 only; for those the reorder run splits by share, Kolín is the fallback.
+  coffee_split: { HKO: 0.6, HHO: 0.4 }
+  fallback: HKO
+  lead_time_days: { HKO: 3, HHO: 4, HCH: 3 }
+  reliability_pct: { HKO: 97, HHO: 94, HCH: 96 }
+
+channels:
+  big_retail:
+    accounts: [TESCO, ALBERT, LIDL, KAUFLAND, PENNY, BILLA, GLOBUS, COOP, MAKRO]
+    dc_level_orders: [LIDL, KAUFLAND, PENNY] # these order to their own DCs, the rest store by store
+    order_grain: case
+    order_cycle_days: 7
+  small_retail:
+    customers: 5000 # independent stores that are customers (⚑NH-1)
+    active_share_at_start: 0.40 # of the independents and station shops; the rest are potential
+    since_from: 2019-01-01 # the active ones' `since` spreads over 2019–2023
+    since_until: 2023-12-31
+    order_grain: case
+    order_cycle_days: 14
+  special_retail: # every station shop but OMV's and Shell's: a small-retail sub-channel (NH-D5)
+    order_grain: case
+    order_cycle_days: 14
+  gas_ka:
+    accounts: [OMV, SHELL]
+    order_grain: case
+    order_cycle_days: 7
+  own_shops:
+    order_grain: piece
+    order_cycle_days: 2
+  web:
+    consumers: 30000
+    order_grain: piece
+    order_cycle_days: 60
+  vending:
+    operators: 40
+    order_grain: case
+    order_cycle_days: 7
+  horeca:
+    direct_customers: 600
+    wholesalers: 2
+    potential: 2000
+    order_grain: case
+    order_cycle_days: 10
+  # What a channel may buy (channel_listing, R-7): the retail packs of these lines and the Professional packs of
+  # those. `all` = every line.
+  listings:
+    big_retail: { retail: all, professional: [] }
+    small_retail: { retail: all, professional: [] }
+    special_retail: { retail: [CLASSIC, GOLD, SMESI, KELIMKY, NUDLE], professional: [PROFIKAVA] }
+    gas_ka: { retail: [CLASSIC, GOLD, SMESI, KELIMKY, NUDLE], professional: [PROFIKAVA] }
+    own_shops: { retail: all, professional: [PROFIKAVA] }
+    web: { retail: [CLASSIC, GOLD, ESPRESSO, SMESI, BEZKOFEIN, PREMIUM], professional: [] }
+    vending: { retail: [], professional: [PROFIKAVA, SMESI] }
+    horeca: { retail: [], professional: all }
+
+salesforce:
+  reps: 50 # one per area of area.csv: ≈ 2 okresy each, 10 in Praha
+  area_managers: 6 # one per sales region
+  head_of_key_accounts: 1
+  kams: { big_retail: 8, gas_ka: 1, vending: 3, horeca: 4 }
+  product_managers: 11 # one per product line
+  dispatchers: 6 # three per DC
+  supply: 5
+  finance: 10
+  marketing: 6
+  management: 4
+  shop_managers: 12
+  rep_area_moves: 2 # each rep changes area twice in the history (04 §S3)
+
+pricing:
+  # List price per channel = the standard list × the factor (01 §4.4); web is per piece incl. VAT.
+  channel_factor:
+    big_retail: 0.86
+    small_retail: 1.0
+    special_retail: 1.0
+    gas_ka: 0.90
+    vending: 0.80
+    horeca: 0.88
+    own_shops: 0.75 # the transfer price list
+    web: 1.12
+  # Marketing's overrides on hero SKUs (catalogue.csv sku_code) in a channel.
+  hero_overrides:
+    - { sku: "2931000000180", channel: big_retail, factor: 0.84 } # Gold 200 g
+    - { sku: "2931000000036", channel: big_retail, factor: 0.85 } # Classic 200 g
+    - { sku: "2931000000357", channel: gas_ka, factor: 0.88 } # 3v1, 10 tyčinek
+  tiers:
+    # Volume: the previous month's net revenue → the % off every line next month (01 §5.2).
+    volume:
+      - { code: VOL-T1, min_net_revenue: 20000, pct: 2 }
+      - { code: VOL-T2, min_net_revenue: 50000, pct: 4 }
+      - { code: VOL-T3, min_net_revenue: 120000, pct: 6 }
+    # Cross-sell: the previous month's lines bought; both brands add `both_brands_pct`, capped at `max_pct`.
+    cross_sell:
+      - { code: XS-T1, min_lines: 3, pct: 1 }
+      - { code: XS-T2, min_lines: 5, pct: 2 }
+    cross_sell_both_brands_pct: 1
+    cross_sell_max_pct: 3
+  # The most a rep may agree per line (01 §5.2).
+  max_agreed_discount_pct:
+    CLASSIC: 8
+    GOLD: 5
+    ESPRESSO: 5
+    SMESI: 10
+    BEZKOFEIN: 8
+    PROFIKAVA: 12
+    POLEVKY: 10
+    KELIMKY: 10
+    NUDLE: 10
+    PREMIUM: 5
+    PROFIGASTRO: 12
+  budgets:
+    rep_discount_pct_of_planned_gross: 2 # a rep's quarterly discount budget (⚑NH-7)
+    kam_discount_pct_of_planned_gross: 2
+  retro_bonus_pct: { default: 1, TESCO: 2 } # the chains' year-end volume bonus (01 §5.3; A-11 plants Tesco's)
+
+promotions: # ⚑NH-8
+  per_year: 25
+  tv_share: 0.33 # ≈ 8 a year are TV-supported
+  weeks: [4, 8]
+  mechanics: [price_off, conditional_price_off, free_goods_same, free_goods_other]
+  exclusion_pairs_per_year: [2, 3]
+  key_account_exclusive_per_year: 4
+  code: "PR-{year}-{month:02d}-{line}-{tag}"
+
+policies:
+  stock: # days of cover against the supply plan, per SKU × DC (01 §4.1)
+    default: { min_days: 10, max_days: 35 }
+    professional: { min_days: 15, max_days: 45 }
+  credit_limit: # per customer, by channel; `held` past it (A-14)
+    big_retail: 20000000
+    gas_ka: 3000000
+    small_retail: 60000
+    special_retail: 60000
+    vending: 250000
+    horeca: 80000
+  lifecycle: # the four phases, from the last months' order pattern (R-4)
+    phases: [potential, occasional, regular, vip]
+    lookback_months: 6
+    regular_min_order_months: 4
+    vip_min_net_revenue: 150000
+  prompt_caps: { potential: 3, occasional: 4, regular: 5, vip: 6 } # prompts per visit, by phase (G2 S2.2)
+  seasonal_exclusion: # months in which a line's listing prompts are suppressed (R-7)
+    POLEVKY: [5, 6, 7, 8]
+    KELIMKY: [5, 6, 7, 8, 9]
+    PREMIUM: [5, 6, 7, 8, 9]
+    NUDLE: [6, 7, 8]
+
+finance:
+  payment_terms_days:
+    big_retail: 60
+    gas_ka: 45
+    vending: 30
+    horeca: 30
+    small_retail: 14
+    special_retail: 14
+    own_shops: 0 # internal
+    web: 0 # prepaid
+  # How customers pay (A-1's background): on time, up to 14 days late, 15–30 days late, later.
+  payment_behaviour: { on_time: 0.70, late_14: 0.22, late_30: 0.06, late_more: 0.02 }
+  hold: { overdue_days_over: 21, exposure_over_limit: true } # A-14
+  dunning_days_overdue: [7, 21]
+  return_line_share: 0.004
+  vat_pct: { goods: 12, served: 21 } # food 12 % since 2024; the cafés' served drinks 21 %
+
+calendar:
+  standard_price_list: quarterly
+  channel_price_list: monthly
+  price_drift_pct: [1, 3] # the quarterly revision of list and purchase prices
+  coffee_jump: { starts: 2025-04-01, business: KAVA, pct: 9 }
+
+field:
+  cycle_weeks: # tourplan cycles by store class; a potential customer every 8 weeks
+    convenience: 2
+    minimarket: 2
+    super: 2
+    village: 4
+    petrol: 4
+    potential: 8
+  adherence: 0.90 # planned visits made, the average rep (A-7 pins three below)
+  visit_minutes: [15, 45]
+
+delivery:
+  carriers_per_dc: 3
+  parcel_carriers: 1
+  inbound_carriers: 1
+  events_per_route_day: 0.03
+
+# The volume dials (03 §14): turned down first if the demo VM minds; no story depends on them.
+dials:
+  receipts_per_shop_day: 150 # → 50
+  observation_lines: store_class # all | store_class (the lines relevant to the store's class)
+  stock_movement_picks: per_line # per_line | per_order
