@@ -8,14 +8,16 @@ notice to keep.
 
 | file | what |
 |---|---|
-| `data/reference/osm-stores.csv` | shops: the key-account, small-retail and station stores |
-| `data/reference/osm-horeca.csv` | cafés, restaurants, pubs, hotels |
-| `data/reference/okres-boundaries.geojson` | the okres boundaries |
-| `data/reference/*.overpassql` · `osm-extract.meta` | the queries, the date and endpoint of the extract, the row counts |
+| `data/reference/osm-stores.csv` | food shops and fuel stations: the key-account, small-retail and station stores |
+| `data/reference/osm-horeca.csv` | restaurants, cafés, bars, pubs, fast food, canteens |
+| `data/reference/osm-context.csv` | stations, malls and settlement points (what a store's street type is read from) |
+| `data/reference/osm/okres-boundaries.geojson` | the boundaries of the 76 okresy and Prague's 22 districts, simplified |
+| `data/reference/osm/*.overpassql` · `osm/osm-extract.meta` | the queries; the date, the endpoint and the row counts |
 
 © OpenStreetMap contributors. Available under the
 [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/) —
-<https://www.openstreetmap.org/copyright>. The files arrive at G0 S0.3.
+<https://www.openstreetmap.org/copyright>. Extracted on 2026-10-31 from OSM data as of 14:03 UTC, through
+`overpass-api.de` (G0 S0.3).
 
 ## 2. The generated world — ODbL 1.0, as a whole
 

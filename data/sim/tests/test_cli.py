@@ -56,7 +56,7 @@ PENDING = sorted(name for name, verb in VERBS.items() if verb.handler is pending
 
 
 def test_the_landed_verbs_are_no_longer_pending() -> None:
-    assert set(VERBS) - set(PENDING) == {"reference-check"}
+    assert set(VERBS) - set(PENDING) == {"reference-check", "osm-extract"}
 
 
 @pytest.mark.parametrize("verb", PENDING)

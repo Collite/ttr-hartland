@@ -1,0 +1,9 @@
+extracted: 2026-10-31T14:05:17Z
+endpoint: https://overpass-api.de/api/interpreter
+osm_base: 2026-10-31T14:03:51Z
+licence: ODbL 1.0, © OpenStreetMap contributors
+counts:
+  osm-stores.csv: 12207
+  osm-horeca.csv: 28676
+  osm-context.csv: 14907
+  osm/okres-boundaries.geojson: 98

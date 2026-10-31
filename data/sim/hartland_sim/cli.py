@@ -43,6 +43,31 @@ def reference_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def osm_extract(args: argparse.Namespace) -> int:
+    from hartland_sim.io.osm_extract import run
+
+    run(args.dir, endpoint=args.endpoint, only=args.only, pbf_dir=args.from_pbf)
+    return 0
+
+
+def _osm_extract_arguments(parser: argparse.ArgumentParser) -> None:
+    from hartland_sim.io.osm_extract import ENDPOINT, EXTRACTS
+
+    parser.add_argument("--endpoint", default=ENDPOINT, help=f"the Overpass API (default: {ENDPOINT})")
+    parser.add_argument(
+        "--only", nargs="+", default=(), choices=[extract.output for extract in EXTRACTS], help="rerun these only"
+    )
+    parser.add_argument(
+        "--from-pbf",
+        type=Path,
+        metavar="DIR",
+        help="read scripts/osm_extract_pbf.sh's osmium output in DIR instead of asking Overpass",
+    )
+    parser.add_argument(
+        "--dir", type=Path, default=REFERENCE_DIR, help="the reference files (default: the repo's data/reference)"
+    )
+
+
 def _reference_check_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--dir", type=Path, default=REFERENCE_DIR, help="the reference files (default: the repo's data/reference)"
@@ -103,7 +128,12 @@ VERBS: dict[str, Verb] = {
         _reference_check_arguments,
         reference_check,
     ),
-    "osm-extract": Verb("the Overpass queries → data/reference/osm-*.csv (+ the extract's meta)", "G0 S0.3"),
+    "osm-extract": Verb(
+        "the Overpass queries → data/reference/osm-*.csv (+ the extract's meta)",
+        "G0 S0.3",
+        _osm_extract_arguments,
+        osm_extract,
+    ),
     "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments),
     "build-world": Verb("the simulation → data/build/<run>/", "G1 S1.4", _build_world_arguments),
     "load-world": Verb("COPY in load order · views · indexes · the _sim_meta guard", "G5 S5.1", _load_world_arguments),

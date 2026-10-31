@@ -87,8 +87,22 @@ def parse_cell(value: str, column: Mapping[str, Any]) -> Any:
     raise ValueError(f"{value!r} is not {' or '.join(t for t in types if t != 'null')}")
 
 
+_UNCONSTRAINING = frozenset({"type", "description", "title"})
+
+
 def validator(schema: Mapping[str, Any]) -> Draft202012Validator:
-    return Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+    """The row validator: the schema's constraints, without what the reader already guarantees — each cell's type
+    (`parse_cell`), every column present and no other (the header). Validating only the constrained columns gives
+    the same verdicts several times faster on the large OSM files."""
+    columns = {
+        column: spec
+        for column, spec in schema["properties"].items()
+        if any(not keyword.startswith("x-") and keyword not in _UNCONSTRAINING for keyword in spec)
+    }
+    return Draft202012Validator(
+        {"$schema": schema.get("$schema", ""), "type": "object", "properties": columns},
+        format_checker=Draft202012Validator.FORMAT_CHECKER,
+    )
 
 
 def format_problems(name: str, raw: bytes) -> list[str]:
