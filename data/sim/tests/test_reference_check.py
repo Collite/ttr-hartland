@@ -27,6 +27,9 @@ COMMITTED = (
     "names_first",
     "names_last",
     "okres",
+    "osm-context",
+    "osm-horeca",
+    "osm-stores",
     "region",
     "severe_days",
     "site",
@@ -92,10 +95,12 @@ def test_the_committed_reference_files_hold(ref: Path) -> None:
 def test_the_default_folder_is_the_repos_wherever_it_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """The verb passes on the committed files, from a directory that is not the repo's."""
     monkeypatch.chdir(tmp_path)
     assert read("region")[0]["code"] == "PHA"
     assert main(["reference-check"]) == 0
-    assert f"{len(COMMITTED)} files" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"{len(COMMITTED)} files" in out and out.endswith("rows — OK\n")
 
 
 @pytest.mark.parametrize("folder", ["missing", "empty"])
@@ -269,6 +274,24 @@ def test_the_row_keywords_are_checked(tmp_path: Path, keyword: str, value: objec
     assert found == [f"schemas/mini.schema.json: the convention wants {wants}"]
 
 
+@pytest.mark.parametrize(
+    ("keyword", "value"),
+    [
+        ("allOf", [{"required": ["day"]}]),
+        ("if", {"required": ["day"]}),
+        ("$defs", {"day": {"type": "string"}}),
+        ("dependentRequired", {"qty": ["day"]}),
+    ],
+)
+def test_a_schema_keeps_its_rules_in_its_columns(tmp_path: Path, keyword: str, value: object) -> None:
+    """The row validator reads the columns only (`io.reference.validator`), so a top-level rule would be ignored."""
+    found = problems(tmp_path, GOOD_CSV, **{keyword: value})
+    assert found == [
+        "schemas/mini.schema.json: the convention wants no other top-level keyword (the row validator reads the "
+        f"columns only): ['{keyword}']"
+    ]
+
+
 @pytest.mark.parametrize("target", ["town", "town.name.x", 7])
 def test_an_x_ref_names_a_file_and_a_column(tmp_path: Path, target: object) -> None:
     schema = mini_schema()
@@ -308,16 +331,14 @@ LABELS = ("name", "town", "nominative", "vocative", "genitive", "male", "female"
 
 
 def test_every_label_column_is_guarded(ref: Path) -> None:
-    """DONE: no English anywhere — `assert_czech_all` on each label column (review-188 R2)."""
+    """DONE: no English anywhere — `assert_czech_all` on each label column (review-188 R2). The OSM snapshot is the
+    one exception, and it says so: its names are real and verbatim (⚑NH-2), `x-czech: false`, and the guard runs
+    where they enter the world (`setup.market`)."""
     for path in sorted((ref / "schemas").glob("*.schema.json")):
         for column, spec in load_schema(path)["properties"].items():
             if column in LABELS or column.endswith("_cs"):
-                assert spec.get("x-czech") is True, f"{path.name}: {column}"
-
-
-def test_the_verb_passes_on_the_committed_files(ref: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["reference-check", "--dir", str(ref)]) == 0
-    assert capsys.readouterr().out.endswith("rows — OK\n")
+                expected = not path.name.startswith("osm-")
+                assert spec.get("x-czech") is expected, f"{path.name}: {column}"
 
 
 def test_the_verb_fails_listing_the_problems(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

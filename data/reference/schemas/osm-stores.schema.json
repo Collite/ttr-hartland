@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/osm-stores.schema.json",
+  "title": "osm-stores.csv — the grocery store set: food shops, fuel stations, Makro (05 §8, ⚑NH-2)",
+  "description": "verbatim from OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0); empty = the tag is not set",
+  "x-rows": [
+    10000,
+    16000
+  ],
+  "x-key": [
+    "osm_id"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "osm_id",
+    "lat",
+    "lon",
+    "name",
+    "brand",
+    "operator",
+    "shop",
+    "amenity",
+    "street",
+    "place_name",
+    "housenumber",
+    "city",
+    "postcode",
+    "opening_hours"
+  ],
+  "properties": {
+    "osm_id": {
+      "type": "string",
+      "pattern": "^(node|way|relation)/[1-9][0-9]*$",
+      "description": "as OSM writes it"
+    },
+    "lat": {
+      "type": "number",
+      "minimum": 48.5,
+      "maximum": 51.1
+    },
+    "lon": {
+      "type": "number",
+      "minimum": 12.0,
+      "maximum": 18.9
+    },
+    "name": {
+      "type": "string",
+      "x-czech": false,
+      "description": "the real name, verbatim (⚑NH-2); NH-D8 applies where it enters the world (setup.market)"
+    },
+    "brand": {
+      "type": "string"
+    },
+    "operator": {
+      "type": "string"
+    },
+    "shop": {
+      "type": "string"
+    },
+    "amenity": {
+      "type": "string"
+    },
+    "street": {
+      "type": "string",
+      "description": "addr:street"
+    },
+    "place_name": {
+      "type": "string",
+      "description": "addr:place (a village without streets)"
+    },
+    "housenumber": {
+      "type": "string",
+      "description": "addr:housenumber"
+    },
+    "city": {
+      "type": "string",
+      "description": "addr:city"
+    },
+    "postcode": {
+      "type": "string",
+      "description": "addr:postcode"
+    },
+    "opening_hours": {
+      "type": "string"
+    }
+  }
+}

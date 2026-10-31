@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/osm-context.schema.json",
+  "title": "osm-context.csv — stations, malls and settlement points: what a store's street type is read from (04 S4)",
+  "description": "verbatim from OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0); empty = the tag is not set",
+  "x-rows": [
+    8000,
+    30000
+  ],
+  "x-key": [
+    "osm_id"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "osm_id",
+    "lat",
+    "lon",
+    "name",
+    "railway",
+    "station",
+    "amenity",
+    "shop",
+    "place",
+    "population"
+  ],
+  "properties": {
+    "osm_id": {
+      "type": "string",
+      "pattern": "^(node|way|relation)/[1-9][0-9]*$",
+      "description": "as OSM writes it"
+    },
+    "lat": {
+      "type": "number",
+      "minimum": 48.5,
+      "maximum": 51.1
+    },
+    "lon": {
+      "type": "number",
+      "minimum": 12.0,
+      "maximum": 18.9
+    },
+    "name": {
+      "type": "string",
+      "x-czech": false,
+      "description": "the real name, verbatim (⚑NH-2); NH-D8 applies where it enters the world (setup.market)"
+    },
+    "railway": {
+      "type": "string"
+    },
+    "station": {
+      "type": "string"
+    },
+    "amenity": {
+      "type": "string"
+    },
+    "shop": {
+      "type": "string"
+    },
+    "place": {
+      "type": "string"
+    },
+    "population": {
+      "type": "string",
+      "description": "as tagged; not always a number"
+    }
+  }
+}
