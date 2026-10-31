@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from hartland_sim import __version__
-from hartland_sim.cli import VERBS, main
+from hartland_sim.cli import VERBS, Verb, main
 
 # contracts §7 — the data verbs; `test` is the justfile's own, not the generator's.
 CONTRACT_VERBS = {
@@ -43,7 +44,7 @@ def test_help_lists_every_verb() -> None:
     result = run_console_script("--help")
     assert result.returncode == 0, result.stderr
     for verb in CONTRACT_VERBS:
-        assert verb in result.stdout
+        assert re.search(rf"^\s+{re.escape(verb)}\s", result.stdout, re.M), verb
 
 
 def test_version() -> None:
@@ -70,3 +71,18 @@ def test_prolong_takes_an_iso_day(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["prolong", "31.12.2026"])
     assert "invalid fromisoformat value" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv", [["stories-check", "--csv", "--dry"], ["stories-check", "--csv", "r1"]])
+def test_stories_check_csv_is_a_flag_with_an_optional_run(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(argv) == 1
+    assert "hartland-sim stories-check: not implemented yet — arrives at G0 S0.4" in capsys.readouterr().err
+
+
+def test_a_not_implemented_error_inside_a_real_handler_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(args: object) -> int:
+        raise NotImplementedError("boom")
+
+    monkeypatch.setitem(VERBS, "boom", Verb("a verb whose body calls a pending stub", "nowhere", handler=boom))
+    with pytest.raises(NotImplementedError, match="boom"):
+        main(["boom"])

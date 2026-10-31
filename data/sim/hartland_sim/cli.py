@@ -19,8 +19,9 @@ Handler = Callable[[argparse.Namespace], int]
 
 
 def pending(args: argparse.Namespace) -> int:
-    """The body of a verb whose stage has not landed yet."""
-    raise NotImplementedError(f"arrives at {VERBS[args.verb].stage}")
+    """The body of a verb whose stage has not landed yet: says so, exits 1."""
+    print(f"hartland-sim {args.verb}: not implemented yet — arrives at {VERBS[args.verb].stage}", file=sys.stderr)
+    return 1
 
 
 def _no_arguments(parser: argparse.ArgumentParser) -> None:
@@ -48,7 +49,13 @@ def _prolong_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _stories_check_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--null", action="store_true", help="expect the null world's opposite direction")
-    parser.add_argument("--csv", metavar="RUN", help="read a CSV build (data/build/<run>/) instead of Postgres")
+    parser.add_argument(
+        "--csv",
+        nargs="?",
+        const="latest",
+        metavar="RUN",
+        help="read a CSV build (data/build/<run>/; bare --csv = the latest) instead of Postgres",
+    )
     parser.add_argument("--dry", action="store_true", help="list the detectors and probes, run nothing")
 
 
@@ -102,11 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handler: Handler = args.handler
-    try:
-        return handler(args)
-    except NotImplementedError as e:
-        print(f"hartland-sim {args.verb}: not implemented yet — {e}", file=sys.stderr)
-        return 1
+    return handler(args)
 
 
 if __name__ == "__main__":
