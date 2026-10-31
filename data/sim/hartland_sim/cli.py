@@ -12,6 +12,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from hartland_sim import __version__
 
@@ -26,6 +27,26 @@ def pending(args: argparse.Namespace) -> int:
 
 def _no_arguments(parser: argparse.ArgumentParser) -> None:
     del parser
+
+
+def reference_check(args: argparse.Namespace) -> int:
+    from hartland_sim.checks.reference import check
+
+    report = check(args.dir)
+    for problem in report.problems:
+        print(problem, file=sys.stderr)
+    if report.problems:
+        count = len(report.problems)
+        print(f"hartland-sim reference-check: {count} problem{'s' * (count != 1)}", file=sys.stderr)
+        return 1
+    print(f"hartland-sim reference-check: {report.files} files, {report.rows} rows — OK")
+    return 0
+
+
+def _reference_check_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--dir", type=Path, default=Path("data/reference"), help="the reference files (default: data/reference)"
+    )
 
 
 def _ddl_arguments(parser: argparse.ArgumentParser) -> None:
@@ -76,7 +97,12 @@ class Verb:
 
 
 VERBS: dict[str, Verb] = {
-    "reference-check": Verb("every data/reference/*.csv against its schema + row counts", "G0 S0.2"),
+    "reference-check": Verb(
+        "every data/reference/*.csv against its schema + row counts",
+        "G0 S0.2",
+        _reference_check_arguments,
+        reference_check,
+    ),
     "osm-extract": Verb("the Overpass queries → data/reference/osm-*.csv (+ the extract's meta)", "G0 S0.3"),
     "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments),
     "build-world": Verb("the simulation → data/build/<run>/", "G1 S1.4", _build_world_arguments),

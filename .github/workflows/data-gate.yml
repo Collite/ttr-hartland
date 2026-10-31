@@ -1,8 +1,8 @@
 # The data gate (contracts §7): the generator's lint, types and unit tests, the reference data and the DDL drift on
 # every pull request and every push to master; the Postgres tier as its own job. The model gate arrives at M0.
 #
-# reference-check and the DDL check switch themselves on when their inputs land (G0 S0.2: data/reference/schemas/;
-# G0 S0.4: data/inventory.yaml) — until then the step says so and passes.
+# The DDL check switches itself on when its input lands (G0 S0.4: data/inventory.yaml) — until then the step says so
+# and passes.
 name: data-gate
 
 on:
@@ -37,12 +37,7 @@ jobs:
         run: just test
 
       - name: just reference-check
-        run: |
-          if [ -d data/reference/schemas ]; then
-            just reference-check
-          else
-            echo "::notice title=reference-check skipped::data/reference/schemas/ arrives at G0 S0.2 — nothing to check yet"
-          fi
+        run: just reference-check
 
       - name: just ddl --check
         run: |
