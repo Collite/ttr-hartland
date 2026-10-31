@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/severe_days.schema.json",
+  "title": "severe_days.csv — the severe-weather days per region: the planted A-5 days + a background",
+  "x-rows": [
+    150,
+    400
+  ],
+  "x-key": [
+    "day",
+    "region"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "day",
+    "region",
+    "kind",
+    "story"
+  ],
+  "properties": {
+    "day": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "region": {
+      "type": "string",
+      "x-ref": "region.code"
+    },
+    "kind": {
+      "enum": [
+        "snow",
+        "ice",
+        "storm",
+        "wind",
+        "flood",
+        "heat"
+      ]
+    },
+    "story": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "A-5",
+        null
+      ],
+      "description": "A-5 when planted (04 §8)"
+    }
+  }
+}
