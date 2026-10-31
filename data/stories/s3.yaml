@@ -1,0 +1,20 @@
+# S3 — the reps differ: conversion, acquisition, retention, cross-sell (design 04 §S3). Each rep has four hidden skills
+# in `skill_range`; the eight pinned reps are in anomalies.yaml `pins.reps`. Each mechanism reads the rep assigned to
+# the store on the day, and the reps change areas twice, so a skill follows the person, not the territory.
+story: S3
+title_cs: Obchodní zástupci se liší – konverze, akvizice, udržení a šíře sortimentu
+enabled: true
+seed_stream: visit
+parameters:
+  skill_range: [0.6, 1.4]
+  conversion_base: 0.55 # P(an order | a visit at an active customer) = base × skill
+  acquisition_base: 0.03 # P(a potential store in the area becomes a customer in a month) = base × skill × appeal
+  churn_base: 0.012 # the monthly churn hazard = base ÷ skill
+  cross_sell_base: 0.08 # the monthly chance an active customer adds a line it never bought = base × skill
+  area_moves: 2
+detector:
+  sql: detectors/s3.sql
+  metric: pinned_placements # the two stars in the top five, the two weak ones in the bottom five, on the composite
+  threshold: 4
+  direction: ">="
+  null_world: "<"

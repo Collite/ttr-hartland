@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hartland_sim import __version__
-from hartland_sim.cli import VERBS, Verb, main, pending
+from hartland_sim.cli import VERBS, Verb, build_parser, main, pending
 
 # contracts §7 — the data verbs; `test` is the justfile's own, not the generator's.
 CONTRACT_VERBS = {
@@ -67,7 +67,7 @@ PENDING = sorted(name for name, verb in VERBS.items() if verb.handler is pending
 
 
 def test_the_landed_verbs_are_no_longer_pending() -> None:
-    assert set(VERBS) - set(PENDING) == {"reference-check", "osm-extract", "ddl"}
+    assert set(VERBS) - set(PENDING) == {"reference-check", "osm-extract", "ddl", "stories-check"}
 
 
 @pytest.mark.parametrize("verb", PENDING)
@@ -91,10 +91,19 @@ def test_prolong_takes_an_iso_day(capsys: pytest.CaptureFixture[str]) -> None:
     assert "invalid fromisoformat value" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("argv", [["stories-check", "--csv", "--dry"], ["stories-check", "--csv", "r1"]])
-def test_stories_check_csv_is_a_flag_with_an_optional_run(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+def test_stories_check_csv_is_a_flag_with_an_optional_run() -> None:
+    parser = build_parser()
+    dry = parser.parse_args(["stories-check", "--csv", "--dry"])
+    assert (dry.csv, dry.dry) == ("latest", True)
+    assert parser.parse_args(["stories-check", "--csv", "r1"]).csv == "r1"
+
+
+@pytest.mark.parametrize("argv", [["stories-check"], ["stories-check", "--csv", "r1"], ["stories-check", "--null"]])
+def test_stories_check_runs_nothing_yet_without_dry(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     assert main(argv) == 1
-    assert "hartland-sim stories-check: not implemented yet — arrives at G0 S0.4" in capsys.readouterr().err
+    assert "hartland-sim stories-check: not implemented yet — running the detectors arrives at G5 S5.2" in (
+        capsys.readouterr().err
+    )
 
 
 def test_a_not_implemented_error_inside_a_real_handler_propagates(monkeypatch: pytest.MonkeyPatch) -> None:

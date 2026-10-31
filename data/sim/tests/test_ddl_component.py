@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
 
 import psycopg
 import pytest
 
 from hartland_sim.config import InventoryConfig
-from hartland_sim.io.ddl import DDL_DIR, DOCWH, LICENCE_NOTICE, OWNER, READONLY
+from hartland_sim.io.ddl import DOCWH, LICENCE_NOTICE, READONLY
 
 pytestmark = pytest.mark.component
 
@@ -23,20 +22,8 @@ def inventory() -> InventoryConfig:
 
 
 @pytest.fixture(scope="module")
-def db(pg_dsn: str) -> Iterator[psycopg.Connection]:
-    """The database with schema.sql, indexes.sql and the grants applied, as load-world will (G5 S5.1)."""
-    with psycopg.connect(pg_dsn, autocommit=True) as conn:
-        for role in (OWNER, READONLY, DOCWH):
-            conn.execute(
-                f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{role}') "
-                f"THEN CREATE ROLE {role}; END IF; END $$"
-            )
-        for name in ("schema.sql", "indexes.sql", "views/grants.sql"):
-            conn.execute((DDL_DIR / name).read_text(encoding="utf-8"))
-        try:
-            yield conn
-        finally:
-            conn.execute("DROP SCHEMA hartland CASCADE")
+def db(hartland_db: psycopg.Connection) -> psycopg.Connection:
+    return hartland_db
 
 
 def _type(row: tuple[str, int | None, int | None]) -> str:

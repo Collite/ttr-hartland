@@ -1,0 +1,29 @@
+# S6 — promotions, discounts and individual prices are used with different efficiency (design 04 §S6). Each rep, KAM
+# and product manager has a hidden `discount_discipline`; each customer × line a hidden elasticity. The pinned
+# actors below make the story checkable without the others' hidden values.
+story: S6
+title_cs: Slevy, promoce a individuální ceny se využívají s různou efektivitou
+enabled: true
+seed_stream: pricing_agree
+parameters:
+  discipline_range: [0.5, 1.4]
+  elasticity: { high: 2.0, low: 0.4, high_share: 0.30 } # of the customer × lines, by store cluster and affluence
+  disciplined_choice_exponent: 2 # a disciplined rep grants ∝ elasticity ^ (discipline × 2), below the line's maximum
+  undisciplined_discount_pct: [5, 8] # flat, to whoever asks
+  undisciplined_target_miss_pct: [20, 40] # an undisciplined product manager's targets miss by this much
+  # Pinned: two disciplined and two undisciplined reps (by the area of their first assignment, as in anomalies.yaml)
+  # and the product managers of two lines.
+  pinned_reps: { SJC-02: 1.4, ZSC-02: 1.35, SMS-02: 0.5, VCH-05: 0.55 }
+  pinned_product_managers: { GOLD: 1.4, CLASSIC: 0.5 }
+detector:
+  sql: detectors/s6.sql
+  metric: disciplined_over_undisciplined_margin_per_discount
+  threshold: 2
+  direction: ">="
+  null_world: "<"
+also:
+  - sql: detectors/s6_targets.sql
+    metric: on_target_share_disciplined_minus_undisciplined
+    threshold: 0.4
+    direction: ">="
+    null_world: "<"

@@ -4,7 +4,8 @@
   promotions, policies, finance, calendar, dials, `master_seed`); validated by `data/schemas/world.schema.json`.
 - `InventoryConfig` ← `data/inventory.yaml`: one entry per table — the one source of the DDL, the load order and
   the db layer (contracts §1); validated by `data/schemas/inventory.schema.json`, then as a whole graph.
-- `StoriesConfig` ← `data/stories/s1…s6.yaml` + `anomalies.yaml`: the answer key (contracts §3). G0 S0.4 T3.
+- `StoriesConfig` ← `data/stories/s1…s6.yaml` + `anomalies.yaml`: the answer key (contracts §3); validated by
+  `data/schemas/story.schema.json` and `anomalies.schema.json`, then as a whole.
 
 A missing or mistyped key fails at load with its path, never later inside the simulation: `ConfigError` lists every
 problem of the file at once, each as `<file>: <path>: <what>`. The typed view is read-only — mappings are
@@ -14,6 +15,7 @@ problem of the file at once, each as `<file>: <path>: <what>`. The typed view is
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import types
 import typing
@@ -91,6 +93,8 @@ def build[T](cls: type[T], data: Any) -> T:
 
 
 def _convert(tp: Any, value: Any) -> Any:
+    if tp is Any:
+        return _frozen(value)
     origin = typing.get_origin(tp)
     if dataclasses.is_dataclass(tp) and isinstance(tp, type):
         hints = typing.get_type_hints(tp)
@@ -134,6 +138,14 @@ def _convert(tp: Any, value: Any) -> Any:
             raise TypeError(f"{value!r} is not {tp.__name__}")
         return value
     raise TypeError(f"no conversion to {tp!r}")
+
+
+def _frozen(value: Any) -> Any:
+    if isinstance(value, dict):
+        return types.MappingProxyType({key: _frozen(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_frozen(item) for item in value)
+    return value
 
 
 # ── WorldConfig (data/world.yaml) ────────────────────────────────────────────
@@ -544,13 +556,162 @@ class InventoryConfig:
         return problems
 
 
-# ── StoriesConfig (data/stories/) — G0 S0.4 T3 ───────────────────────────────
+# ── StoriesConfig (data/stories/) ────────────────────────────────────────────
+
+STORIES_DIR = DATA_DIR / "stories"
+
+Direction = Literal[">=", "<=", ">", "<", "between"]
+
+# A story passes when `metric direction threshold`; the null world must give the opposite.
+OPPOSITE: Mapping[str, str] = types.MappingProxyType({">=": "<", "<=": ">", ">": "<=", "<": ">="})
+
+
+@dataclass(frozen=True)
+class Detector:
+    sql: str  # relative to data/stories/
+    metric: str
+    threshold: float | tuple[float, float]
+    direction: Direction
+    null_world: Direction
+
+
+@dataclass(frozen=True)
+class Story:
+    story: str
+    title_cs: str
+    enabled: bool
+    seed_stream: str
+    parameters: Mapping[str, Any]
+    detector: Detector
+    also: tuple[Detector, ...] = ()
+
+    @property
+    def detectors(self) -> tuple[Detector, ...]:
+        return (self.detector, *self.also)
+
+
+@dataclass(frozen=True)
+class Probe:
+    sql: str  # relative to data/stories/
+    expect: str  # ">= n" · "= n" · "rows"
+
+
+@dataclass(frozen=True)
+class Anomaly:
+    id: str
+    title_cs: str
+    enabled: bool
+    parameters: Mapping[str, Any]
+    probe: Probe
+
+
+@dataclass(frozen=True)
+class RepPin:
+    """A pinned rep of S3, by the area of their first assignment (`slot`), with the four skills and the traits."""
+
+    slot: str
+    profile: str
+    conversion: float
+    acquisition: float
+    retention: float
+    cross_sell: float
+    skips_visits: bool = False
+    records_nothing: bool = False
+
+
+@dataclass(frozen=True)
+class CustomerPin:
+    """A customer a planted case needs, by a rule resolved at setup: the `rank`-th matching customer in OSM order."""
+
+    anomaly: str
+    trait: str
+    channel: str
+    area: str
+    rank: int
+    chain: str | None = None
+    store_class: str | None = None
+
+
+@dataclass(frozen=True)
+class Pins:
+    reps: tuple[RepPin, ...]
+    customers: tuple[CustomerPin, ...]
 
 
 @dataclass(frozen=True)
 class StoriesConfig:
-    """`data/stories/`, validated: the six stories, the anomalies, the pins (contracts §3; G0 S0.4 T3)."""
+    """`data/stories/`, validated: the six stories (`s1.yaml` … `s6.yaml`, `data/schemas/story.schema.json`), the
+    planted cases and the pins (`anomalies.yaml`, `anomalies.schema.json`) — contracts §3.
+
+    Beyond the schemas, `load` checks that each file holds the story its name says, the six are there once each, the
+    anomalies' ids are unique, every SQL file exists, and every `null_world` is the opposite of its `direction`.
+    `sha256` hashes the YAML files, for `_sim_meta.stories_sha256` (contracts §2)."""
+
+    stories: tuple[Story, ...]
+    anomalies: tuple[Anomaly, ...]
+    pins: Pins
+    sha256: str
 
     @classmethod
-    def load(cls, directory: Path) -> StoriesConfig:
-        raise NotImplementedError("G0 S0.4 T3")
+    def load(cls, directory: Path = STORIES_DIR) -> StoriesConfig:
+        problems: list[str] = []
+        stories = []
+        for path in sorted(directory.glob("s[0-9]*.yaml")):
+            try:
+                data = read_yaml(path)
+                validate(data, "story", path.name)
+            except ConfigError as error:
+                problems.append(str(error))
+                continue
+            if data["story"] != path.stem.upper():
+                problems.append(f"{path.name}: holds story {data['story']}")
+            stories.append(build(Story, data))
+        try:
+            data = read_yaml(directory / "anomalies.yaml")
+            validate(data, "anomalies", "anomalies.yaml")
+            anomalies = tuple(build(Anomaly, item) for item in data["anomalies"])
+            pins = build(Pins, data["pins"])
+        except ConfigError as error:
+            problems.append(str(error))
+            anomalies, pins = (), Pins((), ())
+        ids = [story.story for story in stories]
+        if sorted(ids) != [f"S{n}" for n in range(1, 7)] and not problems:
+            problems.append(f"the stories are {sorted(ids)}, not S1…S6 once each")
+        anomaly_ids = [anomaly.id for anomaly in anomalies]
+        problems += [
+            f"anomalies.yaml: {id} twice" for id in sorted({i for i in anomaly_ids if anomaly_ids.count(i) > 1})
+        ]
+        for story in stories:
+            for detector in story.detectors:
+                problems += _detector_problems(directory, f"s{story.story[1:]}.yaml", detector)
+        for anomaly in anomalies:
+            if not (directory / anomaly.probe.sql).is_file():
+                problems.append(f"anomalies.yaml: {anomaly.id}: no {anomaly.probe.sql}")
+        if problems:
+            raise ConfigError("\n".join(problems))
+        digest = hashlib.sha256()
+        for path in sorted(directory.glob("*.yaml")):
+            digest.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
+        return cls(tuple(sorted(stories, key=lambda story: story.story)), anomalies, pins, digest.hexdigest())
+
+    def story(self, id: str) -> Story:
+        (found,) = [story for story in self.stories if story.story == id]
+        return found
+
+    def anomaly(self, id: str) -> Anomaly:
+        (found,) = [anomaly for anomaly in self.anomalies if anomaly.id == id]
+        return found
+
+
+def _detector_problems(directory: Path, name: str, detector: Detector) -> list[str]:
+    problems = []
+    if not (directory / detector.sql).is_file():
+        problems.append(f"{name}: no {detector.sql}")
+    if (detector.direction == "between") != isinstance(detector.threshold, tuple):
+        problems.append(f"{name}: {detector.sql}: `between` takes [low, high], the others one number")
+    if detector.direction != "between" and OPPOSITE[detector.direction] != detector.null_world:
+        problems.append(
+            f"{name}: {detector.sql}: the null world must be the opposite of {detector.direction!r},"
+            f" not {detector.null_world!r}"
+        )
+    return problems

@@ -1,0 +1,27 @@
+# S4 — the shops cluster by street type, size and opening hours (design 04 §S4). The base demand of a store × line =
+# size_base × street_mix × hours_factor × affluence; nothing else knows the clusters.
+story: S4
+title_cs: Prodejny se shlukují podle typu ulice, velikosti a otevírací doby
+enabled: true
+seed_stream: demand
+parameters:
+  size_base: { S: 1.0, M: 2.2, L: 5.0 }
+  # Each street type's multiplier per line; a line not named is 1.0. Residential is flat.
+  street_mix:
+    transport_hub: { SMESI: 2.0, KELIMKY: 1.8, CLASSIC: 0.7 }
+    village: { POLEVKY: 1.6, CLASSIC: 1.4, GOLD: 0.5 }
+    high_street: { GOLD: 1.6, ESPRESSO: 1.5, PREMIUM: 1.6 }
+    residential: {}
+    shopping_centre:
+      { CLASSIC: 1.3, GOLD: 1.3, ESPRESSO: 1.3, SMESI: 1.3, BEZKOFEIN: 1.4, POLEVKY: 1.3, KELIMKY: 1.3, NUDLE: 1.3 }
+    petrol: { SMESI: 1.8, KELIMKY: 1.5, NUDLE: 1.4, PROFIKAVA: 1.0 }
+  sunday_open_uplift: 0.12
+  weekly_hours_elasticity: 0.3
+  # The line each street type should lead by share (the demo's detector).
+  leading_line: { transport_hub: SMESI, village: POLEVKY, high_street: GOLD }
+detector:
+  sql: detectors/s4.sql
+  metric: min_share_led_by_the_expected_line
+  threshold: 0.8
+  direction: ">="
+  null_world: "<"

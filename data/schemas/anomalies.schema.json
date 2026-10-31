@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/schemas/anomalies.schema.json",
+  "title": "stories/anomalies.yaml — the planted cases and the pins (contracts §3, design 04 §7)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "anomalies",
+    "pins"
+  ],
+  "properties": {
+    "anomalies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title_cs",
+          "enabled",
+          "parameters",
+          "probe"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^A-([1-9]|1[0-9])$"
+          },
+          "title_cs": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "parameters": {
+            "type": "object",
+            "minProperties": 1
+          },
+          "probe": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sql",
+              "expect"
+            ],
+            "properties": {
+              "sql": {
+                "type": "string",
+                "pattern": "^probes/a[0-9]+\\.sql$"
+              },
+              "expect": {
+                "type": "string",
+                "pattern": "^(>= [0-9]+|= [0-9]+|rows)$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reps",
+        "customers"
+      ],
+      "properties": {
+        "reps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "slot",
+              "profile",
+              "conversion",
+              "acquisition",
+              "retention",
+              "cross_sell"
+            ],
+            "properties": {
+              "slot": {
+                "type": "string",
+                "pattern": "^(PHA|SJC|ZSC|VCH|JMV|SMS)-[0-9]{2}$"
+              },
+              "profile": {
+                "enum": [
+                  "star",
+                  "weak",
+                  "hunter",
+                  "farmer",
+                  "cross_seller",
+                  "converter"
+                ]
+              },
+              "conversion": {
+                "type": "number",
+                "minimum": 0.6,
+                "maximum": 1.4
+              },
+              "acquisition": {
+                "type": "number",
+                "minimum": 0.6,
+                "maximum": 1.4
+              },
+              "retention": {
+                "type": "number",
+                "minimum": 0.6,
+                "maximum": 1.4
+              },
+              "cross_sell": {
+                "type": "number",
+                "minimum": 0.6,
+                "maximum": 1.4
+              },
+              "skips_visits": {
+                "type": "boolean"
+              },
+              "records_nothing": {
+                "type": "boolean"
+              }
+            }
+          },
+          "minItems": 1
+        },
+        "customers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "anomaly",
+              "trait",
+              "channel",
+              "area",
+              "rank"
+            ],
+            "properties": {
+              "anomaly": {
+                "type": "string",
+                "pattern": "^A-([1-9]|1[0-5])$"
+              },
+              "trait": {
+                "type": "string",
+                "pattern": "^[a-z][a-z_]*$"
+              },
+              "channel": {
+                "enum": [
+                  "small_retail",
+                  "horeca",
+                  "vending",
+                  "big_retail",
+                  "gas_ka",
+                  "web",
+                  "own_shops"
+                ]
+              },
+              "chain": {
+                "type": "string",
+                "pattern": "^[A-Z0-9]+$"
+              },
+              "store_class": {
+                "type": "string",
+                "pattern": "^[a-z_]+$"
+              },
+              "area": {
+                "type": "string",
+                "pattern": "^(PHA|SJC|ZSC|VCH|JMV|SMS)-[0-9]{2}$"
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 """Shared fixtures: the committed reference files (`ref`, the okres table and its parts); and, for the component
-tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`."""
+tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, and the same with data/ddl/ applied
+(`hartland_db`)."""
 
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import pytest
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
+from hartland_sim.io.ddl import DDL_DIR, DOCWH, OWNER, READONLY
 from hartland_sim.io.reference import read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -74,3 +76,21 @@ def pg_dsn() -> Iterator[str]:
 
     with PostgresContainer("postgres:16", driver=None) as pg:
         yield pg.get_connection_url()
+
+
+@pytest.fixture(scope="module")
+def hartland_db(pg_dsn: str) -> Iterator[psycopg.Connection]:
+    """`pg_dsn`'s database with data/ddl/'s schema.sql, indexes.sql and grants applied, as `load-world` will (G5 S5.1),
+    the roles of contracts §8 created when missing; the schema is dropped after the module."""
+    with psycopg.connect(pg_dsn, autocommit=True) as conn:
+        for role in (OWNER, READONLY, DOCWH):
+            conn.execute(
+                f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{role}') "
+                f"THEN CREATE ROLE {role}; END IF; END $$"
+            )
+        for name in ("schema.sql", "indexes.sql", "views/grants.sql"):
+            conn.execute((DDL_DIR / name).read_text(encoding="utf-8"))
+        try:
+            yield conn
+        finally:
+            conn.execute("DROP SCHEMA hartland CASCADE")

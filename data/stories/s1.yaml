@@ -1,0 +1,44 @@
+# S1 — seasonality (design 04 §S1). The demand of a customer × line = base × season(line, week) × weather(line, region,
+# day) × weekday(channel) × the promotion and rep terms. The null world (`enabled: false`) flattens the curves.
+story: S1
+title_cs: Sezónnost – káva v zimě, polévky v chladných týdnech
+enabled: true
+seed_stream: demand
+parameters:
+  # Per line: the ISO weeks of its peak and its trough (inclusive ranges, a range may wrap over the new year), the
+  # peak ÷ trough amplitude, and the weather term (% more demand per °C below `cold_below_c`, by region and week).
+  # Decaf is flat; the Professional lines follow their channel (`channel_seasons`).
+  curves:
+    CLASSIC: { peak_weeks: [[45, 8]], trough_weeks: [[27, 33]], amplitude: 1.35, cold_pct_per_c: 0 }
+    GOLD: { peak_weeks: [[46, 52], [2, 8]], trough_weeks: [[27, 33]], amplitude: 1.6, cold_pct_per_c: 0 }
+    ESPRESSO: { peak_weeks: [[46, 52], [2, 8]], trough_weeks: [[27, 33]], amplitude: 1.6, cold_pct_per_c: 0 }
+    SMESI: { peak_weeks: [[48, 52], [36, 40]], trough_weeks: [[26, 32]], amplitude: 1.5, cold_pct_per_c: 0 }
+    BEZKOFEIN: { peak_weeks: [], trough_weeks: [], amplitude: 1.1, cold_pct_per_c: 0 }
+    POLEVKY: { peak_weeks: [[42, 10]], trough_weeks: [[24, 34]], amplitude: 2.2, cold_pct_per_c: 4 }
+    PREMIUM: { peak_weeks: [[42, 10]], trough_weeks: [[24, 34]], amplitude: 2.2, cold_pct_per_c: 4 }
+    KELIMKY: { peak_weeks: [[40, 12]], trough_weeks: [[24, 34]], amplitude: 1.8, cold_pct_per_c: 3 }
+    NUDLE: { peak_weeks: [[36, 40], [2, 6]], trough_weeks: [[28, 32]], amplitude: 1.3, cold_pct_per_c: 0 }
+  cold_below_c: 5
+  # The Professional lines' season follows the channel: vending flat, HoReCa up in weeks 20–38, own shops in December.
+  channel_seasons:
+    vending: { weeks: [], amplitude: 1.0 }
+    horeca: { weeks: [[20, 38]], amplitude: 1.2 }
+    own_shops: { weeks: [[49, 52]], amplitude: 1.2 }
+  # The week's shape by channel (ISO weekday 1 = Monday): trade peaks Mon–Tue, the shops and the web Fri–Sat.
+  weekday:
+    trade: [1.25, 1.2, 1.0, 0.95, 0.9, 0.5, 0.2]
+    own_shops: [0.85, 0.85, 0.9, 1.0, 1.25, 1.35, 0.8]
+    web: [0.9, 0.9, 0.95, 1.0, 1.15, 1.2, 0.9]
+  december_gift_uplift: { SMESI: 1.25, GOLD: 1.3 }
+detector:
+  sql: detectors/s1.sql
+  metric: min_peak_over_trough
+  threshold: 1.25
+  direction: ">="
+  null_world: "<"
+also:
+  - sql: detectors/s1_weather.sql
+    metric: dried_soup_cases_vs_temperature
+    threshold: -0.5
+    direction: "<="
+    null_world: ">"

@@ -126,6 +126,42 @@ def _prolong_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("until", type=date.fromisoformat, metavar="DAY", help="simulate up to this day (ISO date)")
 
 
+def stories_check(args: argparse.Namespace) -> int:
+    """`--dry` lists the answer key; running the detectors and probes arrives with the runner (G5 S5.2)."""
+    if not args.dry:
+        print(
+            "hartland-sim stories-check: not implemented yet — running the detectors arrives at G5 S5.2"
+            " (--dry lists them)",
+            file=sys.stderr,
+        )
+        return 1
+    from hartland_sim.config import ConfigError, StoriesConfig
+
+    try:
+        stories = StoriesConfig.load()
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+    for story in stories.stories:
+        print(f"{story.story}  {story.title_cs}{'' if story.enabled else '  [vypnuto]'}")
+        for detector in story.detectors:
+            print(
+                f"      {detector.sql:<28} {detector.metric} {detector.direction} {detector.threshold}"
+                f" · null world {detector.null_world}"
+            )
+    for anomaly in stories.anomalies:
+        print(f"{anomaly.id:<4} {anomaly.title_cs}{'' if anomaly.enabled else '  [vypnuto]'}")
+        print(f"      {anomaly.probe.sql:<28} expect {anomaly.probe.expect}")
+    reps = ", ".join(f"{pin.slot} {pin.profile}" for pin in stories.pins.reps)
+    print(f"pins: {len(stories.pins.reps)} reps ({reps}); {len(stories.pins.customers)} customers by rule")
+    detectors = sum(len(story.detectors) for story in stories.stories)
+    print(
+        f"hartland-sim stories-check --dry: {len(stories.stories)} stories, {detectors} detectors,"
+        f" {len(stories.anomalies)} probes — nothing run (stories sha256 {stories.sha256[:12]})"
+    )
+    return 0
+
+
 def _stories_check_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--null", action="store_true", help="expect the null world's opposite direction")
     parser.add_argument(
@@ -172,7 +208,10 @@ VERBS: dict[str, Verb] = {
     "load-world": Verb("COPY in load order · views · indexes · the _sim_meta guard", "G5 S5.1", _load_world_arguments),
     "prolong": Verb("from the last checkpoint: the world reacts, appends", "G5 S5.3", _prolong_arguments),
     "stories-check": Verb(
-        "the answer key: every detector and probe", "G0 S0.4 (--dry) · G5 S5.2", _stories_check_arguments
+        "the answer key: every detector and probe",
+        "G0 S0.4 (--dry) · G5 S5.2",
+        _stories_check_arguments,
+        stories_check,
     ),
     "recon": Verb("the invariants + the R0/R1 diff", "G5 S5.1"),
     "load-documents": Verb(
