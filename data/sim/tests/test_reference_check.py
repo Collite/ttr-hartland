@@ -82,11 +82,10 @@ def problems(tmp_path: Path, text: str, **extra: Any) -> list[str]:
     return check(reference_dir(tmp_path, {"mini": (mini_schema(**extra), text)})).problems
 
 
-def test_the_committed_reference_files_hold(repo_root: Path) -> None:
-    root = repo_root / "data" / "reference"
-    report = check(root)
+def test_the_committed_reference_files_hold(ref: Path) -> None:
+    report = check(ref)
     assert report.problems == []
-    assert sorted(path.stem for path in root.glob("*.csv")) == list(COMMITTED)
+    assert sorted(path.stem for path in ref.glob("*.csv")) == list(COMMITTED)
     assert report.files == len(COMMITTED)
 
 
@@ -308,16 +307,16 @@ def test_read_holds_the_file_to_the_same_convention(tmp_path: Path, text: str, s
 LABELS = ("name", "town", "nominative", "vocative", "genitive", "male", "female")
 
 
-def test_every_label_column_is_guarded(repo_root: Path) -> None:
+def test_every_label_column_is_guarded(ref: Path) -> None:
     """DONE: no English anywhere — `assert_czech_all` on each label column (review-188 R2)."""
-    for path in sorted((repo_root / "data" / "reference" / "schemas").glob("*.schema.json")):
+    for path in sorted((ref / "schemas").glob("*.schema.json")):
         for column, spec in load_schema(path)["properties"].items():
             if column in LABELS or column.endswith("_cs"):
                 assert spec.get("x-czech") is True, f"{path.name}: {column}"
 
 
-def test_the_verb_passes_on_the_committed_files(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["reference-check", "--dir", str(repo_root / "data" / "reference")]) == 0
+def test_the_verb_passes_on_the_committed_files(ref: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["reference-check", "--dir", str(ref)]) == 0
     assert capsys.readouterr().out.endswith("rows — OK\n")
 
 

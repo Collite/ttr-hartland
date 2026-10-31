@@ -7,6 +7,7 @@ account,name,kind,pl_line,vat_rate
 343121,DPH na výstupu 21 %,liability,,21
 343212,DPH na vstupu 12 %,asset,,12
 343221,DPH na vstupu 21 %,asset,,21
+361100,Závazky – ovládaná nebo ovládající osoba,liability,,
 501100,Spotřeba kancelářského materiálu,expense,admin_cost,
 504100,Prodané zboží v nákupních cenách,expense,cogs,
 504200,Prodané zboží – vstupní doprava ze závodů,expense,cogs,

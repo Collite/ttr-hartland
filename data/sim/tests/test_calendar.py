@@ -10,14 +10,32 @@ import pytest
 from hartland_sim.io.reference import read
 from hartland_sim.setup.calendar import easter_sunday, holidays, render
 
+# 2026's days off, written out — not built from `FIXED_HOLIDAYS`, so a typo there fails even after the file is
+# regenerated.
+DAYS_OFF_2026 = {
+    date(2026, 1, 1): "Den obnovy samostatného českého státu, Nový rok",
+    date(2026, 4, 3): "Velký pátek",
+    date(2026, 4, 6): "Velikonoční pondělí",
+    date(2026, 5, 1): "Svátek práce",
+    date(2026, 5, 8): "Den vítězství",
+    date(2026, 7, 5): "Den slovanských věrozvěstů Cyrila a Metoděje",
+    date(2026, 7, 6): "Den upálení mistra Jana Husa",
+    date(2026, 9, 28): "Den české státnosti",
+    date(2026, 10, 28): "Den vzniku samostatného československého státu",
+    date(2026, 11, 17): "Den boje za svobodu a demokracii a Mezinárodní den studentstva",
+    date(2026, 12, 24): "Štědrý den",
+    date(2026, 12, 25): "1. svátek vánoční",
+    date(2026, 12, 26): "2. svátek vánoční",
+}
+
 
 @pytest.fixture(scope="module")
-def calendar(repo_root: Path) -> list[dict[str, object]]:
-    return read("calendar", repo_root / "data" / "reference")
+def calendar(ref: Path) -> list[dict[str, object]]:
+    return read("calendar", ref)
 
 
-def test_the_committed_file_is_the_rules_output(repo_root: Path) -> None:
-    committed = (repo_root / "data" / "reference" / "calendar.csv").read_text(encoding="utf-8")
+def test_the_committed_file_is_the_rules_output(ref: Path) -> None:
+    committed = (ref / "calendar.csv").read_text(encoding="utf-8")
     regenerate = "uv run python -m hartland_sim.setup.calendar > data/reference/calendar.csv"
     assert committed == render(), f"the rules changed: {regenerate}"
 
@@ -53,9 +71,16 @@ def test_thirteen_days_off_every_year() -> None:
         assert len(holidays(year)) == 13
 
 
-def test_2026_has_251_working_days_give_or_take_one(calendar: list[dict[str, object]]) -> None:
+def test_the_days_off_of_2026(calendar: list[dict[str, object]]) -> None:
+    assert {row["day"]: row["holiday_cs"] for row in calendar if row["year"] == 2026 and row["holiday_cs"]} == (
+        DAYS_OFF_2026
+    )
+
+
+def test_2026_has_250_working_days(calendar: list[dict[str, object]]) -> None:
+    """261 weekdays, less the 11 days off that fall on one (5 July is a Sunday, 26 December a Saturday)."""
     working = sum(1 for row in calendar if row["year"] == 2026 and row["is_working_day"])
-    assert abs(working - 251) <= 1, working
+    assert working == 250
 
 
 def test_a_holiday_on_a_weekend_is_not_moved(calendar: list[dict[str, object]]) -> None:

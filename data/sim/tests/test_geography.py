@@ -11,33 +11,14 @@ import pytest
 from hartland_sim.io.reference import read
 from hartland_sim.setup.affluence import affluence_index, load
 
-PRAHA = "CZ0100"
 
-
-@pytest.fixture(scope="module")
-def ref(repo_root: Path) -> Path:
-    return repo_root / "data" / "reference"
-
-
-@pytest.fixture(scope="module")
-def okres(ref: Path) -> dict[str, dict[str, Any]]:
-    return {row["code"]: row for row in read("okres", ref)}
-
-
-@pytest.fixture(scope="module")
-def leaves(okres: dict[str, dict[str, Any]]) -> list[str]:
-    """The okresy a customer can sit in: every okres but Praha, which its 22 districts replace."""
-    parents = {row["parent_okres"] for row in okres.values()}
-    return [code for code in okres if code not in parents]
-
-
-def test_14_kraje_77_okresy_and_22_prague_districts(ref: Path, okres: dict[str, dict[str, Any]]) -> None:
+def test_14_kraje_77_okresy_and_22_prague_districts(
+    ref: Path, okres: dict[str, dict[str, Any]], prague_districts: list[str]
+) -> None:
     assert len(read("kraj", ref)) == 14
-    top = [row for row in okres.values() if row["parent_okres"] is None]
-    districts = [row for row in okres.values() if row["parent_okres"] == PRAHA]
-    assert len(top) == 77
-    assert [row["name"] for row in districts] == [f"Praha {n}" for n in range(1, 23)]
-    assert sum(row["population"] for row in districts) == okres[PRAHA]["population"]
+    assert len([row for row in okres.values() if row["parent_okres"] is None]) == 77
+    assert [okres[code]["name"] for code in prague_districts] == [f"Praha {n}" for n in range(1, 23)]
+    assert sum(okres[code]["population"] for code in prague_districts) == okres["CZ0100"]["population"]
 
 
 def test_the_population_is_the_countrys(okres: dict[str, dict[str, Any]]) -> None:

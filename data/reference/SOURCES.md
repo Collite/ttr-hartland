@@ -47,4 +47,4 @@ the 22 add up to it exactly.
 | `names_first.csv`, `names_last.csv` | common Czech names, declined by hand; every person in the world is synthetic |
 | `legal_entity.csv` | the four companies of the group; their IČO are fictional, checksum-valid, and assigned to no one in ARES on 2026-10-31 |
 | `site.csv` | the group's 18 sites in real towns, at approximate town coordinates; the shops and the addresses are invented |
-| `cost_centre.csv`, `gl_account.csv` | the Center's cost centres; accounts numbered on the Czech chart of accounts (classes 1–7), one or more per P/L line of the contracts |
+| `cost_centre.csv`, `gl_account.csv` | the Center's cost centres; accounts numbered on the Czech chart of accounts (classes 1–7), one or more per P/L line of the contracts, plus VAT, the balance accounts and `361100`, what the Center owes the three factories (intercompany) |
