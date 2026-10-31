@@ -54,6 +54,6 @@ generated world (ODbL §4.3):
 
 ## 4. Other public sources
 
-Some facts come from other public sources: the ČSÚ average wage by okres (G0 S0.2), and others as their stages add
-them. Each is named with its source and terms in `data/reference/SOURCES.md`, written by the stage that adds it.
-The names of people are synthetic.
+Some facts come from other public sources: ČSÚ's population by okres and average wage by kraj (G0 S0.2), and others
+as their stages add them. Each is named with its source and terms in `data/reference/SOURCES.md`, written by the
+stage that adds it. The names of people are synthetic.
