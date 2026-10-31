@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 
 from hartland_sim import __version__
+from hartland_sim.io.reference import REFERENCE_DIR
 
 Handler = Callable[[argparse.Namespace], int]
 
@@ -35,9 +36,8 @@ def reference_check(args: argparse.Namespace) -> int:
     report = check(args.dir)
     for problem in report.problems:
         print(problem, file=sys.stderr)
-    if report.problems:
-        count = len(report.problems)
-        print(f"hartland-sim reference-check: {count} problem{'s' * (count != 1)}", file=sys.stderr)
+    if report.count:
+        print(f"hartland-sim reference-check: {report.count} problem{'s' * (report.count != 1)}", file=sys.stderr)
         return 1
     print(f"hartland-sim reference-check: {report.files} files, {report.rows} rows — OK")
     return 0
@@ -45,7 +45,7 @@ def reference_check(args: argparse.Namespace) -> int:
 
 def _reference_check_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--dir", type=Path, default=Path("data/reference"), help="the reference files (default: data/reference)"
+        "--dir", type=Path, default=REFERENCE_DIR, help="the reference files (default: the repo's data/reference)"
     )
 
 

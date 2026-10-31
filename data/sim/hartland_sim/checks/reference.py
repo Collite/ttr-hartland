@@ -1,11 +1,14 @@
 """`just reference-check` (contracts §7): every `data/reference/*.csv` against its schema, its row count, its keys,
 its references to the other files and the NH-D8 guard. The convention is `hartland_sim.io.reference`'s docstring.
 
-`check()` lists every problem at once (up to `PER_FILE` per file), each naming the file, the line and the column.
+`check()` lists every problem at once (up to `PER_FILE` per file), each naming the file, the line and the column. A
+file that cannot be read through (a broken schema, header or CSV syntax) is one problem, and the files that refer to
+it say they were not checked against it. A folder with no reference files at all is a problem too.
 """
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -14,27 +17,42 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, SchemaError
 
-from hartland_sim.checks.czech import assert_czech_all
-from hartland_sim.io.reference import REFERENCE_DIR, Row, load_schema, parse_cell, split, validator
+from hartland_sim.checks.czech import assert_czech, assert_czech_column
+from hartland_sim.io.reference import (
+    REFERENCE_DIR,
+    ReferenceFileError,
+    Row,
+    column_types,
+    decode,
+    format_problems,
+    load_schema,
+    records,
+    schema_path,
+)
 
 PER_FILE = 20
 
 SCHEMA_SUFFIX = ".schema.json"
+
+_REF = re.compile(r"\w+\.\w+")
 
 
 @dataclass
 class Report:
     files: int = 0
     rows: int = 0
+    count: int = 0  # every problem found; `problems` lists up to PER_FILE of each file's
     problems: list[str] = field(default_factory=list)
 
 
 @dataclass
 class _File:
     name: str
-    schema: dict[str, Any]
+    schema: dict[str, Any] = field(default_factory=dict)
+    records: int = 0
     rows: list[Row] = field(default_factory=list)
     lines: list[int] = field(default_factory=list)
+    loaded: bool = False  # the schema held, and the CSV was read through to its end
     problems: list[str] = field(default_factory=list)
 
     def problem(self, message: str) -> None:
@@ -45,14 +63,19 @@ def check(root: Path = REFERENCE_DIR) -> Report:
     report = Report()
     csvs = {path.stem for path in root.glob("*.csv")}
     schemas = {path.name.removesuffix(SCHEMA_SUFFIX) for path in (root / "schemas").glob(f"*{SCHEMA_SUFFIX}")}
-    report.problems += [f"{name}.csv: no schema (schemas/{name}{SCHEMA_SUFFIX})" for name in sorted(csvs - schemas)]
-    report.problems += [f"schemas/{name}{SCHEMA_SUFFIX}: no {name}.csv" for name in sorted(schemas - csvs)]
+    alone = [f"{name}.csv: no schema (schemas/{name}{SCHEMA_SUFFIX})" for name in sorted(csvs - schemas)]
+    alone += [f"schemas/{name}{SCHEMA_SUFFIX}: no {name}.csv" for name in sorted(schemas - csvs)]
+    if not csvs and not schemas:
+        alone.append(f"{root}: no reference files (is --dir right?)")
+    report.count = len(alone)
+    report.problems += alone
     files = [_read(root, name) for name in sorted(csvs & schemas)]
     by_name = {file.name: file for file in files}
     for file in files:
         _references(file, by_name)
         report.files += 1
         report.rows += len(file.rows)
+        report.count += len(file.problems)
         report.problems += file.problems[:PER_FILE]
         if len(file.problems) > PER_FILE:
             report.problems.append(f"{file.name}.csv: … and {len(file.problems) - PER_FILE} more")
@@ -60,37 +83,27 @@ def check(root: Path = REFERENCE_DIR) -> Report:
 
 
 def _read(root: Path, name: str) -> _File:
-    schema = load_schema(root / "schemas" / f"{name}{SCHEMA_SUFFIX}")
-    file = _File(name, schema)
+    file = _File(name)
+    try:
+        file.schema = load_schema(schema_path(root, name))
+    except ReferenceFileError as error:
+        file.problems.append(str(error))
+        return file
     if not _schema_holds(file):
         return file
     raw = (root / f"{name}.csv").read_bytes()
-    if raw.startswith(b"\xef\xbb\xbf"):
-        file.problem(": starts with a byte-order mark")
-    if b"\r" in raw:
-        file.problem(": CR line ends (the convention is \\n)")
-    if raw and not raw.endswith(b"\n"):
-        file.problem(": no newline at the end")
+    file.problems += format_problems(name, raw)
     try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as error:
-        file.problem(f": not UTF-8 ({error})")
+        for line, row, problems in records(name, decode(name, raw), file.schema):
+            file.records += 1
+            file.problems += problems
+            if row is not None:
+                file.rows.append(row)
+                file.lines.append(line)
+    except ReferenceFileError as error:
+        file.problems.append(str(error))
         return file
-    columns: dict[str, Mapping[str, Any]] = schema["properties"]
-    header, records = split(text)
-    if header != list(columns):
-        file.problem(f" line 1: header {header} ≠ the schema's columns {list(columns)}")
-        return file
-    check = validator(schema)
-    for line, record in records:
-        row = _row(file, line, header, record, columns)
-        if row is None:
-            continue
-        for violation in check.iter_errors(row):
-            where = f", column `{violation.absolute_path[0]}`" if violation.absolute_path else ""
-            file.problem(f" line {line}{where}: {violation.message}")
-        file.rows.append(row)
-        file.lines.append(line)
+    file.loaded = True
     _count(file)
     _keys(file)
     _czech(file)
@@ -104,7 +117,18 @@ def _schema_holds(file: _File) -> bool:
     except SchemaError as error:
         file.problems.append(f"schemas/{file.name}{SCHEMA_SUFFIX}: {error.message}")
         return False
-    columns = schema.get("properties") or {}
+    columns = schema.get("properties")
+    if not columns or not all(isinstance(spec, dict) for spec in columns.values()):
+        wants = ["`properties`: an object per column"]
+    else:
+        wants = _wants(schema, columns)
+    for want in wants:
+        file.problems.append(f"schemas/{file.name}{SCHEMA_SUFFIX}: the convention wants {want}")
+    return not wants
+
+
+def _wants(schema: Mapping[str, Any], columns: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """What a schema with an object per column lacks of the convention."""
     wants = []
     if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
         wants.append("`type: object` and `additionalProperties: false`")
@@ -112,46 +136,31 @@ def _schema_holds(file: _File) -> bool:
         wants.append("`required` lists every column, in order")
     if not _is_range(schema.get("x-rows")):
         wants.append("`x-rows: [min, max]`")
-    if not set(schema.get("x-key", [])) <= set(columns):
+    key = schema.get("x-key", [])
+    if not isinstance(key, list) or not all(isinstance(column, str) and column in columns for column in key):
         wants.append("`x-key` names columns")
-    for want in wants:
-        file.problems.append(f"schemas/{file.name}{SCHEMA_SUFFIX}: the convention wants {want}")
-    return not wants
+    for column, spec in columns.items():
+        if spec.get("x-czech") and "string" not in column_types(spec):
+            wants.append(f"`x-czech` on a string column only (`{column}`)")
+        if "x-ref" in spec and not (isinstance(spec["x-ref"], str) and _REF.fullmatch(spec["x-ref"])):
+            wants.append(f'`x-ref: "<file>.<column>"` (`{column}`)')
+    return wants
 
 
 def _is_range(value: object) -> bool:
     return (
         isinstance(value, list)
         and len(value) == 2
-        and all(isinstance(bound, int) for bound in value)
+        and all(type(bound) is int for bound in value)
         and 0 <= value[0] <= value[1]
     )
 
 
-def _row(file: _File, line: int, header: list[str], record: list[str], columns: Mapping[str, Any]) -> Row | None:
-    if len(record) != len(header):
-        file.problem(f" line {line}: {len(record)} cells, the header has {len(header)}")
-        return None
-    row: Row = {}
-    for column, value in zip(header, record, strict=True):
-        where = f" line {line}, column `{column}`"
-        if value != value.strip():
-            file.problem(f"{where}: whitespace around {value!r}")
-        if not unicodedata.is_normalized("NFC", value):
-            file.problem(f"{where}: not NFC")
-        try:
-            row[column] = parse_cell(value, columns[column])
-        except ValueError as error:
-            file.problem(f"{where}: {error}")
-            return None
-    return row
-
-
 def _count(file: _File) -> None:
     low, high = file.schema["x-rows"]
-    if not low <= len(file.rows) <= high:
+    if not low <= file.records <= high:
         expected = str(low) if low == high else f"{low}–{high}"
-        file.problem(f": {len(file.rows)} rows, expected {expected}")
+        file.problem(f": {file.records} rows, expected {expected}")
 
 
 def _keys(file: _File) -> None:
@@ -167,22 +176,40 @@ def _keys(file: _File) -> None:
 
 
 def _czech(file: _File) -> None:
+    """Each value alone, on its line — a value that is not NFC `records()` has already reported — then the column's
+    values together."""
     for column, spec in file.schema["properties"].items():
-        if spec.get("x-czech"):
-            texts = [row[column] for row in file.rows if row[column] not in (None, "")]
+        if not spec.get("x-czech"):
+            continue
+        passed = []
+        for line, row in zip(file.lines, file.rows, strict=True):
+            value = row[column]
+            if not isinstance(value, str) or not value or not unicodedata.is_normalized("NFC", value):
+                continue
             try:
-                assert_czech_all(texts, what=f"column `{column}`")
+                assert_czech(value, what=f"{file.name}.csv line {line}, column `{column}`")
             except AssertionError as error:
-                file.problem(f", {error}")
+                file.problems.append(str(error))
+            else:
+                passed.append(value)
+        try:
+            assert_czech_column(passed, what=f"column `{column}`")
+        except AssertionError as error:
+            file.problem(f", {error}")
 
 
 def _references(file: _File, files: Mapping[str, _File]) -> None:
+    if not file.loaded:
+        return
     for column, spec in file.schema["properties"].items():
         target = spec.get("x-ref")
         if not target:
             continue
         target_name, _, target_column = target.partition(".")
         other = files.get(target_name)
+        if other is not None and not other.loaded:
+            file.problem(f", column `{column}`: not checked — {target_name}.csv did not load")
+            continue
         if other is None or target_column not in other.schema["properties"]:
             file.problem(f", column `{column}`: x-ref {target!r} names no file column")
             continue

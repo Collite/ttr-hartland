@@ -3,8 +3,8 @@
 `assert_czech(text)` fails on (1) text that is not NFC, (2) any English stop-word, and (3) a text of 200 characters or
 more without a single Czech diacritic — long Czech prose always has one, so its absence means English, or Czech
 typed without accents. `assert_czech_all(texts)` checks a column or a set of labels: each text alone, then the
-diacritic rule over the texts together, so a column of short English labels fails as a whole. Every later renderer
-test runs its output through them (DOC.1–DOC.3, the labels of G0 S0.2).
+diacritic rule over the texts together (`assert_czech_column`), so a column of short English labels fails as a whole.
+Every later renderer test runs its output through them (DOC.1–DOC.3, the labels of G0 S0.2).
 
 The rules:
 - Generated text is NFC: Postgres equality, the lexicon's members and the glossary compare code points, so NFD is
@@ -89,6 +89,14 @@ def assert_czech_all(texts: Iterable[str], *, what: str, allow: Iterable[str] = 
     allow = tuple(allow)
     for i, text in enumerate(texts):
         assert_czech(text, what=f"{what}[{i}]", allow=allow)
+    assert_czech_column(texts, what=what, allow=allow)
+
+
+def assert_czech_column(texts: Iterable[str], *, what: str, allow: Iterable[str] = ()) -> None:
+    """The diacritic rule over `texts` joined: the part of `assert_czech_all` that no text fails alone. For a caller
+    that has run `assert_czech` on each text itself, to name each failure its own way (a file's line)."""
+    texts = list(texts)
+    allow = tuple(allow)
     joined = " ".join(_without(text, allow) for text in texts)
     if len(joined) >= LONG_TEXT and not has_diacritics(joined):
         raise AssertionError(f"{what}: {len(texts)} texts, {len(joined)} characters without a Czech diacritic")
