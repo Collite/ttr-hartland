@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/site.schema.json",
+  "title": "site.csv — the 18 sites: the Center, 3 factories, 2 DCs, 12 own shops (01 §2)",
+  "x-rows": [
+    18,
+    18
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "kind",
+    "legal_entity",
+    "name",
+    "town",
+    "okres",
+    "lat",
+    "lon"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^(HQ|FA|DC|SH)-[A-Z0-9-]+$"
+    },
+    "kind": {
+      "enum": [
+        "hq",
+        "factory",
+        "dc",
+        "shop"
+      ]
+    },
+    "legal_entity": {
+      "type": "string",
+      "x-ref": "legal_entity.code"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "town": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "okres": {
+      "type": "string",
+      "x-ref": "okres.code"
+    },
+    "lat": {
+      "type": "number",
+      "minimum": 48.5,
+      "maximum": 51.1
+    },
+    "lon": {
+      "type": "number",
+      "minimum": 12.0,
+      "maximum": 18.9
+    }
+  }
+}

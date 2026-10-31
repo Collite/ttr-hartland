@@ -1,0 +1,51 @@
+code,name,region,rep_slot
+PHA-01,"Praha 1, 2 a 7",PHA,1
+PHA-02,Praha 3 a 10,PHA,2
+PHA-03,Praha 4,PHA,3
+PHA-04,Praha 11 a 12,PHA,4
+PHA-05,Praha 5 a 16,PHA,5
+PHA-06,Praha 6,PHA,6
+PHA-07,Praha 13 a 17,PHA,7
+PHA-08,"Praha 8, 18 a 19",PHA,8
+PHA-09,"Praha 9, 14, 20 a 21",PHA,9
+PHA-10,Praha 15 a 22,PHA,10
+SJC-01,Praha-východ,SJC,11
+SJC-02,Praha-západ a Beroun,SJC,12
+SJC-03,Kladno a Rakovník,SJC,13
+SJC-04,Mělník a Mladá Boleslav,SJC,14
+SJC-05,"Nymburk, Kolín a Kutná Hora",SJC,15
+SJC-06,Benešov a Příbram,SJC,16
+SJC-07,České Budějovice a Český Krumlov,SJC,17
+SJC-08,Tábor a Jindřichův Hradec,SJC,18
+SJC-09,"Písek, Strakonice a Prachatice",SJC,19
+ZSC-01,Plzeň-město,ZSC,20
+ZSC-02,"Plzeň-sever, Plzeň-jih a Rokycany",ZSC,21
+ZSC-03,"Klatovy, Domažlice a Tachov",ZSC,22
+ZSC-04,"Karlovy Vary, Cheb a Sokolov",ZSC,23
+ZSC-05,Chomutov a Louny,ZSC,24
+ZSC-06,Most a Teplice,ZSC,25
+ZSC-07,Ústí nad Labem a Děčín,ZSC,26
+ZSC-08,Litoměřice a Česká Lípa,ZSC,27
+ZSC-09,"Liberec, Jablonec nad Nisou a Semily",ZSC,28
+VCH-01,Hradec Králové a Jičín,VCH,29
+VCH-02,Trutnov a Náchod,VCH,30
+VCH-03,Pardubice,VCH,31
+VCH-04,Chrudim a Svitavy,VCH,32
+VCH-05,Ústí nad Orlicí a Rychnov nad Kněžnou,VCH,33
+JMV-01,Brno-město,JMV,34
+JMV-02,Brno-venkov,JMV,35
+JMV-03,Blansko a Vyškov,JMV,36
+JMV-04,Hodonín a Břeclav,JMV,37
+JMV-05,Znojmo a Třebíč,JMV,38
+JMV-06,Jihlava a Pelhřimov,JMV,39
+JMV-07,Žďár nad Sázavou a Havlíčkův Brod,JMV,40
+SMS-01,Ostrava-město,SMS,41
+SMS-02,Karviná,SMS,42
+SMS-03,Frýdek-Místek,SMS,43
+SMS-04,Opava a Bruntál,SMS,44
+SMS-05,Nový Jičín a Vsetín,SMS,45
+SMS-06,Olomouc,SMS,46
+SMS-07,Šumperk a Jeseník,SMS,47
+SMS-08,Přerov a Prostějov,SMS,48
+SMS-09,Zlín a Kroměříž,SMS,49
+SMS-10,Uherské Hradiště,SMS,50

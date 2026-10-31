@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/area.schema.json",
+  "title": "area.csv — the 50 rep territories (10 in Prague)",
+  "x-rows": [
+    50,
+    50
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "region",
+    "rep_slot"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}-[0-9]{2}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "region": {
+      "type": "string",
+      "x-ref": "region.code"
+    },
+    "rep_slot": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "the field rep's slot; G1 S1.1 seats a rep in it"
+    }
+  }
+}

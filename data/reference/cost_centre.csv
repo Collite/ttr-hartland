@@ -1,0 +1,37 @@
+code,name,unit,site
+CC-100,Vedení společnosti,finance_admin,HQ-PRAHA
+CC-110,Finance a účetnictví,finance_admin,HQ-PRAHA
+CC-120,Personalistika,finance_admin,HQ-PRAHA
+CC-130,Informační technologie,finance_admin,HQ-PRAHA
+CC-200,Nákup a zásobování,supply,HQ-PRAHA
+CC-300,Logistika a dispečink,delivery,HQ-PRAHA
+CC-310,Distribuční centrum Jirny,delivery,DC-JIRNY
+CC-320,Distribuční centrum Modřice,delivery,DC-MODRICE
+CC-400,Vedení prodeje,sales,HQ-PRAHA
+CC-410,Klíčoví zákazníci – obchodní řetězce,sales,HQ-PRAHA
+CC-420,Klíčoví zákazníci – čerpací stanice,sales,HQ-PRAHA
+CC-430,Prodejní automaty,sales,HQ-PRAHA
+CC-440,Gastronomie,sales,HQ-PRAHA
+CC-461,Terénní prodej – Praha,sales,
+CC-462,Terénní prodej – Střední a jižní Čechy,sales,
+CC-463,Terénní prodej – Západní a severní Čechy,sales,
+CC-464,Terénní prodej – Východní Čechy,sales,
+CC-465,Terénní prodej – Jižní Morava a Vysočina,sales,
+CC-466,Terénní prodej – Severní Morava a Slezsko,sales,
+CC-500,Marketing,marketing,HQ-PRAHA
+CC-510,Produktový management Harcafé,marketing,HQ-PRAHA
+CC-520,Produktový management Harsoup,marketing,HQ-PRAHA
+CC-530,Internetový obchod,marketing,HQ-PRAHA
+CC-600,Vlastní prodejny – vedení,sales,HQ-PRAHA
+CC-601,Prodejna Harcafé Praha Staré Město,sales,SH-PRAHA-1
+CC-602,Prodejna Harcafé Praha Vinohrady,sales,SH-PRAHA-2
+CC-603,Prodejna Harcafé Praha Holešovice,sales,SH-PRAHA-7
+CC-604,Prodejna Harcafé Brno náměstí Svobody,sales,SH-BRNO-1
+CC-605,Prodejna Harcafé Brno Královo Pole,sales,SH-BRNO-2
+CC-606,Prodejna Harcafé Ostrava,sales,SH-OSTRAVA
+CC-607,Prodejna Harcafé Plzeň,sales,SH-PLZEN
+CC-608,Prodejna Harcafé Olomouc,sales,SH-OLOMOUC
+CC-609,Prodejna Harcafé Liberec,sales,SH-LIBEREC
+CC-610,Prodejna Harcafé Hradec Králové,sales,SH-HRADEC
+CC-611,Prodejna Harcafé České Budějovice,sales,SH-BUDEJOVICE
+CC-612,Prodejna Harcafé Zlín,sales,SH-ZLIN

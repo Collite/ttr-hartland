@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/wage_by_okres.schema.json",
+  "title": "wage_by_okres.csv — each okres's wage relative to its kraj's — the world's own spread (SOURCES.md)",
+  "x-rows": [
+    99,
+    99
+  ],
+  "x-key": [
+    "okres"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "okres",
+    "wage_vs_kraj"
+  ],
+  "properties": {
+    "okres": {
+      "type": "string",
+      "x-ref": "okres.code"
+    },
+    "wage_vs_kraj": {
+      "type": "number",
+      "minimum": 0.7,
+      "maximum": 1.4
+    }
+  }
+}

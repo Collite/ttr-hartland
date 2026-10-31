@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/okres.schema.json",
+  "title": "okres.csv — the 77 okresy (Praha one of them) + the 22 Prague administrative districts",
+  "x-rows": [
+    99,
+    99
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "kraj",
+    "parent_okres",
+    "population"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^CZ0[0-9]{2}[0-9A-C](-[0-2][0-9])?$",
+      "description": "LAU 1 (CZ0201 …); a Prague district is CZ0100-nn (ČSÚ code 11nn)"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "kraj": {
+      "type": "string",
+      "x-ref": "kraj.code"
+    },
+    "parent_okres": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-ref": "okres.code",
+      "description": "CZ0100 for a Prague district, else empty"
+    },
+    "population": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "ČSÚ, 1 January 2026 (SOURCES.md)"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/legal_entity.schema.json",
+  "title": "legal_entity.csv — the 4 companies of the group (01 §2); the IČO are fictional",
+  "x-rows": [
+    4,
+    4
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "ico",
+    "role"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "ico": {
+      "type": "string",
+      "pattern": "^[0-9]{8}$",
+      "description": "fictional, unassigned in ARES 2026-10-31"
+    },
+    "role": {
+      "enum": [
+        "center",
+        "factory"
+      ]
+    }
+  }
+}

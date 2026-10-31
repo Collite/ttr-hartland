@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from hartland_sim import __version__
-from hartland_sim.cli import VERBS, Verb, main
+from hartland_sim.cli import VERBS, Verb, main, pending
 
 # contracts §7 — the data verbs; `test` is the justfile's own, not the generator's.
 CONTRACT_VERBS = {
@@ -52,7 +52,14 @@ def test_version() -> None:
     assert result.stdout.strip() == f"hartland-sim {__version__}"
 
 
-@pytest.mark.parametrize("verb", sorted(VERBS))
+PENDING = sorted(name for name, verb in VERBS.items() if verb.handler is pending)
+
+
+def test_the_landed_verbs_are_no_longer_pending() -> None:
+    assert set(VERBS) - set(PENDING) == {"reference-check"}
+
+
+@pytest.mark.parametrize("verb", PENDING)
 def test_a_pending_verb_fails_naming_its_stage(verb: str, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(INVOCATIONS[verb]) == 1
     err = capsys.readouterr().err

@@ -60,7 +60,8 @@ ttr-hartland/
 └── scripts/
 ```
 
-Only the generator's skeleton exists today; each folder arrives with the phase named above.
+The generator's skeleton and the reference data (`data/reference/`) exist today; each other folder arrives with
+the phase named above.
 
 ## How it is built
 
@@ -92,4 +93,5 @@ Two licences, split by what the files are. [`LICENSE-DATA.md`](LICENSE-DATA.md) 
 
 The rendered documents and the run-sets' expected rows are Produced Works of that database. They are MIT, with the
 OpenStreetMap notice beside them, and the database they came from is the published dump. Facts from other public
-sources (the ČSÚ wage table, and others) are attributed in `data/reference/SOURCES.md` by the stage that adds them.
+sources (ČSÚ's population and wage tables, and others) are attributed in `data/reference/SOURCES.md` by the stage
+that adds them.
