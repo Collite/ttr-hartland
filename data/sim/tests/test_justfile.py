@@ -24,7 +24,7 @@ def test_the_test_recipe_exists(repo_root: Path) -> None:
     assert "test" in recipes(repo_root)
 
 
-def test_each_data_recipe_calls_its_verb(repo_root: Path) -> None:
-    justfile = (repo_root / "justfile").read_text(encoding="utf-8")
-    for verb in VERBS:
-        assert f"uv run hartland-sim {verb} " in justfile, verb
+@pytest.mark.parametrize("verb", sorted(VERBS))
+def test_each_data_recipe_calls_its_own_verb(verb: str, repo_root: Path) -> None:
+    result = subprocess.run(["just", "--show", verb], cwd=repo_root, capture_output=True, text=True, check=True)
+    assert f'uv run hartland-sim {verb} "$@"' in result.stdout

@@ -43,7 +43,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["data/sim/tests"]
 # The unit tier by default; `just test -m component` selects the Postgres tier (the later -m wins).
-addopts = ["--strict-markers", "-m", "not component"]
+addopts = ["--strict-markers", "--import-mode=importlib", "-m", "not component"]
 markers = [
     "component: real Postgres 16 — testcontainers, or the server in HARTLAND_TEST_PG (CI's service container)",
 ]
@@ -55,7 +55,6 @@ src = ["data/sim"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501"]
 
 [tool.mypy]
 strict = true

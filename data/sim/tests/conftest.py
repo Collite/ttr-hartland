@@ -23,7 +23,10 @@ def repo_root() -> Path:
 @pytest.fixture(scope="session")
 def pg_dsn() -> Iterator[str]:
     """A fresh database: a new one on the server in `HARTLAND_TEST_PG` (CI's service container), dropped afterwards;
-    without it, a throwaway testcontainers `postgres:16` (Docker needed)."""
+    without it, a throwaway testcontainers `postgres:16` (Docker needed).
+
+    The database is shared by every component test of the session — a test that needs isolation works in a schema
+    of its own and drops it."""
     server = os.environ.get("HARTLAND_TEST_PG")
     if server:
         name = f"hartland_test_{secrets.token_hex(4)}"

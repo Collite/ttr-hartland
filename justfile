@@ -19,10 +19,10 @@ test *ARGS:
     uv run mypy
     uv run pytest "$@"
 
-# Format and auto-fix (ruff).
+# Auto-fix, then format (ruff).
 fmt:
-    uv run ruff format .
     uv run ruff check --fix .
+    uv run ruff format .
 
 # Every data/reference/*.csv against its schema + row counts (G0 S0.2).
 reference-check *ARGS:
