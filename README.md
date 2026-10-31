@@ -12,7 +12,8 @@ history from 2024-01-01), the answer key of the stories planted in that data, th
 TTR model (db · er · md · cn · lexicon cs) the agents read, the agents' configuration and the run-sets.
 
 Hartland, its people, figures and documents are invented. The stores are real places from OpenStreetMap, appearing as
-customers of a fictional supplier; no data of theirs is used.
+customers of a fictional supplier. Only their OpenStreetMap entries are used (name, kind, location), never any data
+of their own.
 
 ## The reveal
 
@@ -35,6 +36,7 @@ just test -m component      # the Postgres 16 tier (Docker for testcontainers, o
 
 ```
 ttr-hartland/
+├── LICENSE · LICENSE-DATA.md                MIT · the ODbL for the OSM extract and the generated world
 ├── justfile · pyproject.toml · uv.lock      the verbs (data now, model from M0) · the generator package
 ├── .github/workflows/data-gate.yml          lint · types · tests · reference-check · ddl drift (model-gate, regenerate: M0)
 ├── data/
@@ -70,10 +72,21 @@ seeded from `world.yaml`'s `master_seed`, so the same inputs rebuild the same wo
 
 ## Licence and attribution
 
-- The repo: MIT ([`LICENSE`](LICENSE)). *TODO (Bora): whether the generated data and documents carry a content
-  licence of their own.*
-- **OpenStreetMap.** The store set (`data/reference/osm-stores.csv`, `osm-horeca.csv`, `okres-boundaries.geojson`) is
-  derived from OpenStreetMap data, © OpenStreetMap contributors, available under the
-  [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/) — <https://www.openstreetmap.org/copyright>.
-  Those files are under the ODbL, not the MIT licence. Extract: *(date · endpoint · row counts —
-  `data/reference/osm-extract.meta`, filled at G0 S0.3)*.
+Two licences, split by what the files are. [`LICENSE-DATA.md`](LICENSE-DATA.md) has the details and the notice to keep.
+
+- **MIT** ([`LICENSE`](LICENSE)) covers everything in this repo except the OSM extract. That includes the generator,
+  the model, the agents, the scripts, the configuration, the answer key and the rendered documents in
+  `data/documents/`.
+- **ODbL 1.0** ([Open Database License](https://opendatacommons.org/licenses/odbl/1-0/)) covers the OpenStreetMap
+  extract and every database built from it:
+  - **The extract:** `data/reference/osm-stores.csv`, `osm-horeca.csv` and `okres-boundaries.geojson`, © OpenStreetMap
+    contributors, <https://www.openstreetmap.org/copyright>. Extract: *(date · endpoint · row counts —
+    `data/reference/osm-extract.meta`, filled at G0 S0.3)*.
+  - **The generated world:** every CSV build, the `hartland` Postgres database and every published dump
+    (`hartland-<yyyymmdd>.dump`). It is a Derivative Database of OpenStreetMap, published under the ODbL 1.0 as a
+    whole (its individual contents under the DbCL 1.0). If you share it, or a database you made from it, keep the
+    notice and share yours under the ODbL too.
+
+The rendered documents and the run-sets' expected rows are Produced Works of that database. They are MIT, with the
+OpenStreetMap notice beside them, and the database they came from is the published dump. Facts from other public
+sources (the ČSÚ wage table, and others) are attributed in `data/reference/SOURCES.md` by the stage that adds them.
