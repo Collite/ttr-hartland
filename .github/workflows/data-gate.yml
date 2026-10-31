@@ -1,0 +1,81 @@
+# The data gate (contracts §7): the generator's lint, types and unit tests, the reference data and the DDL drift on
+# every pull request and every push to master; the Postgres tier as its own job. The model gate arrives at M0.
+#
+# reference-check and the DDL check switch themselves on when their inputs land (G0 S0.2: data/reference/schemas/;
+# G0 S0.4: data/inventory.yaml) — until then the step says so and passes.
+name: data-gate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push supersedes a PR's run. Every other run gets a group of its own (GitHub keeps one pending run per
+# group and cancels the rest), so each master commit keeps its own gate record.
+concurrency:
+  group: data-gate-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: extractions/setup-just@v2
+
+      - name: uv sync (Python 3.13, the lock)
+        run: uv sync --locked
+
+      - name: just test (ruff · mypy --strict · pytest)
+        run: just test
+
+      - name: just reference-check
+        run: |
+          if [ -d data/reference/schemas ]; then
+            just reference-check
+          else
+            echo "::notice title=reference-check skipped::data/reference/schemas/ arrives at G0 S0.2 — nothing to check yet"
+          fi
+
+      - name: just ddl --check
+        run: |
+          if [ -f data/inventory.yaml ]; then
+            just ddl --check
+          else
+            echo "::notice title=ddl check skipped::data/inventory.yaml arrives at G0 S0.4 — nothing to render yet"
+          fi
+
+  component:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: hartland
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # conftest.py's pg_dsn makes a fresh database on this server per session (no testcontainers in CI).
+      HARTLAND_TEST_PG: postgresql://postgres:hartland@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: uv sync (Python 3.13, the lock)
+        run: uv sync --locked
+
+      - name: pytest -m component (Postgres 16)
+        run: uv run pytest -m component

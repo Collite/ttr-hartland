@@ -1,0 +1,67 @@
+[project]
+name = "hartland-sim"
+dynamic = ["version"]
+description = "hartland_sim — the New Hartland generator: one Czech FMCG company simulated day by day into Postgres."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+# ⚑NH-P-5: numpy · pandas · pyyaml · psycopg 3 · jsonschema. No Faker, no ORM. DOC adds python-docx · openpyxl · reportlab.
+dependencies = [
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "pyyaml>=6",
+    "psycopg[binary]>=3.2",
+    "jsonschema>=4.23",
+]
+
+[project.scripts]
+hartland-sim = "hartland_sim.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The package lives under data/sim/ (architecture §1), not under src/: the generator is one part of a content repo.
+[tool.hatch.version]
+path = "data/sim/hartland_sim/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["data/sim/hartland_sim"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-benchmark>=5.1",
+    "testcontainers[postgres]>=4.15",
+    "ruff>=0.9.4",
+    "mypy>=1.13",
+    "pandas-stubs",
+    "types-PyYAML",
+    "types-jsonschema",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["data/sim/tests"]
+# The unit tier by default; `just test -m component` selects the Postgres tier (the later -m wins).
+addopts = ["--strict-markers", "--import-mode=importlib", "-m", "not component"]
+markers = [
+    "component: real Postgres 16 — testcontainers, or the server in HARTLAND_TEST_PG (CI's service container)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+src = ["data/sim"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
+files = ["data/sim/hartland_sim", "data/sim/tests"]
+mypy_path = "data/sim"
+
+[[tool.mypy.overrides]]
+module = ["testcontainers.*"]
+ignore_missing_imports = true
