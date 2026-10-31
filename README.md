@@ -1,5 +1,7 @@
 # ttr-hartland — the New Hartland
 
+*Task tracking, plan and status: `project/hartland/` in Collite's task-tracking repo.*
+
 **Hartland CZ Group** is a fictional Czech FMCG manufacturer: instant coffee under **Harcafé**, dried and instant
 soups and noodles under **Harsoup**. Four legal entities — the Center (Hartland CZ s.r.o., Praha) and three factories
 (Harcafé Kolín, Harcafé Hodonín, Harsoup Chrudim) — two distribution centres (Jirny, Modřice), twelve own Harcafé
@@ -64,7 +66,8 @@ Only the generator's skeleton exists today; each folder arrives with the phase n
 
 Coding by terminal Claude Code from the plan in `project/hartland/plan/` (Collite's task-tracking repo; the design
 corpus is `project/hartland/design/`), phase by phase: **G0–G5** the data, **DOC** the documents, **M0–M5** the
-model, **SW** the hartland cluster switch. One branch per phase (`feat/nh-<phase>-<short>`), one PR per phase;
+model, **SW** the hartland cluster switch. One branch and one PR per stage (`feat/nh-<stage file stem>`, e.g.
+`feat/nh-g0-s0.2-reference`); the PR description is the hand-off; review and Bora's merge gate the next stage.
 `master` takes changes through pull requests with the data gate green (and the model gate from M0).
 
 The generator is deterministic: ids are hashes of business keys and every random draw comes from a named stream
