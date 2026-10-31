@@ -1,0 +1,14 @@
+# the generator's outputs (data/build/<run>/ — CSV sets, stories.md, timing) — never committed
+data/build/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.benchmarks/
+
+# Postgres dumps live in SeaweedFS (tpcds-staging/hartland/new/), not in git
+*.dump
