@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/names_first.schema.json",
+  "title": "names_first.csv — Czech first names with the cases letters need",
+  "x-rows": [
+    100,
+    200
+  ],
+  "x-key": [
+    "nominative"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gender",
+    "nominative",
+    "vocative",
+    "genitive"
+  ],
+  "properties": {
+    "gender": {
+      "enum": [
+        "m",
+        "f"
+      ]
+    },
+    "nominative": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "vocative": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "genitive": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    }
+  }
+}

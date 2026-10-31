@@ -1,0 +1,32 @@
+account,name,kind,pl_line,vat_rate
+132100,Zboží na skladě,asset,,
+221100,Bankovní účty,asset,,
+311100,Odběratelé,asset,,
+321100,Dodavatelé,liability,,
+343112,DPH na výstupu 12 %,liability,,12
+343121,DPH na výstupu 21 %,liability,,21
+343212,DPH na vstupu 12 %,asset,,12
+343221,DPH na vstupu 21 %,asset,,21
+501100,Spotřeba kancelářského materiálu,expense,admin_cost,
+504100,Prodané zboží v nákupních cenách,expense,cogs,
+504200,Prodané zboží – vstupní doprava ze závodů,expense,cogs,
+518110,Rozvoz k zákazníkům,expense,delivery_cost,
+518120,Skladování v distribučních centrech,expense,warehouse_cost,
+518310,Reklamní kampaně,expense,marketing_cost,
+518320,Materiál na podporu prodeje,expense,marketing_cost,
+518410,Nájemné,expense,admin_cost,
+518420,Služby informačních technologií,expense,admin_cost,
+518430,Ostatní správní služby,expense,admin_cost,
+521100,Mzdové náklady,expense,admin_cost,
+524100,Zákonné sociální a zdravotní pojištění,expense,admin_cost,
+551100,Odpisy dlouhodobého majetku,expense,financing_cost,
+562100,Nákladové úroky,expense,financing_cost,
+568100,Bankovní poplatky,expense,financing_cost,
+604100,Tržby za zboží v ceníkových cenách,revenue,gross_revenue,
+604210,Objemové slevy,revenue_deduction,discount_volume,
+604220,Slevy za šíři sortimentu,revenue_deduction,discount_cross_sell,
+604310,Sjednané slevy obchodních zástupců,revenue_deduction,discount_agreed,
+604320,Individuální ceny,revenue_deduction,discount_individual,
+604330,Retro bonusy,revenue_deduction,discount_individual,
+604410,Promoce – cenové slevy,revenue_deduction,discount_promotion,
+604420,Promoce – zboží zdarma,revenue_deduction,free_goods_value,

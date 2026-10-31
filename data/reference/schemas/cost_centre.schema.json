@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/cost_centre.schema.json",
+  "title": "cost_centre.csv — the Center's cost centres: per unit, team, region and site",
+  "x-rows": [
+    20,
+    50
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "unit",
+    "site"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^CC-[0-9]{3}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "unit": {
+      "enum": [
+        "supply",
+        "delivery",
+        "sales",
+        "marketing",
+        "finance_admin"
+      ],
+      "description": "the Center's five units (01 §2)"
+    },
+    "site": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-ref": "site.code"
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/gl_account.schema.json",
+  "title": "gl_account.csv — the accounts of the monthly journal: the P/L lines (contracts §4) and VAT",
+  "x-rows": [
+    20,
+    80
+  ],
+  "x-key": [
+    "account"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "account",
+    "name",
+    "kind",
+    "pl_line",
+    "vat_rate"
+  ],
+  "properties": {
+    "account": {
+      "type": "string",
+      "pattern": "^[1-7][0-9]{5}$",
+      "description": "Czech chart: synthetic + analytic"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "kind": {
+      "enum": [
+        "asset",
+        "liability",
+        "revenue",
+        "revenue_deduction",
+        "expense"
+      ]
+    },
+    "pl_line": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "gross_revenue",
+        "discount_volume",
+        "discount_cross_sell",
+        "discount_agreed",
+        "discount_individual",
+        "discount_promotion",
+        "free_goods_value",
+        "delivery_cost",
+        "warehouse_cost",
+        "cogs",
+        "marketing_cost",
+        "admin_cost",
+        "financing_cost",
+        null
+      ],
+      "description": "the sales_pl / pl_month line it feeds; empty for a balance account"
+    },
+    "vat_rate": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "enum": [
+        12,
+        21,
+        null
+      ],
+      "description": "VAT accounts only"
+    }
+  }
+}
