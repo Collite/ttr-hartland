@@ -34,6 +34,23 @@ PER_FILE = 20
 
 SCHEMA_SUFFIX = ".schema.json"
 
+# A schema's top level holds these and nothing else: `io.reference.validator` checks the rows against the columns
+# alone, so an `allOf`, an `if`, a `$defs` there would be ignored.
+CONVENTION_KEYWORDS = frozenset(
+    {
+        "$schema",
+        "$id",
+        "title",
+        "description",
+        "x-rows",
+        "x-key",
+        "type",
+        "additionalProperties",
+        "required",
+        "properties",
+    }
+)
+
 _REF = re.compile(r"\w+\.\w+")
 
 
@@ -130,6 +147,9 @@ def _schema_holds(file: _File) -> bool:
 def _wants(schema: Mapping[str, Any], columns: Mapping[str, Mapping[str, Any]]) -> list[str]:
     """What a schema with an object per column lacks of the convention."""
     wants = []
+    other = sorted(set(schema) - CONVENTION_KEYWORDS)
+    if other:
+        wants.append(f"no other top-level keyword (the row validator reads the columns only): {other}")
     if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
         wants.append("`type: object` and `additionalProperties: false`")
     if schema.get("required") != list(columns):

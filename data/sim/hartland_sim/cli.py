@@ -46,23 +46,30 @@ def reference_check(args: argparse.Namespace) -> int:
 def osm_extract(args: argparse.Namespace) -> int:
     from hartland_sim.io.osm_extract import run
 
-    run(args.dir, endpoint=args.endpoint, only=args.only, pbf_dir=args.from_pbf)
+    run(
+        args.dir,
+        endpoint=args.endpoint,
+        only=args.only,
+        pbf_dir=args.from_pbf,
+        pbf_source=args.pbf_source,
+        pbf_osm_base=args.pbf_osm_base,
+    )
     return 0
 
 
 def _osm_extract_arguments(parser: argparse.ArgumentParser) -> None:
-    from hartland_sim.io.osm_extract import ENDPOINT, EXTRACTS
+    from hartland_sim.io.osm_names import ENDPOINT, OUTPUTS
 
     parser.add_argument("--endpoint", default=ENDPOINT, help=f"the Overpass API (default: {ENDPOINT})")
-    parser.add_argument(
-        "--only", nargs="+", default=(), choices=[extract.output for extract in EXTRACTS], help="rerun these only"
-    )
+    parser.add_argument("--only", nargs="+", default=(), choices=OUTPUTS, help="rerun these only")
     parser.add_argument(
         "--from-pbf",
         type=Path,
         metavar="DIR",
         help="read scripts/osm_extract_pbf.sh's osmium output in DIR instead of asking Overpass",
     )
+    parser.add_argument("--pbf-source", metavar="NAME", help="with --from-pbf: the PBF, for the meta")
+    parser.add_argument("--pbf-osm-base", metavar="TIME", help="with --from-pbf: the PBF's timestamp, for the meta")
     parser.add_argument(
         "--dir", type=Path, default=REFERENCE_DIR, help="the reference files (default: the repo's data/reference)"
     )

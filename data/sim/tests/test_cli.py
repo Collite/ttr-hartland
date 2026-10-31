@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 import sys
@@ -50,6 +51,16 @@ def test_help_lists_every_verb() -> None:
 def test_version() -> None:
     result = run_console_script("--version")
     assert result.stdout.strip() == f"hartland-sim {__version__}"
+
+
+def test_building_the_parser_imports_no_verbs_machinery() -> None:
+    """`--version` and `--help` stay light: a verb's heavy imports (the extractor, numpy) wait for its handler."""
+    probe = (
+        "import json, sys; from hartland_sim.cli import build_parser; build_parser(); print(json.dumps([*sys.modules]))"
+    )
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    modules = set(json.loads(result.stdout))
+    assert not modules & {"numpy", "hartland_sim.io.osm_extract"}
 
 
 PENDING = sorted(name for name, verb in VERBS.items() if verb.handler is pending)

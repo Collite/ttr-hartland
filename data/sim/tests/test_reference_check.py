@@ -274,6 +274,24 @@ def test_the_row_keywords_are_checked(tmp_path: Path, keyword: str, value: objec
     assert found == [f"schemas/mini.schema.json: the convention wants {wants}"]
 
 
+@pytest.mark.parametrize(
+    ("keyword", "value"),
+    [
+        ("allOf", [{"required": ["day"]}]),
+        ("if", {"required": ["day"]}),
+        ("$defs", {"day": {"type": "string"}}),
+        ("dependentRequired", {"qty": ["day"]}),
+    ],
+)
+def test_a_schema_keeps_its_rules_in_its_columns(tmp_path: Path, keyword: str, value: object) -> None:
+    """The row validator reads the columns only (`io.reference.validator`), so a top-level rule would be ignored."""
+    found = problems(tmp_path, GOOD_CSV, **{keyword: value})
+    assert found == [
+        "schemas/mini.schema.json: the convention wants no other top-level keyword (the row validator reads the "
+        f"columns only): ['{keyword}']"
+    ]
+
+
 @pytest.mark.parametrize("target", ["town", "town.name.x", 7])
 def test_an_x_ref_names_a_file_and_a_column(tmp_path: Path, target: object) -> None:
     schema = mini_schema()

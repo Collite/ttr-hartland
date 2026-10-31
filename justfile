@@ -28,7 +28,7 @@ fmt:
 reference-check *ARGS:
     uv run hartland-sim reference-check "$@"
 
-# The Overpass queries → data/reference/osm-*.csv + the extract's meta — Bora's Mac (G0 S0.3).
+# The Overpass queries → data/reference/osm-*.csv + the meta; scripts/osm_extract_pbf.sh is the fallback (G0 S0.3).
 osm-extract *ARGS:
     uv run hartland-sim osm-extract "$@"
 

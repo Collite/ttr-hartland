@@ -85,8 +85,8 @@ Two licences, split by what the files are. [`LICENSE-DATA.md`](LICENSE-DATA.md) 
   extract and every database built from it:
   - **The extract:** `data/reference/osm-stores.csv`, `osm-horeca.csv`, `osm-context.csv` and
     `osm/okres-boundaries.geojson`, © OpenStreetMap contributors, <https://www.openstreetmap.org/copyright>. Extracted
-    on 2026-10-31 (OSM data as of 14:03 UTC) through `overpass-api.de`: 12 207 stores, 28 676 HoReCa places, 14 907
-    context points, 98 boundaries (`data/reference/osm/osm-extract.meta`).
+    on 2026-10-31 between 14:00 and 14:05 UTC through `overpass-api.de`: 12 207 stores, 28 676 HoReCa places,
+    14 907 context points, 98 boundaries (each file's time and OSM timestamp: `data/reference/osm/osm-extract.meta`).
   - **The generated world:** every CSV build, the `hartland` Postgres database and every published dump
     (`hartland-<yyyymmdd>.dump`). It is a Derivative Database of OpenStreetMap, published under the ODbL 1.0 as a
     whole (its individual contents under the DbCL 1.0). If you share it, or a database you made from it, keep the
