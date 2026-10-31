@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/competitor_product.schema.json",
+  "title": "competitor_product.csv — the competitors' products with the Hartland equivalent and the knowledge-base notes (03 §3, R-3)",
+  "x-rows": [
+    30,
+    50
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "competitor",
+    "name",
+    "equivalent_product",
+    "typical_price",
+    "strengths",
+    "weaknesses"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+    },
+    "competitor": {
+      "type": "string",
+      "x-ref": "competitor.code"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "equivalent_product": {
+      "type": "string",
+      "x-ref": "product.code"
+    },
+    "typical_price": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "strengths": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "weaknesses": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    }
+  }
+}

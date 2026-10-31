@@ -1,0 +1,49 @@
+code,product_line,name_cs,nicknames_cs
+CLASSIC,CLASSIC,Harcafé Classic,klasik;klasika
+CLASSIC-SILNA,CLASSIC,Harcafé Classic Silná,silný klasik
+CLASSIC-JEMNA,CLASSIC,Harcafé Classic Jemná,jemný klasik
+GOLD,GOLD,Harcafé Gold,zlatý kafe;zlatá
+GOLD-INTENZIVNI,GOLD,Harcafé Gold Intenzivní,silná zlatá
+GOLD-CREMA,GOLD,Harcafé Gold Crema,zlatá krema
+ESPRESSO,ESPRESSO,Harcafé Espresso,espresko
+ESPRESSO-BEZKOFEINU,ESPRESSO,Harcafé Espresso bez kofeinu,espresko bez kofeinu
+3V1,SMESI,Harcafé 3v1,trojka;tři v jednom
+2V1,SMESI,Harcafé 2v1,dvojka;dva v jednom
+CAPPUCCINO,SMESI,Harcafé Cappuccino,kapučíno
+LATTE,SMESI,Harcafé Latte,late
+CLASSIC-BEZKOFEINU,BEZKOFEIN,Harcafé Classic bez kofeinu,bezkofeinový klasik
+GOLD-BEZKOFEINU,BEZKOFEIN,Harcafé Gold bez kofeinu,bezkofeinová zlatá
+AUTOMATOVA-SMES,PROFIKAVA,Harcafé Automatová směs,automatovka
+MLECNA-PENA,PROFIKAVA,Harcafé Mléčná pěna do automatů,mléčná pěna;topping
+KAVARENSKA-SMES,PROFIKAVA,Harcafé Kavárenská směs,kavárenská
+POLEVKA-KURECI,POLEVKY,Harsoup Kuřecí s nudlemi,kuřecí polívka;slepičí
+POLEVKA-HOVEZI,POLEVKY,Harsoup Hovězí,hovězí polívka
+POLEVKA-HOUBOVA,POLEVKY,Harsoup Houbová,houbovka
+POLEVKA-RAJSKA,POLEVKY,Harsoup Rajská,rajská polívka
+POLEVKA-HRACHOVA,POLEVKY,Harsoup Hrachová,hrachovka
+POLEVKA-GULASOVA,POLEVKY,Harsoup Gulášová,gulášovka
+POLEVKA-KOPROVA,POLEVKY,Harsoup Koprová,koprovka
+POLEVKA-ZELNA,POLEVKY,Harsoup Zelňačka,zelňačka
+POLEVKA-COCKOVA,POLEVKY,Harsoup Čočková,čočkovka
+POLEVKA-CIBULOVA,POLEVKY,Harsoup Cibulová,cibulačka
+POLEVKA-KVETAKOVA,POLEVKY,Harsoup Květáková,květákovka
+KELIMEK-KURECI,KELIMKY,Harsoup Kuřecí v kelímku,kuřecí kelímek
+KELIMEK-RAJSKA,KELIMKY,Harsoup Rajská v kelímku,rajský kelímek
+KELIMEK-HOUBOVA,KELIMKY,Harsoup Houbová v kelímku,houbový kelímek
+KELIMEK-ASIJSKA,KELIMKY,Harsoup Asijská s nudlemi v kelímku,asijský kelímek
+KELIMEK-SYROVA,KELIMKY,Harsoup Sýrová v kelímku,sýrový kelímek
+KELIMEK-KARI,KELIMKY,Harsoup Kari v kelímku,kari kelímek
+NUDLE-KURECI,NUDLE,Harsoup Nudle kuřecí,čínské nudle;kuřecí nudle
+NUDLE-HOVEZI,NUDLE,Harsoup Nudle hovězí,hovězí nudle
+NUDLE-KARI,NUDLE,Harsoup Nudle kari,kari nudle
+NUDLE-PALIVE,NUDLE,Harsoup Nudle pálivé s chilli,pálivé nudle
+NUDLE-ZELENINOVE,NUDLE,Harsoup Nudle zeleninové,zeleninové nudle
+NUDLE-KREVETOVE,NUDLE,Harsoup Nudle krevetové,krevetové nudle
+KREM-DYNOVY,PREMIUM,Harsoup Dýňový krém,dýňovka;dýňová polévka
+BISQUE-HUMROVA,PREMIUM,Harsoup Humrová bisque,humrová polévka
+KREM-Z-HUB,PREMIUM,Harsoup Krém z lesních hub,lesní houbovka
+CIBULACKA-FRANCOUZSKA,PREMIUM,Harsoup Francouzská cibulová,francouzská cibulačka
+BUJON-KURECI,PROFIGASTRO,Harsoup Profi kuřecí bujón,kuřecí bujón
+BUJON-HOVEZI,PROFIGASTRO,Harsoup Profi hovězí bujón,hovězí bujón
+BUJON-ZELENINOVY,PROFIGASTRO,Harsoup Profi zeleninový bujón,zeleninový bujón
+ZAKLAD-NUDLOVY,PROFIGASTRO,Harsoup Profi základ na nudlovou polévku,nudlový základ

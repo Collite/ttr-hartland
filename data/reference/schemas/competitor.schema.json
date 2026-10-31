@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/competitor.schema.json",
+  "title": "competitor.csv — the four fictional competitors (⚑NH-18)",
+  "x-rows": [
+    4,
+    4
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "business",
+    "positioning"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "business": {
+      "enum": [
+        "KAVA",
+        "KULINAR"
+      ]
+    },
+    "positioning": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    }
+  }
+}

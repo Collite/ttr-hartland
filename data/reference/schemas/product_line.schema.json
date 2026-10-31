@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/product_line.schema.json",
+  "title": "product_line.csv — the 11 product lines; a line is premium or Professional (01 §3)",
+  "x-rows": [
+    11,
+    11
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "brand",
+    "name_cs",
+    "is_premium",
+    "is_professional"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+$"
+    },
+    "brand": {
+      "type": "string",
+      "x-ref": "brand.code"
+    },
+    "name_cs": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "is_premium": {
+      "type": "boolean"
+    },
+    "is_professional": {
+      "type": "boolean"
+    }
+  }
+}

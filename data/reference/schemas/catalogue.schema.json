@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/catalogue.schema.json",
+  "title": "catalogue.csv — the SKUs: 117 live on 2026-10-31 + 6 delisted in the history (01 §3, ⚑NH-1, ⚑NH-4)",
+  "x-rows": [
+    110,
+    130
+  ],
+  "x-key": [
+    "sku_code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sku_code",
+    "product",
+    "name_cs",
+    "pack_format",
+    "net_weight_g",
+    "units_per_case",
+    "case_weight_kg",
+    "shelf_life_days",
+    "base_price_case",
+    "cogs_case",
+    "vat_rate",
+    "importance",
+    "is_professional",
+    "suppliers",
+    "launched_on",
+    "delisted_on",
+    "nicknames_cs"
+  ],
+  "properties": {
+    "sku_code": {
+      "type": "string",
+      "pattern": "^29[0-9]{11}$"
+    },
+    "product": {
+      "type": "string",
+      "x-ref": "product.code"
+    },
+    "name_cs": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "pack_format": {
+      "enum": [
+        "jar",
+        "refill",
+        "stick_box",
+        "bag",
+        "box",
+        "cup",
+        "pouch",
+        "tub",
+        "bucket",
+        "multipack"
+      ]
+    },
+    "net_weight_g": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "units_per_case": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "case_weight_kg": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "shelf_life_days": {
+      "type": "integer",
+      "minimum": 30
+    },
+    "base_price_case": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "cogs_case": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "vat_rate": {
+      "type": "integer",
+      "enum": [
+        12
+      ]
+    },
+    "importance": {
+      "type": "integer",
+      "enum": [
+        10,
+        5,
+        1,
+        0
+      ]
+    },
+    "is_professional": {
+      "type": "boolean"
+    },
+    "suppliers": {
+      "type": "string",
+      "pattern": "^(HKO|HHO|HCH)(;(HKO|HHO|HCH))*$"
+    },
+    "launched_on": {
+      "type": "string",
+      "format": "date"
+    },
+    "delisted_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "nicknames_cs": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[^;]+(;[^;]+)*$",
+      "x-czech": true
+    }
+  }
+}
