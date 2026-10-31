@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/area_okres.schema.json",
+  "title": "area_okres.csv — which area each okres (or Prague district) belongs to",
+  "x-rows": [
+    98,
+    98
+  ],
+  "x-key": [
+    "okres"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "area",
+    "okres"
+  ],
+  "properties": {
+    "area": {
+      "type": "string",
+      "x-ref": "area.code"
+    },
+    "okres": {
+      "type": "string",
+      "x-ref": "okres.code"
+    }
+  }
+}
