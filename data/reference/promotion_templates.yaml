@@ -1,0 +1,329 @@
+# The promotion calendar's shapes (⚑NH-8): ~25 promotions a year, a third TV-supported, each 4–8 weeks, all four
+# mechanics, 2–3 exclusion pairs and ~4 key-account-only promotions a year. A year's calendar is every template
+# instantiated for that year (`setup.promotions.calendar`), so the codes are stable: PR-<year>-<month>-<line>-<tag>.
+# Schema: data/schemas/promotion_templates.schema.json. SKUs by catalogue.csv's sku_code.
+#
+# The TV-supported eight are S2's (stories/s2.yaml): Gold ×3, Espresso and Premium soups against Classic, Mixes and
+# Dried soups, with the same mechanics on both sides. October's Classic 200 g price-off is A-10's.
+#
+# Two promotions of one line that an order could both qualify for (their eligibility meets) never share a day unless
+# they exclude each other (`setup.promotions.clashes`, tested for every year to 2035).
+
+templates:
+  # ── TV-supported ───────────────────────────────────────────────────────────
+  - line: GOLD
+    tag: TV
+    month: 3
+    start_week: 10
+    weeks: 4
+    tv: true
+    mechanic: price_off
+    discount_pct: 20
+    target_uplift_pct: 40
+    eligibility: { channel: [big_retail, small_retail, gas_ka, web] }
+    name_cs: Harcafé Gold – jarní televizní sleva
+    goal_cs: Získat zpět kupující prémiové kávy po zimní sezóně a podpořit jarní televizní kampaň.
+  - line: CLASSIC
+    tag: TV
+    month: 3
+    start_week: 12
+    weeks: 4
+    tv: true
+    mechanic: price_off
+    discount_pct: 20
+    target_uplift_pct: 30
+    eligibility: { channel: [big_retail, small_retail, gas_ka, web] }
+    name_cs: Harcafé Classic – jarní televizní sleva
+    goal_cs: Udržet podíl klasické kávy v regálu během jarní kampaně konkurence.
+  - line: ESPRESSO
+    tag: TV
+    month: 5
+    start_week: 19
+    weeks: 4
+    tv: true
+    mechanic: price_off
+    discount_pct: 20
+    target_uplift_pct: 40
+    eligibility: { channel: [big_retail, small_retail, web] }
+    name_cs: Harcafé Espresso – květnová televizní sleva
+    goal_cs: Představit Espresso novým kupujícím ve městech s vyšší kupní silou.
+  - line: GOLD
+    tag: "11"
+    month: 9
+    start_week: 37
+    weeks: 4
+    tv: true
+    mechanic: free_goods_same
+    condition_qty: 1
+    reward_qty: 1
+    target_uplift_pct: 90
+    eligibility: { channel: [big_retail, small_retail] }
+    name_cs: Harcafé Gold 1+1 zdarma
+    goal_cs: Rozjet podzimní sezónu prémiové kávy a zvýšit počet domácností, které Gold kupují.
+  - line: SMESI
+    tag: "11"
+    month: 9
+    start_week: 38
+    weeks: 4
+    tv: true
+    mechanic: free_goods_same
+    condition_qty: 1
+    reward_qty: 1
+    target_uplift_pct: 80
+    eligibility: { channel: [big_retail, small_retail, gas_ka] }
+    name_cs: Kávové směsi 1+1 zdarma
+    goal_cs: Návrat do škol a do práce – podpořit směsi 3v1 a 2v1 v televizi i na čerpacích stanicích.
+  - line: PREMIUM
+    tag: "11"
+    month: 10
+    start_week: 42
+    weeks: 4
+    tv: true
+    mechanic: free_goods_same
+    condition_qty: 1
+    reward_qty: 1
+    target_uplift_pct: 90
+    eligibility: { channel: [big_retail, small_retail, web] }
+    name_cs: Prémiové polévky 1+1 zdarma
+    goal_cs: Zahájit sezónu prémiových polévek a ukázat novinky z řady krémů.
+  - line: POLEVKY
+    tag: TV
+    month: 11
+    start_week: 45
+    weeks: 6
+    tv: true
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 18
+    pre_stocking: true
+    eligibility: { channel: [big_retail, small_retail] }
+    name_cs: Sáčkové polévky – zimní televizní sleva
+    goal_cs: Zásobit domácnosti před prvními mrazy; řetězce předzásobit týden před kampaní.
+  - line: GOLD
+    tag: VANOCE
+    month: 11
+    start_week: 46
+    weeks: 6
+    tv: true
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 25
+    pre_stocking: true
+    eligibility: { channel: [big_retail, small_retail, web] }
+    name_cs: Harcafé Gold – vánoční televizní sleva
+    goal_cs: Vánoční dárková sezóna – Gold jako dárek, předzásobení řetězců před kampaní.
+
+  # ── without TV ─────────────────────────────────────────────────────────────
+  - line: POLEVKY
+    tag: ZIMA
+    month: 1
+    start_week: 2
+    weeks: 6
+    mechanic: conditional_price_off
+    condition_sku: "2931000000586" # Kuřecí s nudlemi, sáček
+    condition_qty: 4
+    reward_sku: "2931000000739" # Gulášová, sáček
+    discount_pct: 20
+    target_uplift_pct: 25
+    mandatory: true
+    eligibility: { channel: [small_retail] }
+    name_cs: Zimní polévky – ke čtyřem kuřecím gulášová se slevou
+    goal_cs: Rozšířit sortiment sáčkových polévek v tradičním trhu v nejchladnějších týdnech.
+  - line: PROFIKAVA
+    tag: GASTRO
+    month: 1
+    start_week: 3
+    weeks: 8
+    mechanic: price_off
+    discount_pct: 8
+    target_uplift_pct: 12
+    eligibility: { channel: [horeca, vending] }
+    name_cs: Profi káva – zimní nabídka pro gastro a automaty
+    goal_cs: Udržet objem automatových směsí v zimních měsících u provozovatelů automatů a v gastru.
+  - line: KELIMKY
+    tag: ZIMA
+    month: 2
+    start_week: 6
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 18
+    eligibility: { channel: [gas_ka, small_retail], store_class: [petrol] }
+    name_cs: Polévky v kelímku na cesty
+    goal_cs: Teplá polévka na čerpacích stanicích v únoru, kdy se nejvíc cestuje na hory.
+  - line: GOLD
+    tag: VALENTYN
+    month: 2
+    start_week: 6 # ends before GOLD-TV, which the web takes too
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 15
+    eligibility: { channel: [web] }
+    name_cs: Harcafé Gold – valentýnská nabídka v e-shopu
+    goal_cs: Přivést nové zákazníky do e-shopu a otestovat dárkové balení.
+  - line: PROFIGASTRO
+    tag: GASTRO
+    month: 3
+    start_week: 11
+    weeks: 8
+    mechanic: price_off
+    discount_pct: 8
+    target_uplift_pct: 12
+    eligibility: { channel: [horeca] }
+    name_cs: Profi gastro – jarní bujóny pro kuchyně
+    goal_cs: Získat nové restaurace a jídelny pro bujóny před začátkem sezóny.
+  - line: NUDLE
+    tag: JARO
+    month: 4
+    start_week: 15
+    weeks: 4
+    mechanic: free_goods_other
+    condition_sku: "2931000000951" # Nudle kuřecí, 5 sáčků
+    condition_qty: 2
+    reward_sku: "2931000000968" # Nudle kuřecí, kelímek
+    reward_qty: 1
+    target_uplift_pct: 20
+    mandatory: true
+    eligibility: { channel: [small_retail] }
+    name_cs: Instantní nudle – ke dvěma vícebalením kelímek zdarma
+    goal_cs: Dostat nudle v kelímku do prodejen, které je ještě neodebírají.
+  - line: SMESI
+    tag: KA
+    month: 4
+    start_week: 16
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 15
+    target_uplift_pct: 25
+    eligibility: { channel: [big_retail] }
+    name_cs: Kávové směsi – jarní akce v řetězcích
+    goal_cs: Letáková akce řetězců na směsi 3v1 a Cappuccino.
+  - line: BEZKOFEIN
+    tag: JARO
+    month: 5
+    start_week: 20
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 15
+    eligibility: { channel: [big_retail, small_retail, web] }
+    name_cs: Káva bez kofeinu – jarní sleva
+    goal_cs: Oslovit kupující, kteří omezují kofein, a ověřit zájem o doplňovací balení.
+  - line: SMESI
+    tag: LETO
+    month: 6
+    start_week: 24
+    weeks: 6
+    mechanic: conditional_price_off
+    condition_sku: "2931000000364" # 3v1, 20 tyčinek
+    condition_qty: 2
+    reward_sku: "2931000000418" # Cappuccino, 10 tyčinek
+    discount_pct: 30
+    target_uplift_pct: 20
+    eligibility: { channel: [small_retail, gas_ka] }
+    name_cs: Letní směsi – ke dvěma balením 3v1 Cappuccino se slevou
+    goal_cs: Udržet prodej směsí přes léto a rozšířit Cappuccino na čerpací stanice.
+  - line: CLASSIC
+    tag: KA
+    month: 6
+    start_week: 24
+    weeks: 4
+    mechanic: free_goods_same
+    condition_qty: 2
+    reward_qty: 1
+    target_uplift_pct: 45
+    eligibility: { channel: [big_retail], chain: [TESCO, ALBERT] }
+    name_cs: Harcafé Classic 2+1 zdarma v řetězcích
+    goal_cs: Letáková akce dvou řetězců na klasickou kávu v letním útlumu.
+  - line: NUDLE
+    tag: LETO
+    month: 7
+    start_week: 28
+    weeks: 6
+    mechanic: price_off
+    discount_pct: 15
+    target_uplift_pct: 20
+    eligibility: { store_class: [petrol, convenience] }
+    name_cs: Instantní nudle na cesty – letní sleva
+    goal_cs: Letní cestování – nudle na čerpacích stanicích a ve večerkách.
+  - line: GOLD
+    tag: KA
+    month: 8
+    start_week: 32
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 18
+    eligibility: { channel: [big_retail] }
+    name_cs: Harcafé Gold – letní akce v řetězcích
+    goal_cs: Udržet Gold v letácích řetězců v nejslabších týdnech roku.
+  - line: KELIMKY
+    tag: SKOLA
+    month: 8
+    start_week: 35
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 18
+    eligibility: { channel: [small_retail, gas_ka] }
+    name_cs: Polévky v kelímku – zpátky do školy
+    goal_cs: Návrat do škol a do práce – rychlý oběd v kelímku.
+  - line: CLASSIC
+    tag: "200"
+    month: 10
+    start_week: 41
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 15
+    target_sku: "2931000000036" # Classic 200 g
+    target_uplift_pct: 30
+    eligibility: { channel: [big_retail, small_retail] }
+    name_cs: Harcafé Classic 200 g – podzimní sleva na velké balení
+    goal_cs: Přesunout kupující klasické kávy k velkému balení.
+  - line: POLEVKY
+    tag: PODZIM
+    month: 10
+    start_week: 41 # ends before POLEVKY-TV, which small retail takes too
+    weeks: 4
+    mechanic: free_goods_other
+    condition_sku: "2931000000616" # Hovězí, sáček
+    condition_qty: 6
+    reward_sku: "2931000000760" # Koprová, sáček
+    reward_qty: 1
+    target_uplift_pct: 20
+    mandatory: true
+    eligibility: { channel: [small_retail] }
+    name_cs: Podzimní polévky – k šesti hovězím koprová zdarma
+    goal_cs: Rozšířit sortiment polévek v tradičním trhu na začátku sezóny.
+  - line: SMESI
+    tag: VANOCE
+    month: 11
+    start_week: 47
+    weeks: 4
+    mechanic: conditional_price_off
+    condition_sku: "2931000000357" # 3v1, 10 tyčinek
+    condition_qty: 3
+    reward_sku: "2931000000418" # Cappuccino, 10 tyčinek
+    discount_pct: 50
+    target_uplift_pct: 30
+    eligibility: { channel: [big_retail] }
+    name_cs: Kávové směsi – předvánoční akce v řetězcích
+    goal_cs: Předvánoční leták řetězců – ke třem směsím Cappuccino za polovic.
+  - line: PREMIUM
+    tag: VANOCE
+    month: 12
+    start_week: 50
+    weeks: 4
+    mechanic: price_off
+    discount_pct: 10
+    target_uplift_pct: 15
+    eligibility: { channel: [big_retail, small_retail, web] }
+    name_cs: Prémiové polévky – sváteční sleva
+    goal_cs: Sváteční stůl – prémiové krémové polévky jako předkrm.
+
+# Pairs that may not combine on one line, by `<line>-<tag>`; each year's calendar excludes them both ways.
+exclusions:
+  - [GOLD-TV, CLASSIC-TV]
+  - [GOLD-11, SMESI-11]
+  - [GOLD-VANOCE, SMESI-VANOCE]

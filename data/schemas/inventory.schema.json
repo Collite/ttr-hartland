@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/schemas/inventory.schema.json",
+  "title": "inventory.yaml — the tables and views of the hartland schema (contracts §1), read by config.InventoryConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "codes",
+    "tables",
+    "views"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hartland"
+    },
+    "codes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "group",
+          "grain",
+          "columns",
+          "pk",
+          "load_order",
+          "writer",
+          "rows_expected",
+          "serves"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "group": {
+            "enum": [
+              "reference",
+              "org",
+              "customers",
+              "products",
+              "pricing",
+              "plans",
+              "orders",
+              "finance",
+              "supply",
+              "delivery",
+              "field",
+              "marketing",
+              "shops",
+              "documents"
+            ]
+          },
+          "grain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "type": {
+                  "type": "string",
+                  "pattern": "^(bigint|integer|boolean|date|timestamptz|time|text|jsonb|numeric\\([0-9]+,[0-9]+\\))$"
+                },
+                "nullable": {
+                  "type": "boolean"
+                },
+                "ref": {
+                  "type": "string",
+                  "pattern": "^[a-z_][a-z0-9_]*\\.[a-z_][a-z0-9_]*$"
+                },
+                "coded": {
+                  "type": "string",
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "label_cs": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "docwh": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "minItems": 1
+          },
+          "pk": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z_][a-z0-9_]*$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "id_key": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z_][a-z0-9_]*$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "unique": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "load_order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "writer": {
+            "oneOf": [
+              {
+                "enum": [
+                  "setup",
+                  "daily",
+                  "month_end",
+                  "quarter_end",
+                  "year_end",
+                  "documents"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "setup",
+                    "daily",
+                    "month_end",
+                    "quarter_end",
+                    "year_end",
+                    "documents"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            ]
+          },
+          "rows_expected": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "serves": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(S[1-6]|H-[A-N])$"
+            }
+          },
+          "docwh": {
+            "type": "boolean"
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "group",
+          "grain",
+          "sql_file",
+          "load_order",
+          "serves"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "kind": {
+            "enum": [
+              "materialized_view",
+              "view"
+            ]
+          },
+          "group": {
+            "const": "views"
+          },
+          "grain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sql_file": {
+            "type": "string",
+            "pattern": "^views/[a-z_]+\\.sql$"
+          },
+          "load_order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "serves": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(S[1-6]|H-[A-N])$"
+            }
+          },
+          "docwh": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

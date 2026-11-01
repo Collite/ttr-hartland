@@ -1,0 +1,155 @@
+# The small planted cases (design 04 §7) — the demonstrations' props — and the pins: the eight reps of S3 with their
+# skills and traits, and the customers, shops and chains the cases need. A probe returns one number; `expect` is
+# what it must reach on the build (`>= n`, `= n`, or `rows` for any row at all). With the anomaly off (the null
+# world) the probe must find nothing.
+anomalies:
+  - id: A-1
+    title_cs: Tři chroničtí opozdilci v placení a deset příležitostných
+    enabled: true
+    parameters: { chronic: 3, chronic_days_late: [30, 60], occasional: 10, occasional_share_late: 0.4 }
+    probe: { sql: probes/a1.sql, expect: ">= 3" }
+  - id: A-2
+    title_cs: Novinka se špatnou počáteční zásobou – dýňový krém v Modřicích
+    enabled: true
+    parameters:
+      sku: "2931000001088" # Harsoup Dýňový krém, kapsička 2 porce
+      launched_on: 2025-09-01
+      dc: DC-MODRICE
+      initial_cover_weeks: 6
+      demand_over_plan: 3.0
+      regions: [JMV, SMS]
+    probe: { sql: probes/a2.sql, expect: ">= 1" }
+  - id: A-3
+    title_cs: Gold 200 g v Jirnech chybí poslední týden každého měsíce
+    enabled: true
+    parameters: { sku: "2931000000180", dc: DC-JIRNY, year: 2025, min_days_cover: 4 }
+    probe: { sql: probes/a3.sql, expect: ">= 10" }
+  - id: A-4
+    title_cs: Pondělní dopravce z Modřic jezdí pozdě
+    enabled: true
+    parameters: { dc: DC-MODRICE, carrier_rank: 1, weekday: 1, late_minutes: 45, late_share: 0.6 }
+    probe: { sql: probes/a4.sql, expect: ">= 1" }
+  - id: A-5
+    title_cs: Ve dnech nepříznivého počasí přibývá událostí na trasách
+    enabled: true
+    parameters: { event_share_on_severe_days: 0.15 }
+    probe: { sql: probes/a5.sql, expect: ">= 1" }
+  - id: A-6
+    title_cs: Zimní promoce Kavalíru ve východních Čechách
+    enabled: true
+    parameters:
+      competitor: KAVALIR
+      region: VCH
+      sightings_from: 2025-11-03 # week 45
+      from: 2025-11-10 # weeks 46–50 of 2025
+      until: 2025-12-14
+      line: GOLD
+      dip_pct: 12
+    probe: { sql: probes/a6.sql, expect: ">= 10" }
+  - id: A-7
+    title_cs: Tři obchodní zástupci vynechávají návštěvy
+    enabled: true
+    parameters: { adherence: 0.55, average_adherence: 0.90 } # the reps: pins.reps with skips_visits
+    probe: { sql: probes/a7.sql, expect: ">= 3" }
+  - id: A-8
+    title_cs: Obchodní zástupce, který nic nezapisuje
+    enabled: true
+    parameters: { unrecorded_share: 0.70 } # the rep: pins.reps with records_nothing
+    probe: { sql: probes/a8.sql, expect: ">= 1" }
+  - id: A-9
+    title_cs: Dva řetězce vyřazují Espresso bez kofeinu 100 g
+    enabled: true
+    parameters: { sku: "2931000000326", chains: [ALBERT, PENNY], month: 2026-03-01 }
+    probe: { sql: probes/a9.sql, expect: ">= 2" }
+  - id: A-10
+    title_cs: Promoce, která kanibalizovala – Classic 200 g v říjnu 2025
+    enabled: true
+    parameters:
+      promotion: PR-2025-10-CLASSIC-200
+      sku: "2931000000036" # Classic 200 g: +45 %
+      sibling: "2931000000029" # Classic 100 g: −30 %
+      uplift_pct: 45
+      sibling_dip_pct: 30
+    probe: { sql: probes/a10.sql, expect: ">= 1" }
+  - id: A-11
+    title_cs: Retro bonus Tesca za rok 2025 zaúčtovaný v lednu
+    enabled: true
+    parameters: { chain: TESCO, year: 2025, pct: 2, booked_on: 2026-01-15 }
+    probe: { sql: probes/a11.sql, expect: ">= 1" }
+  - id: A-12
+    title_cs: Vlastní prodejna v Liberci prodává prémiové polévky
+    enabled: true
+    parameters: { shop: SH-LIBEREC, line: PREMIUM, over_others: 2.5, sell_in_lag_weeks: 2 }
+    probe: { sql: probes/a12.sql, expect: ">= 1" }
+  - id: A-13
+    title_cs: Prodejna, která odmítá každý podnět na nudle
+    enabled: true
+    parameters: { line: NUDLE, reason_cs: nemáme místo v regálu, rejections_until_stop: 3 }
+    probe: { sql: probes/a13.sql, expect: ">= 1" }
+  - id: A-14
+    title_cs: Pozastavené objednávky po překročení úvěrového limitu
+    enabled: true
+    parameters: { month: 2026-06-01 }
+    probe: { sql: probes/a14.sql, expect: ">= 1" }
+  - id: A-15
+    title_cs: Šarže sáčkových polévek z Chrudimi a cizí předmět
+    enabled: true
+    parameters:
+      line: POLEVKY
+      batch_month: 2025-11-01
+      complaints: 40
+      weeks: 3
+      first_regions: [JMV, SMS]
+      from: 2025-11-17
+    probe: { sql: probes/a15.sql, expect: ">= 30" }
+
+pins:
+  # The eight reps of S3 (and the A-7 and A-8 traits), each by the area they hold on the warm-up's first day,
+  # 2023-01-01 (area.csv), so a pin survives the two area moves and a later hire into the area is not the pin; the
+  # skills each in S3's `skill_range`.
+  reps:
+    - { slot: PHA-03, profile: star, conversion: 1.35, acquisition: 1.32, retention: 1.3, cross_sell: 1.34 }
+    - { slot: JMV-04, profile: star, conversion: 1.3, acquisition: 1.38, retention: 1.33, cross_sell: 1.3 }
+    - { slot: ZSC-05, profile: weak, conversion: 0.68, acquisition: 0.65, retention: 0.7, cross_sell: 0.66 }
+    - slot: SMS-07
+      profile: weak
+      conversion: 0.65
+      acquisition: 0.7
+      retention: 0.66
+      cross_sell: 0.62
+      skips_visits: true
+    - slot: SJC-06
+      profile: hunter
+      conversion: 1.0
+      acquisition: 1.4
+      retention: 0.65
+      cross_sell: 1.0
+      skips_visits: true
+    - slot: VCH-03
+      profile: farmer
+      conversion: 1.0
+      acquisition: 0.7
+      retention: 1.35
+      cross_sell: 1.0
+      records_nothing: true
+    - { slot: JMV-06, profile: cross_seller, conversion: 1.0, acquisition: 1.0, retention: 1.0, cross_sell: 1.4 }
+    - slot: PHA-07
+      profile: converter
+      conversion: 1.35
+      acquisition: 0.9
+      retention: 0.9
+      cross_sell: 0.9
+      skips_visits: true
+  # The customers the cases name, each by a rule resolved at setup — never by name: every customer is a real store or
+  # café from OpenStreetMap (⚑NH-2). `rank` counts the matching customers in OSM order (classifier.osm_order).
+  customers:
+    - { anomaly: A-1, trait: chronic_late_payer, channel: horeca, area: JMV-07, rank: 1 }
+    - { anomaly: A-1, trait: chronic_late_payer, channel: horeca, area: PHA-01, rank: 1 }
+    - { anomaly: A-1, trait: chronic_late_payer, channel: small_retail, chain: ZABKA, area: PHA-05, rank: 1 }
+    - anomaly: A-13
+      trait: rejects_noodle_prompts
+      channel: small_retail
+      store_class: minimarket
+      area: VCH-04
+      rank: 1
+    - { anomaly: A-14, trait: crosses_credit_limit, channel: small_retail, store_class: village, area: SMS-05, rank: 1 }

@@ -1,0 +1,2247 @@
+# The inventory — the machine-readable twin of design 03 (the data inventory) and 06 §3 (the documents), contracts §1.
+# One source, three readers: `just ddl` renders data/ddl/schema.sql + indexes.sql from it; `load-world` copies in its
+# `load_order`; the model's db layer is imported from the rendered DDL and drift-checked against it.
+#
+# Changing a table = edit this file → `just ddl` → the db layer by hand → `ddl-drift` clean, in one PR.
+#
+# A table: `name` · `group` (the model's db files) · `grain` · `columns` · `pk` · `load_order` (an integer; every
+# foreign key points to a lower one, or to its own table) · `writer` · `rows_expected` (03's figure) · `serves`
+# (stories S1–S6, demonstrations H-A…H-N) · `id_key` (the business key the id is hashed from, contracts §2; absent
+# when the primary key is the business key itself) · `indexes` (indexes.sql, applied after the load) · `unique` ·
+# `docwh: false` (an answer the DocWH is scored against: the hartland_docwh role gets no grant on it).
+# `id_key` names the parts of the business key, which need not be columns: a parent's own key (`customer`), a sequence
+# (`seq`). The generator passes them by these names (S1.1's `row_id(table, **key)`).
+# A column: `name` · `type` · `nullable` (false when absent; contracts §1's `null`, which YAML would read as a null
+# key) · `ref: <table>.<column>` (a foreign key, DEFERRABLE INITIALLY DEFERRED) · `coded: <codes name>` (its values and
+# their Czech labels, below; a CHECK in the DDL) · `label_cs` (the column's Czech label, where the model fixes one) ·
+# `docwh: false` (hidden from hartland_docwh, which then gets its table column by column). A column whose `ref` is
+# `document.document_id` is hidden from it too: it says which promotion, price list or SKU a document describes.
+# A view: `kind: materialized_view` (or `view`), `sql_file` under data/ddl/views/ and `docwh`, as a table's.
+#
+# Not here (contracts §1): `_sim_meta` and `_sim_checkpoint`, the generator's own (created by `load-world`).
+
+schema: hartland
+
+codes:
+  legal_entity_role: { center: Centrála, factory: Závod }
+  site_kind: { hq: Centrála, factory: Závod, dc: Distribuční centrum, shop: Vlastní prodejna }
+  season: { zima: Zima, jaro: Jaro, léto: Léto, podzim: Podzim }
+  unit: { finance_admin: Finance a správa, supply: Zásobování, delivery: Doprava, sales: Obchod, marketing: Marketing }
+  employee_role:
+    rep: Obchodní zástupce
+    area_manager: Oblastní manažer
+    kam: Manažer klíčových zákazníků
+    head_of_key_accounts: Vedoucí klíčových zákazníků
+    product_manager: Produktový manažer
+    dispatcher: Dispečer
+    buyer: Nákupčí
+    finance: Pracovník financí
+    marketing: Pracovník marketingu
+    management: Vedení společnosti
+    shop_manager: Vedoucí prodejny
+  assignment_kind:
+    rep_area: Obchodní zástupce v oblasti
+    area_manager_region: Oblastní manažer regionu
+    kam_customer: Manažer klíčového zákazníka
+    pm_line: Produktový manažer řady
+    dispatcher_dc: Dispečer distribučního centra
+  chain_kind:
+    modern_trade: Moderní trh
+    petrol: Čerpací stanice
+    convenience_franchise: Franšízová síť
+    cooperative: Družstvo
+  store_class:
+    hyper: Hypermarket
+    super: Supermarket
+    discount: Diskont
+    convenience: Večerka
+    minimarket: Minimarket
+    village: Venkovská prodejna
+    petrol: Čerpací stanice
+    horeca: Gastro provoz
+  size_class: { S: Malá, M: Střední, L: Velká }
+  street_type:
+    high_street: Hlavní třída
+    residential: Obytná čtvrť
+    village: Vesnice
+    transport_hub: Dopravní uzel
+    shopping_centre: Nákupní centrum
+    petrol: Čerpací stanice
+  channel:
+    big_retail: Velké řetězce
+    small_retail: Tradiční trh
+    gas_ka: Čerpací stanice – klíčoví zákazníci
+    own_shops: Vlastní prodejny
+    web: E-shop
+    vending: Automaty
+    horeca: Gastro
+  sub_channel: { special_retail: Čerpací stanice v tradičním trhu }
+  customer_status: { potential: Potenciální, active: Aktivní, lost: Ztracený }
+  phase: { potential: Potenciální, occasional: Příležitostný, regular: Pravidelný, vip: VIP, lost: Ztracený }
+  business: { KAVA: Káva, KULINAR: Kulinářské výrobky }
+  pack_format:
+    jar: Sklenice
+    refill: Doplňovací balení
+    stick_box: Krabička sáčků
+    bag: Sáček
+    box: Krabice
+    cup: Kelímek
+    pouch: Kapsička
+    tub: Dóza
+    bucket: Kbelík
+    multipack: Vícebalení
+  agreement_kind: { agreed_discount: Dohodnutá sleva, individual_price: Individuální cena, retro_bonus: Retro bonus }
+  prompt_kind:
+    mandatory_promotion: Povinná promoce
+    unsupplied_items: Neodebírané artikly
+    pos_placement: Umístění stojanu
+    competitor_response: Reakce na konkurenci
+    ai_tip: Tip umělé inteligence
+    debt: Pohledávka po splatnosti
+  rule_kind:
+    contact_frequency: Frekvence kontaktu
+    concessions: Povolené ústupky
+    listing_sequence: Pořadí zalistování
+  order_source:
+    visit: Návštěva
+    phone: Telefon
+    portal: Portál
+    edi: Elektronická výměna dat
+    web: E-shop
+    replenishment: Doplnění zásob
+  order_status:
+    open: Otevřená
+    held: Pozastavená
+    released: Uvolněná
+    shipped: Odeslaná
+    invoiced: Vyfakturovaná
+    cancelled: Zrušená
+  hold_reason: { credit_limit: Překročený úvěrový limit, overdue: Faktury po splatnosti }
+  discount_kind:
+    volume: Objemová sleva
+    cross_sell: Sleva za šíři sortimentu
+    agreed: Dohodnutá sleva
+    individual: Individuální cena
+    promotion: Promoční sleva
+    free_goods: Zboží zdarma
+    retro: Retro bonus
+  budget: { sales: Obchod, marketing: Marketing }
+  invoice_kind: { invoice: Faktura, credit_note: Dobropis, intercompany: Vnitroskupinová faktura }
+  invoice_status:
+    open: Otevřená
+    paid: Zaplacená
+    partly_paid: Částečně zaplacená
+    overdue: Po splatnosti
+    written_off: Odepsaná
+  payment_method: { transfer: Převodem, card: Kartou, prepaid: Předem, cash: Hotově }
+  return_reason: { damaged: Poškozené zboží, expired: Prošlá trvanlivost, wrong: Chybná dodávka }
+  po_status: { open: Otevřená, confirmed: Potvrzená, received: Přijatá, cancelled: Zrušená }
+  raised_by: { buyer: Nákupčí, agent: Agent }
+  movement_kind:
+    receipt: Příjem
+    pick: Vychystání
+    transfer: Převod mezi sklady
+    write_off: Odpis
+    return_in: Vrácení
+  vehicle_class: { van: Dodávka, truck_7_5t: "Nákladní 7,5 t", truck_12t: Nákladní 12 t }
+  shipment_status:
+    planned: Plánovaná
+    loaded: Naložená
+    delivered: Doručená
+    partial: Částečně doručená
+    failed: Nedoručená
+    rescheduled: Přeplánovaná
+  route_status: { planned: Plánovaná, running: Na cestě, done: Dokončená, superseded: Nahrazená }
+  planner: { heuristic: Heuristika, timefold: Plánovací služba }
+  stop_status: { delivered: Doručeno, late: Doručeno pozdě, failed: Nedoručeno, moved: Přesunuto }
+  event_kind:
+    breakdown: Porucha vozidla
+    late: Zpoždění
+    no_show: Dopravce nepřijel
+    road_closure: Uzavírka
+    refused: Zákazník odmítl převzetí
+    short_picked: Neúplné vychystání
+    weather: Počasí
+  severity: { low: Nízká, medium: Střední, high: Vysoká }
+  reporter: { driver: Řidič, customer: Zákazník, dispatcher: Dispečer }
+  resolution:
+    reroute: Přesměrování
+    next_day: Přesun na další den
+    swap_carrier: Výměna dopravce
+    partial: Částečné doručení
+  visit_kind: { sales: Obchodní, merchandising: Péče o regál, acquisition: Akvizice }
+  visit_outcome:
+    order: Objednávka
+    no_order: Bez objednávky
+    closed: Zavřeno
+    refused: Odmítnuto
+    not_found: Nenalezeno
+  activity_kind: { promotion: Akce, listing: Nové zalistování, display: Vystavení, price_cut: Snížení ceny }
+  pos_kind: { giveaway: Drobný materiál, asset: Inventář }
+  asset_condition: { new: Nový, good: Dobrý, worn: Opotřebený, damaged: Poškozený }
+  prompt_outcome:
+    successful: Úspěšný
+    unsuccessful: Neúspěšný
+    not_discussed: Neprobráno
+    rejected: Odmítnutý
+    open: Otevřený
+  generated_by: { rules: Pravidla, agent: Agent }
+  media: { tv: Televize, outdoor: Venkovní reklama, digital: Digitální kanály, instore: V prodejně, agency: Agentura }
+  mechanic:
+    price_off: Cenová sleva
+    conditional_price_off: Podmíněná sleva
+    free_goods_same: Zboží zdarma stejné
+    free_goods_other: Zboží zdarma jiné
+  promotion_status: { draft: Návrh, approved: Schválená, running: Probíhající, closed: Ukončená }
+  scope_kind: { channel: Kanál, chain: Řetězec, region: Region, store_class: Typ prodejny, phase: Fáze zákazníka }
+  supplier_kind:
+    factory: Závod
+    carrier: Dopravce
+    dc_operator: Provozovatel distribučního centra
+    agency: Agentura
+    admin: Správní dodavatel
+  ap_ref_kind:
+    purchase_order: Nákupní objednávka
+    route_batch: Dávka tras
+    dc_invoice: Faktura distribučního centra
+    campaign_cost: Náklad kampaně
+    admin: Správní náklad
+  gl_kind:
+    asset: Aktivum
+    liability: Pasivum
+    revenue: Výnos
+    revenue_deduction: Snížení výnosů
+    expense: Náklad
+  pl_line:
+    gross_revenue: Hrubé tržby
+    discount_volume: Objemové slevy
+    discount_cross_sell: Slevy za šíři sortimentu
+    discount_agreed: Dohodnuté slevy
+    discount_individual: Individuální ceny
+    discount_promotion: Promoční slevy
+    free_goods_value: Zboží zdarma
+    cogs: Náklady na prodané zboží
+    delivery_cost: Náklady na doručení
+    warehouse_cost: Náklady na skladování
+    marketing_cost: Marketingové náklady
+    admin_cost: Správní náklady
+    financing_cost: Finanční náklady
+  gl_source: { documents: Doklady, allocation: Alokace, manual: Ruční zápis }
+  document_family:
+    return_request: Reklamace
+    complaint: Stížnost
+    promotion_sheet: Promoční list
+    price_memo: Cenové sdělení
+    product_announcement: Oznámení o výrobku
+    policy: Směrnice
+    campaign_brief: Zadání kampaně
+    competitor_note: Konkurenční zpráva
+  document_channel: { email: E-mail, web_form: Webový formulář, letter_scan: Naskenovaný dopis, internal: Interní }
+  document_format:
+    eml: E-mailová zpráva
+    md: Textový dokument
+    docx: Dokument Word
+    pdf: PDF
+    json: Formulářová data
+    xlsx: Tabulka Excel
+  language: { cs: Čeština, sk: Slovenština }
+  complaint_kind: { quality: Kvalita, delivery: Doručení, service: Služby, price: Cena, other: Jiné }
+  complaint_status: { open: Otevřená, acknowledged: Potvrzená, resolved: Vyřešená, rejected: Zamítnutá }
+  source: { generated: Vygenerováno, pipeline: Vytěženo z dokumentu }
+  # The return-request family (taken over from the automation extension, its values unchanged).
+  return_line_reason: { damaged: Poškozené, did_not_arrive: Nedorazilo, wrong_size: Chybná velikost, other: Jiný důvod }
+  requested_resolution: { refund: Vrácení peněz, exchange: Výměna, replacement: Náhradní zboží }
+  return_line_state:
+    received: Přijato
+    rejected: Zamítnuto
+    settling: Vyřizuje se
+    awaiting_goods: Čeká na zboží
+    goods_received: Zboží přijato
+    not_returned: Zboží nevráceno
+    closed: Uzavřeno
+  receipt_condition: { ok: V pořádku, damaged: Poškozené, missing: Chybí }
+  credit_note_status: { issued: Vystaven, paid: Proplacen }
+
+tables:
+  # ── reference ─────────────────────────────────────────────────────────────
+  - name: legal_entity
+    group: reference
+    grain: a company of the group (the Center and three factories)
+    columns:
+      - { name: legal_entity_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: ico, type: text }
+      - { name: role, type: text, coded: legal_entity_role }
+    pk: [legal_entity_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 10
+    writer: setup
+    rows_expected: 4
+    serves: []
+
+  - name: kraj
+    group: reference
+    grain: a Czech region (CZ-NUTS 3)
+    columns:
+      - { name: kraj_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+    pk: [kraj_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 20
+    writer: setup
+    rows_expected: 14
+    serves: []
+
+  - name: okres
+    group: reference
+    grain: a Czech district (LAU 1) or one of Prague's 22 administrative districts
+    columns:
+      - { name: okres_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: kraj_id, type: bigint, ref: kraj.kraj_id }
+      - { name: parent_okres_id, type: bigint, nullable: true, ref: okres.okres_id }
+      - { name: affluence_index, type: "numeric(4,3)", label_cs: index bohatosti }
+      - { name: population, type: integer }
+    pk: [okres_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 30
+    writer: setup
+    rows_expected: 99
+    serves: [S2, S4]
+
+  - name: site
+    group: reference
+    grain: a physical site of the group (the Center, 3 factories, 2 DCs, 12 own shops)
+    columns:
+      - { name: site_id, type: bigint }
+      - { name: code, type: text }
+      - { name: kind, type: text, coded: site_kind }
+      - { name: legal_entity_id, type: bigint, ref: legal_entity.legal_entity_id }
+      - { name: name, type: text }
+      - { name: town, type: text }
+      - { name: okres_id, type: bigint, ref: okres.okres_id }
+      - { name: lat, type: "numeric(9,6)" }
+      - { name: lon, type: "numeric(9,6)" }
+    pk: [site_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 40
+    writer: setup
+    rows_expected: 18
+    serves: []
+
+  - name: calendar
+    group: reference
+    grain: a day, 2023-01-01 → 2027-12-31
+    columns:
+      - { name: day, type: date }
+      - { name: year, type: integer }
+      - { name: quarter, type: integer }
+      - { name: month, type: integer }
+      - { name: week, type: integer }
+      - { name: iso_year, type: integer }
+      - { name: weekday, type: integer }
+      - { name: weekday_cs, type: text }
+      - { name: is_working_day, type: boolean }
+      - { name: holiday_cs, type: text, nullable: true }
+      - { name: season, type: text, coded: season }
+    pk: [day]
+    load_order: 50
+    writer: setup
+    rows_expected: 1826
+    serves: [S1]
+
+  - name: cost_centre
+    group: org
+    grain: a cost centre of the Center (one per unit and team, and per site)
+    columns:
+      - { name: cost_centre_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: unit, type: text, coded: unit }
+      - { name: site_id, type: bigint, nullable: true, ref: site.site_id }
+    pk: [cost_centre_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 60
+    writer: setup
+    rows_expected: 37
+    serves: []
+
+  # ── org ───────────────────────────────────────────────────────────────────
+  - name: org_unit
+    group: org
+    grain: a unit or team of the Center (its five units and their teams)
+    columns:
+      - { name: org_unit_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: parent_org_unit_id, type: bigint, nullable: true, ref: org_unit.org_unit_id }
+      - { name: cost_centre_id, type: bigint, ref: cost_centre.cost_centre_id }
+    pk: [org_unit_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 70
+    writer: setup
+    rows_expected: 25
+    serves: [H-H]
+
+  - name: employee
+    group: org
+    grain: a person (reps, area managers, KAMs, product managers, dispatchers, staff), turnover included
+    columns:
+      - { name: employee_id, type: bigint }
+      - { name: code, type: text, label_cs: uživatelské jméno }
+      - { name: first_name, type: text }
+      - { name: last_name, type: text }
+      - { name: org_unit_id, type: bigint, ref: org_unit.org_unit_id }
+      - { name: role, type: text, coded: employee_role }
+      - { name: manager_employee_id, type: bigint, nullable: true, ref: employee.employee_id }
+      - { name: hired_on, type: date }
+      - { name: left_on, type: date, nullable: true }
+    pk: [employee_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 80
+    writer: [setup, month_end]
+    rows_expected: 140
+    serves: [S3, S5, S6, H-H]
+
+  - name: region
+    group: reference
+    grain: a sales region (6), each under an area manager
+    columns:
+      - { name: region_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: area_manager_employee_id, type: bigint, ref: employee.employee_id }
+    pk: [region_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 90
+    writer: setup
+    rows_expected: 6
+    serves: [S5, H-H]
+
+  - name: area
+    group: reference
+    grain: a rep's territory (≈ 2 okresy; 10 in Praha)
+    columns:
+      - { name: area_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: region_id, type: bigint, ref: region.region_id }
+    pk: [area_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 100
+    writer: setup
+    rows_expected: 50
+    serves: [S3, S5]
+
+  - name: area_okres
+    group: reference
+    grain: an okres in an area (each okres in exactly one)
+    columns:
+      - { name: area_id, type: bigint, ref: area.area_id }
+      - { name: okres_id, type: bigint, ref: okres.okres_id }
+    pk: [area_id, okres_id]
+    unique: [[okres_id]]
+    load_order: 110
+    writer: setup
+    rows_expected: 99
+    serves: []
+
+  - name: weather_daily
+    group: reference
+    grain: a sales region × a day
+    columns:
+      - { name: region_id, type: bigint, ref: region.region_id }
+      - { name: day, type: date, ref: calendar.day }
+      - { name: temp_mean_c, type: "numeric(4,1)" }
+      - { name: precip_mm, type: "numeric(5,1)" }
+      - { name: snow, type: boolean }
+      - { name: severe, type: boolean }
+    pk: [region_id, day]
+    load_order: 120
+    writer: daily
+    rows_expected: 8000
+    serves: [S1, H-E, H-F]
+
+  # ── customers ─────────────────────────────────────────────────────────────
+  - name: chain
+    group: customers
+    grain: a retail or station chain, or a franchise network
+    columns:
+      - { name: chain_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: kind, type: text, coded: chain_kind }
+      - { name: is_key_account, type: boolean }
+    pk: [chain_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 130
+    writer: setup
+    rows_expected: 20
+    serves: []
+
+  - name: store
+    group: customers
+    grain: a physical store from OpenStreetMap — chain stores, independents, station shops, cafés; the market
+    columns:
+      - { name: store_id, type: bigint }
+      - { name: osm_id, type: text }
+      - { name: name, type: text }
+      - { name: brand, type: text, nullable: true }
+      - { name: chain_id, type: bigint, nullable: true, ref: chain.chain_id }
+      - { name: store_class, type: text, coded: store_class, label_cs: typ prodejny }
+      - { name: size_class, type: text, coded: size_class, label_cs: velikost prodejny }
+      - { name: street_type, type: text, coded: street_type, label_cs: typ ulice }
+      - { name: weekly_hours, type: "numeric(5,1)" }
+      - { name: sunday_open, type: boolean }
+      - { name: lat, type: "numeric(9,6)" }
+      - { name: lon, type: "numeric(9,6)" }
+      - { name: street, type: text, nullable: true }
+      - { name: town, type: text, nullable: true }
+      - { name: postcode, type: text, nullable: true }
+      - { name: okres_id, type: bigint, ref: okres.okres_id }
+      - { name: area_id, type: bigint, ref: area.area_id }
+      - { name: opened_on, type: date, nullable: true }
+      - { name: closed_on, type: date, nullable: true }
+    pk: [store_id]
+    id_key: [osm_id]
+    unique: [[osm_id]]
+    indexes: [[chain_id], [okres_id], [area_id]]
+    load_order: 140
+    writer: setup
+    rows_expected: 12500
+    serves: [S2, S4, H-A]
+
+  - name: customer
+    group: customers
+    grain: >-
+      a trading partner the Center invoices (a chain, a store, an operator, a restaurant, a wholesaler, an own shop,
+      a web consumer), potential ones included
+    columns:
+      - { name: customer_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: channel, type: text, coded: channel, label_cs: kanál }
+      - { name: sub_channel, type: text, nullable: true, coded: sub_channel, label_cs: podkanál }
+      - { name: chain_id, type: bigint, nullable: true, ref: chain.chain_id }
+      - { name: store_id, type: bigint, nullable: true, ref: store.store_id }
+      - { name: okres_id, type: bigint, nullable: true, ref: okres.okres_id }
+      - { name: legal_form, type: text, nullable: true }
+      - { name: vat_id, type: text, nullable: true }
+      - { name: payment_terms_days, type: integer }
+      - { name: credit_limit, type: "numeric(14,2)", nullable: true }
+      - { name: price_list_channel, type: text, coded: channel }
+      - { name: since, type: date, nullable: true }
+      - { name: until, type: date, nullable: true }
+      - { name: status, type: text, coded: customer_status }
+    pk: [customer_id]
+    id_key: [code]
+    unique: [[code]]
+    indexes: [[chain_id], [store_id], [okres_id], [channel, status]]
+    load_order: 150
+    writer: [setup, daily]
+    rows_expected: 43200
+    serves: [S3, H-A, H-I]
+
+  - name: document
+    group: documents
+    grain: a document in the registry — the DocWH's pointer to its file (06 §3; loaded before the facts that cite it)
+    columns:
+      - { name: document_id, type: bigint }
+      - { name: code, type: text }
+      - { name: family, type: text, coded: document_family }
+      - { name: received_at, type: timestamptz }
+      - { name: channel, type: text, coded: document_channel }
+      - { name: sender_name, type: text, nullable: true }
+      - { name: sender_email, type: text, nullable: true }
+      - { name: sender_customer_id, type: bigint, nullable: true, ref: customer.customer_id, docwh: false }
+      - { name: format, type: text, coded: document_format }
+      - { name: path, type: text }
+      - { name: sha256, type: text }
+      - { name: language, type: text, coded: language }
+    pk: [document_id]
+    id_key: [code]
+    unique: [[code]]
+    indexes: [[family, received_at], [sender_customer_id]]
+    load_order: 160
+    writer: documents
+    rows_expected: 9000
+    serves: [H-M, H-N]
+
+  - name: delivery_point
+    group: customers
+    grain: >-
+      a place goods go to (a chain's store or station, a customer's own store, a HoReCa address, an operator's depot,
+      an own shop, a web consumer's town)
+    columns:
+      - { name: delivery_point_id, type: bigint }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: store_id, type: bigint, nullable: true, ref: store.store_id }
+      - { name: name, type: text }
+      - { name: street, type: text, nullable: true }
+      - { name: town, type: text }
+      - { name: postcode, type: text, nullable: true }
+      - { name: okres_id, type: bigint, ref: okres.okres_id }
+      - { name: lat, type: "numeric(9,6)", nullable: true }
+      - { name: lon, type: "numeric(9,6)", nullable: true }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: time_window_from, type: time, nullable: true }
+      - { name: time_window_to, type: time, nullable: true }
+      - { name: unloading_minutes, type: integer }
+    pk: [delivery_point_id]
+    id_key: [customer, place]
+    indexes: [[customer_id], [store_id]]
+    load_order: 170
+    writer: setup
+    rows_expected: 10000
+    serves: [H-E]
+
+  - name: lifecycle_phase
+    group: customers
+    grain: a customer × a phase episode (potential · occasional · regular · VIP), with validity
+    columns:
+      - { name: lifecycle_phase_id, type: bigint }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: phase, type: text, coded: phase, label_cs: fáze zákazníka }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: reason, type: text, nullable: true }
+    pk: [lifecycle_phase_id]
+    id_key: [customer, valid_from]
+    indexes: [[customer_id, valid_from]]
+    load_order: 180
+    writer: month_end
+    rows_expected: 25000
+    serves: [H-A, H-H]
+
+  - name: competitor
+    group: customers
+    grain: a fictional competitor brand
+    columns:
+      - { name: competitor_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: business, type: text, coded: business }
+    pk: [competitor_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 190
+    writer: setup
+    rows_expected: 4
+    serves: [H-B, H-D]
+
+  # ── products ──────────────────────────────────────────────────────────────
+  - name: business
+    group: products
+    grain: a business (Coffee, Culinary)
+    columns:
+      - { name: business_id, type: bigint }
+      - { name: code, type: text, coded: business }
+      - { name: name, type: text }
+    pk: [business_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 200
+    writer: setup
+    rows_expected: 2
+    serves: []
+
+  - name: brand
+    group: products
+    grain: a brand (Harcafé, Harsoup)
+    columns:
+      - { name: brand_id, type: bigint }
+      - { name: business_id, type: bigint, ref: business.business_id }
+      - { name: code, type: text }
+      - { name: name, type: text }
+    pk: [brand_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 210
+    writer: setup
+    rows_expected: 2
+    serves: []
+
+  - name: product_line
+    group: products
+    grain: a product line (11), the P/L owner and the promotions' target
+    columns:
+      - { name: product_line_id, type: bigint }
+      - { name: brand_id, type: bigint, ref: brand.brand_id }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: is_premium, type: boolean }
+      - { name: is_professional, type: boolean }
+      - { name: max_agreed_discount_pct, type: "numeric(5,2)" }
+    pk: [product_line_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 220
+    writer: setup
+    rows_expected: 11
+    serves: [S2, H-G]
+
+  - name: product
+    group: products
+    grain: a product (a variant of a line)
+    columns:
+      - { name: product_id, type: bigint }
+      - { name: product_line_id, type: bigint, ref: product_line.product_line_id }
+      - { name: code, type: text }
+      - { name: name, type: text }
+    pk: [product_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 230
+    writer: setup
+    rows_expected: 45
+    serves: []
+
+  - name: competitor_product
+    group: customers
+    grain: a competitor's product, with the Hartland equivalent and the knowledge-base notes
+    columns:
+      - { name: competitor_product_id, type: bigint }
+      - { name: competitor_id, type: bigint, ref: competitor.competitor_id }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: equivalent_product_id, type: bigint, ref: product.product_id }
+      - { name: strengths, type: text }
+      - { name: weaknesses, type: text }
+      - { name: typical_price, type: "numeric(14,2)" }
+    pk: [competitor_product_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 235
+    writer: setup
+    rows_expected: 40
+    serves: [H-D]
+
+  - name: sku
+    group: products
+    grain: a sellable item (launches and delistings included)
+    columns:
+      - { name: sku_id, type: bigint }
+      - { name: sku_code, type: text }
+      - { name: product_id, type: bigint, ref: product.product_id }
+      - { name: name, type: text }
+      - { name: pack_format, type: text, coded: pack_format, label_cs: balení }
+      - { name: net_weight_g, type: integer }
+      - { name: units_per_case, type: integer }
+      - { name: case_weight_kg, type: "numeric(8,3)" }
+      - { name: shelf_life_days, type: integer }
+      - { name: vat_rate, type: "numeric(5,2)" }
+      - { name: importance, type: integer }
+      - { name: is_professional, type: boolean }
+      - { name: launched_on, type: date }
+      - { name: delisted_on, type: date, nullable: true }
+      - { name: launch_document_id, type: bigint, nullable: true, ref: document.document_id }
+      - { name: delist_document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [sku_id]
+    id_key: [sku_code]
+    unique: [[sku_code]]
+    indexes: [[product_id]]
+    load_order: 240
+    writer: setup
+    rows_expected: 125
+    serves: [S1, H-A, H-G]
+
+  - name: channel_listing
+    group: products
+    grain: a channel (or one chain of it) × a SKU it may buy, with validity
+    columns:
+      - { name: channel_listing_id, type: bigint }
+      - { name: channel, type: text, coded: channel }
+      - { name: chain_id, type: bigint, nullable: true, ref: chain.chain_id }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: listing_sequence, type: integer }
+    pk: [channel_listing_id]
+    id_key: [channel, chain, sku, valid_from]
+    indexes: [[channel, sku_id]]
+    load_order: 250
+    writer: setup
+    rows_expected: 900
+    serves: [H-A, H-G]
+
+  # ── pricing ───────────────────────────────────────────────────────────────
+  - name: standard_price_list
+    group: pricing
+    grain: a quarterly version of the standard price list
+    columns:
+      - { name: standard_price_list_id, type: bigint }
+      - { name: code, type: text }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: issued_by_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [standard_price_list_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 260
+    writer: quarter_end
+    rows_expected: 12
+    serves: [H-N]
+
+  - name: standard_price
+    group: pricing
+    grain: a standard price list version × a SKU
+    columns:
+      - { name: standard_price_list_id, type: bigint, ref: standard_price_list.standard_price_list_id }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: price_case, type: "numeric(14,2)" }
+      - { name: price_piece, type: "numeric(14,2)" }
+      - { name: purchase_price_case, type: "numeric(14,2)" }
+    pk: [standard_price_list_id, sku_id]
+    load_order: 270
+    writer: quarter_end
+    rows_expected: 1500
+    serves: []
+
+  - name: channel_price_list
+    group: pricing
+    grain: a monthly version of a channel's price list
+    columns:
+      - { name: channel_price_list_id, type: bigint }
+      - { name: channel, type: text, coded: channel }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: factor, type: "numeric(5,3)" }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [channel_price_list_id]
+    id_key: [channel, valid_from]
+    unique: [[channel, valid_from]]
+    load_order: 280
+    writer: month_end
+    rows_expected: 238
+    serves: [H-N]
+
+  - name: channel_price
+    group: pricing
+    grain: a channel price list version × a SKU
+    columns:
+      - { name: channel_price_list_id, type: bigint, ref: channel_price_list.channel_price_list_id }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: price_case, type: "numeric(14,2)" }
+      - { name: price_piece, type: "numeric(14,2)" }
+      - { name: is_override, type: boolean }
+    pk: [channel_price_list_id, sku_id]
+    load_order: 290
+    writer: month_end
+    rows_expected: 28000
+    serves: []
+
+  - name: customer_condition
+    group: pricing
+    grain: a retail customer × a month — the volume and cross-sell tiers computed from the month before
+    columns:
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: month, type: date }
+      - { name: prev_month_net_revenue, type: "numeric(14,2)" }
+      - { name: volume_tier, type: text, nullable: true }
+      - { name: volume_pct, type: "numeric(5,2)" }
+      - { name: prev_month_lines_bought, type: integer }
+      - { name: both_brands, type: boolean }
+      - { name: cross_sell_tier, type: text, nullable: true }
+      - { name: cross_sell_pct, type: "numeric(5,2)" }
+    pk: [customer_id, month]
+    load_order: 300
+    writer: month_end
+    rows_expected: 200000
+    serves: [S6]
+
+  - name: price_agreement
+    group: pricing
+    grain: >-
+      an agreed discount or individual price for one customer (retail agreed discounts, the KAMs' individual prices,
+      retro bonus terms)
+    columns:
+      - { name: price_agreement_id, type: bigint }
+      - { name: code, type: text }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: product_line_id, type: bigint, nullable: true, ref: product_line.product_line_id }
+      - { name: kind, type: text, coded: agreement_kind }
+      - { name: discount_pct, type: "numeric(5,2)", nullable: true }
+      - { name: price_case, type: "numeric(14,2)", nullable: true }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: agreed_by_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: budget_charge, type: "numeric(14,2)", nullable: true }
+    pk: [price_agreement_id]
+    id_key: [code]
+    unique: [[code]]
+    indexes: [[customer_id], [agreed_by_employee_id]]
+    load_order: 320
+    writer: [daily, month_end]
+    rows_expected: 20000
+    serves: [S6, H-D]
+
+  - name: discount_budget
+    group: pricing
+    grain: a rep or KAM × a quarter (its first day)
+    columns:
+      - { name: employee_id, type: bigint, ref: employee.employee_id }
+      - { name: quarter, type: date }
+      - { name: budget_amount, type: "numeric(14,2)" }
+      - { name: used_amount, type: "numeric(14,2)" }
+    pk: [employee_id, quarter]
+    load_order: 330
+    writer: [quarter_end, daily]
+    rows_expected: 840
+    serves: [S6, H-H]
+
+  # ── plans ─────────────────────────────────────────────────────────────────
+  - name: sales_plan
+    group: plans
+    grain: a month × a channel × a product line × (a key account or a rep area) — the split plan
+    columns:
+      - { name: sales_plan_id, type: bigint }
+      - { name: month, type: date }
+      - { name: channel, type: text, coded: channel }
+      - { name: product_line_id, type: bigint, ref: product_line.product_line_id }
+      - { name: customer_id, type: bigint, nullable: true, ref: customer.customer_id }
+      - { name: area_id, type: bigint, nullable: true, ref: area.area_id }
+      - { name: planned_cases, type: "numeric(12,3)" }
+      - { name: planned_net_revenue, type: "numeric(14,2)" }
+      - { name: version, type: integer }
+    pk: [sales_plan_id]
+    id_key: [month, channel, product_line, customer, area, version]
+    indexes: [[month, product_line_id]]
+    load_order: 340
+    writer: month_end
+    rows_expected: 25000
+    serves: [H-G, H-H]
+
+  - name: supply_plan
+    group: plans
+    grain: a month × a SKU × a DC
+    columns:
+      - { name: month, type: date }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: planned_cases, type: "numeric(12,3)" }
+    pk: [month, sku_id, dc_site_id]
+    load_order: 350
+    writer: month_end
+    rows_expected: 8500
+    serves: [H-F]
+
+  - name: stock_policy
+    group: plans
+    grain: a SKU × a DC — min and max days of cover, with validity
+    columns:
+      - { name: stock_policy_id, type: bigint }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: min_days_cover, type: "numeric(5,1)" }
+      - { name: max_days_cover, type: "numeric(5,1)" }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+    pk: [stock_policy_id]
+    id_key: [sku, dc, valid_from]
+    load_order: 360
+    writer: [setup, quarter_end]
+    rows_expected: 300
+    serves: [H-F, H-K]
+
+  - name: prompt_rule
+    group: plans
+    grain: a rep-prompt rule (kind, parameters, priority), with validity
+    columns:
+      - { name: prompt_rule_id, type: bigint }
+      - { name: code, type: text }
+      - { name: kind, type: text, coded: prompt_kind }
+      - { name: parameters, type: text }
+      - { name: priority, type: integer }
+      - { name: is_mandatory, type: boolean }
+      - { name: is_adaptable, type: boolean }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: owner_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [prompt_rule_id]
+    id_key: [code, valid_from]
+    load_order: 370
+    writer: setup
+    rows_expected: 15
+    serves: [H-A, H-K]
+
+  - name: lifecycle_rule
+    group: plans
+    grain: a lifecycle phase × a rule (contact frequency, allowed concessions, listing sequence), with validity
+    columns:
+      - { name: lifecycle_rule_id, type: bigint }
+      - { name: phase, type: text, coded: phase }
+      - { name: rule_kind, type: text, coded: rule_kind }
+      - { name: parameters, type: text }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [lifecycle_rule_id]
+    id_key: [phase, rule_kind, valid_from]
+    load_order: 380
+    writer: setup
+    rows_expected: 16
+    serves: [H-A, H-K]
+
+  - name: assignment
+    group: org
+    grain: >-
+      a person on a duty with validity — rep ↔ area, area manager ↔ region, KAM ↔ customer, PM ↔ line, dispatcher ↔
+      DC
+    columns:
+      - { name: assignment_id, type: bigint }
+      - { name: employee_id, type: bigint, ref: employee.employee_id }
+      - { name: kind, type: text, coded: assignment_kind }
+      - { name: area_id, type: bigint, nullable: true, ref: area.area_id }
+      - { name: region_id, type: bigint, nullable: true, ref: region.region_id }
+      - { name: customer_id, type: bigint, nullable: true, ref: customer.customer_id }
+      - { name: product_line_id, type: bigint, nullable: true, ref: product_line.product_line_id }
+      - { name: site_id, type: bigint, nullable: true, ref: site.site_id }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+    pk: [assignment_id]
+    id_key: [employee, kind, target, valid_from]
+    indexes: [[employee_id, valid_from], [area_id, valid_from]]
+    load_order: 390
+    writer: [setup, month_end]
+    rows_expected: 250
+    serves: [S3, H-H]
+
+  # ── marketing (the calendar the setup seeds) ──────────────────────────────
+  - name: campaign
+    group: marketing
+    grain: a marketing campaign (a line, a period, its media)
+    columns:
+      - { name: campaign_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: product_line_id, type: bigint, ref: product_line.product_line_id }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: has_tv, type: boolean }
+      - { name: has_outdoor, type: boolean }
+      - { name: has_digital, type: boolean }
+      - { name: has_instore, type: boolean }
+      - { name: budget, type: "numeric(14,2)" }
+      - { name: owner_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [campaign_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 400
+    writer: setup
+    rows_expected: 60
+    serves: [S2]
+
+  - name: promotion
+    group: marketing
+    grain: a promotion sheet — goal, target, budget, eligibility, period, mechanic
+    columns:
+      - { name: promotion_id, type: bigint }
+      - { name: code, type: text, label_cs: kód promoce }
+      - { name: name, type: text }
+      - { name: campaign_id, type: bigint, nullable: true, ref: campaign.campaign_id }
+      - { name: goal, type: text }
+      - { name: target_product_line_id, type: bigint, nullable: true, ref: product_line.product_line_id }
+      - { name: target_sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: target_uplift_pct, type: "numeric(6,2)" }
+      - { name: target_period_weeks, type: integer }
+      - { name: estimated_budget, type: "numeric(14,2)" }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: mechanic, type: text, coded: mechanic, label_cs: mechanika }
+      - { name: discount_pct, type: "numeric(5,2)", nullable: true }
+      - { name: condition_sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: condition_qty, type: "numeric(12,3)", nullable: true }
+      - { name: reward_sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: reward_qty, type: "numeric(12,3)", nullable: true }
+      - { name: is_mandatory, type: boolean }
+      - { name: is_pre_stocking, type: boolean }
+      - { name: owner_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: status, type: text, coded: promotion_status }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+    pk: [promotion_id]
+    id_key: [code]
+    unique: [[code]]
+    indexes: [[valid_from, valid_to]]
+    load_order: 410
+    writer: [setup, month_end]
+    rows_expected: 70
+    serves: [S2, S6, H-A, H-J]
+
+  - name: promotion_eligibility
+    group: marketing
+    grain: a promotion × a scope rule (channel, chain, region, store class, lifecycle phase)
+    columns:
+      - { name: promotion_eligibility_id, type: bigint }
+      - { name: promotion_id, type: bigint, ref: promotion.promotion_id }
+      - { name: scope_kind, type: text, coded: scope_kind }
+      - { name: scope_value, type: text }
+    pk: [promotion_eligibility_id]
+    id_key: [promotion, scope_kind, scope_value]
+    indexes: [[promotion_id]]
+    load_order: 420
+    writer: [setup, month_end]
+    rows_expected: 250
+    serves: [H-A]
+
+  - name: promotion_exclusion
+    group: marketing
+    grain: a pair of promotions that may not combine
+    columns:
+      - { name: promotion_id, type: bigint, ref: promotion.promotion_id }
+      - { name: excluded_promotion_id, type: bigint, ref: promotion.promotion_id }
+    pk: [promotion_id, excluded_promotion_id]
+    load_order: 430
+    writer: [setup, month_end]
+    rows_expected: 8
+    serves: []
+
+  - name: seasonal_exclusion
+    group: marketing
+    grain: a product line × a month of the year in which its listing prompts are suppressed
+    columns:
+      - { name: product_line_id, type: bigint, ref: product_line.product_line_id }
+      - { name: month_of_year, type: integer }
+    pk: [product_line_id, month_of_year]
+    load_order: 440
+    writer: setup
+    rows_expected: 20
+    serves: [H-A]
+
+  # ── field (the setup's half) ──────────────────────────────────────────────
+  - name: pos_material
+    group: field
+    grain: a point-of-sale item type — a give-away or an inventoried asset
+    columns:
+      - { name: pos_material_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: kind, type: text, coded: pos_kind }
+      - { name: unit_cost, type: "numeric(14,2)" }
+      - { name: product_line_id, type: bigint, nullable: true, ref: product_line.product_line_id }
+    pk: [pos_material_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 450
+    writer: setup
+    rows_expected: 25
+    serves: [S5, H-C]
+
+  - name: pos_asset
+    group: field
+    grain: an inventoried asset (floor display, counter display, fridge, vending branding)
+    columns:
+      - { name: pos_asset_id, type: bigint }
+      - { name: pos_material_id, type: bigint, ref: pos_material.pos_material_id }
+      - { name: asset_no, type: text }
+      - { name: acquired_on, type: date }
+      - { name: cost, type: "numeric(14,2)" }
+      - { name: region_id, type: bigint, ref: region.region_id }
+      - { name: condition, type: text, coded: asset_condition }
+      - { name: written_off_on, type: date, nullable: true }
+    pk: [pos_asset_id]
+    id_key: [asset_no]
+    unique: [[asset_no]]
+    load_order: 460
+    writer: [setup, month_end]
+    rows_expected: 3000
+    serves: [S5, H-C]
+
+  - name: tourplan
+    group: field
+    grain: a rep × a store (a customer or a potential one; every station) × a cycle, with validity
+    columns:
+      - { name: tourplan_id, type: bigint }
+      - { name: employee_id, type: bigint, ref: employee.employee_id }
+      - { name: store_id, type: bigint, ref: store.store_id }
+      - { name: customer_id, type: bigint, nullable: true, ref: customer.customer_id }
+      - { name: cycle_weeks, type: integer }
+      - { name: weekday, type: integer }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+    pk: [tourplan_id]
+    id_key: [employee, store, valid_from]
+    indexes: [[employee_id], [store_id]]
+    load_order: 470
+    writer: [setup, month_end]
+    rows_expected: 7500
+    serves: [S3, H-H]
+
+  # ── delivery (the setup's half) ───────────────────────────────────────────
+  - name: carrier
+    group: delivery
+    grain: a contracted carrier (3 per DC, a parcel carrier, an inbound carrier)
+    columns:
+      - { name: carrier_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: dc_site_id, type: bigint, nullable: true, ref: site.site_id }
+      - { name: rate_base, type: "numeric(14,2)" }
+      - { name: rate_per_km, type: "numeric(14,2)" }
+      - { name: rate_per_stop, type: "numeric(14,2)" }
+    pk: [carrier_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 480
+    writer: setup
+    rows_expected: 8
+    serves: [H-E]
+
+  - name: vehicle
+    group: delivery
+    grain: a carrier's vehicle
+    columns:
+      - { name: vehicle_id, type: bigint }
+      - { name: carrier_id, type: bigint, ref: carrier.carrier_id }
+      - { name: plate, type: text }
+      - { name: vehicle_class, type: text, coded: vehicle_class }
+      - { name: capacity_cases, type: integer }
+      - { name: capacity_kg, type: integer }
+    pk: [vehicle_id]
+    id_key: [plate]
+    unique: [[plate]]
+    load_order: 490
+    writer: setup
+    rows_expected: 60
+    serves: [H-E]
+
+  # ── supply (the setup's half) ─────────────────────────────────────────────
+  - name: supplier_terms
+    group: supply
+    grain: a factory × a SKU — lead time, reliability, sourcing share, with validity
+    columns:
+      - { name: supplier_entity_id, type: bigint, ref: legal_entity.legal_entity_id }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: valid_from, type: date }
+      - { name: valid_to, type: date }
+      - { name: lead_time_days, type: integer }
+      - { name: min_lot_cases, type: integer }
+      - { name: reliability_pct, type: "numeric(5,2)" }
+      - { name: sourcing_share, type: "numeric(4,3)" }
+    pk: [supplier_entity_id, sku_id, valid_from]
+    load_order: 500
+    writer: setup
+    rows_expected: 160
+    serves: [H-F]
+
+  # ── finance (the setup's half) ────────────────────────────────────────────
+  - name: supplier
+    group: finance
+    grain: an A/P partner (the three factories, carriers, DC operators, agencies, admin suppliers)
+    columns:
+      - { name: supplier_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: kind, type: text, coded: supplier_kind }
+      - { name: legal_entity_id, type: bigint, nullable: true, ref: legal_entity.legal_entity_id }
+    pk: [supplier_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 510
+    writer: setup
+    rows_expected: 30
+    serves: []
+
+  - name: gl_account
+    group: finance
+    grain: an account of the chart, with the P/L line it rolls to
+    columns:
+      - { name: gl_account_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: kind, type: text, coded: gl_kind }
+      - { name: pl_line, type: text, nullable: true, coded: pl_line }
+      - { name: vat_rate, type: "numeric(5,2)", nullable: true }
+    pk: [gl_account_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 520
+    writer: setup
+    rows_expected: 45
+    serves: [H-L]
+
+  - name: asset_register
+    group: finance
+    grain: an own depreciable asset (shop fit-outs, IT, the PoS assets in aggregate)
+    columns:
+      - { name: asset_register_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: cost_centre_id, type: bigint, ref: cost_centre.cost_centre_id }
+      - { name: acquired_on, type: date }
+      - { name: cost, type: "numeric(14,2)" }
+      - { name: useful_life_months, type: integer }
+    pk: [asset_register_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 530
+    writer: setup
+    rows_expected: 60
+    serves: []
+
+  # ── shops (the setup's half) ──────────────────────────────────────────────
+  - name: menu_item
+    group: shops
+    grain: an item the own shops' cafés serve, with the SKU it consumes
+    columns:
+      - { name: menu_item_id, type: bigint }
+      - { name: code, type: text }
+      - { name: name, type: text }
+      - { name: price_gross, type: "numeric(14,2)" }
+      - { name: vat_rate, type: "numeric(5,2)" }
+      - { name: consumes_sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: consumes_qty_g, type: "numeric(8,1)", nullable: true }
+    pk: [menu_item_id]
+    id_key: [code]
+    unique: [[code]]
+    load_order: 540
+    writer: setup
+    rows_expected: 15
+    serves: [H-G]
+
+  # ── field (the daily half) ────────────────────────────────────────────────
+  - name: visit_plan
+    group: field
+    grain: a planned visit, from the tourplan
+    columns:
+      - { name: visit_plan_id, type: bigint }
+      - { name: tourplan_id, type: bigint, ref: tourplan.tourplan_id }
+      - { name: planned_day, type: date }
+      - { name: employee_id, type: bigint, ref: employee.employee_id }
+      - { name: store_id, type: bigint, ref: store.store_id }
+    pk: [visit_plan_id]
+    id_key: [tourplan, planned_day]
+    indexes: [[employee_id, planned_day]]
+    load_order: 600
+    writer: daily
+    rows_expected: 270000
+    serves: [H-H]
+
+  - name: visit
+    group: field
+    grain: an actual visit (planned or ad hoc; the stations' merchandising visits included)
+    columns:
+      - { name: visit_id, type: bigint }
+      - { name: visit_plan_id, type: bigint, nullable: true, ref: visit_plan.visit_plan_id }
+      - { name: employee_id, type: bigint, ref: employee.employee_id }
+      - { name: store_id, type: bigint, ref: store.store_id }
+      - { name: customer_id, type: bigint, nullable: true, ref: customer.customer_id }
+      - { name: day, type: date }
+      - { name: time_in, type: timestamptz, nullable: true }
+      - { name: time_out, type: timestamptz, nullable: true }
+      - { name: kind, type: text, coded: visit_kind }
+      - { name: outcome, type: text, coded: visit_outcome, label_cs: výsledek návštěvy }
+      - { name: note, type: text, nullable: true }
+      - { name: recorded, type: boolean }
+    pk: [visit_id]
+    id_key: [employee, store, day]
+    indexes: [[employee_id, day], [store_id, day], [customer_id]]
+    load_order: 610
+    writer: daily
+    rows_expected: 250000
+    serves: [S3, H-A, H-B, H-H]
+
+  - name: visit_observation
+    group: field
+    grain: a visit × a product line — the perfect-store check
+    columns:
+      - { name: visit_id, type: bigint, ref: visit.visit_id }
+      - { name: product_line_id, type: bigint, ref: product_line.product_line_id }
+      - { name: facings, type: integer }
+      - { name: shelf_share_pct, type: "numeric(5,2)" }
+      - { name: out_of_stock, type: boolean }
+      - { name: secondary_placement, type: boolean }
+      - { name: promo_compliant, type: boolean, nullable: true }
+      - { name: competitor_facings, type: integer }
+      - { name: extra, type: jsonb, nullable: true }
+    pk: [visit_id, product_line_id]
+    load_order: 620
+    writer: daily
+    rows_expected: 1500000
+    serves: [S4, H-B, H-C]
+
+  - name: competitor_sighting
+    group: field
+    grain: a competitor's activity seen at a visit
+    columns:
+      - { name: competitor_sighting_id, type: bigint }
+      - { name: visit_id, type: bigint, ref: visit.visit_id }
+      - { name: competitor_id, type: bigint, ref: competitor.competitor_id }
+      - { name: competitor_product_id, type: bigint, nullable: true, ref: competitor_product.competitor_product_id }
+      - { name: activity_kind, type: text, coded: activity_kind }
+      - { name: price_seen, type: "numeric(14,2)", nullable: true }
+      - { name: description, type: text, nullable: true }
+      - { name: confirmed, type: boolean }
+    pk: [competitor_sighting_id]
+    id_key: [visit, competitor, seq]
+    indexes: [[visit_id], [competitor_id]]
+    load_order: 630
+    writer: daily
+    rows_expected: 12000
+    serves: [H-B, H-D]
+
+  - name: pos_loan
+    group: field
+    grain: an asset lent to a customer, with its period
+    columns:
+      - { name: pos_loan_id, type: bigint }
+      - { name: pos_asset_id, type: bigint, ref: pos_asset.pos_asset_id }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: store_id, type: bigint, nullable: true, ref: store.store_id }
+      - { name: lent_on, type: date }
+      - { name: returned_on, type: date, nullable: true }
+      - { name: placed_by_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: approved_by_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: condition_on_return, type: text, nullable: true, coded: asset_condition }
+    pk: [pos_loan_id]
+    id_key: [pos_asset, lent_on]
+    indexes: [[customer_id], [pos_asset_id]]
+    load_order: 640
+    writer: [daily, month_end]
+    rows_expected: 6000
+    serves: [S5, H-C]
+
+  - name: pos_handout
+    group: field
+    grain: give-aways handed out at a visit
+    columns:
+      - { name: pos_handout_id, type: bigint }
+      - { name: visit_id, type: bigint, ref: visit.visit_id }
+      - { name: pos_material_id, type: bigint, ref: pos_material.pos_material_id }
+      - { name: qty, type: integer }
+      - { name: cost, type: "numeric(14,2)" }
+    pk: [pos_handout_id]
+    id_key: [visit, pos_material]
+    indexes: [[visit_id]]
+    load_order: 650
+    writer: daily
+    rows_expected: 150000
+    serves: [S5]
+
+  # ── orders ────────────────────────────────────────────────────────────────
+  - name: sales_order
+    group: orders
+    grain: an order, any channel
+    columns:
+      - { name: sales_order_id, type: bigint }
+      - { name: order_no, type: text, label_cs: číslo objednávky }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: delivery_point_id, type: bigint, ref: delivery_point.delivery_point_id }
+      - { name: channel, type: text, coded: channel }
+      - { name: ordered_on, type: date }
+      - { name: requested_on, type: date }
+      - { name: source, type: text, coded: order_source }
+      - { name: taken_by_employee_id, type: bigint, nullable: true, ref: employee.employee_id }
+      - { name: visit_id, type: bigint, nullable: true, ref: visit.visit_id }
+      - { name: status, type: text, coded: order_status }
+      - { name: hold_reason, type: text, nullable: true, coded: hold_reason }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+    pk: [sales_order_id]
+    id_key: [order_no]
+    unique: [[order_no]]
+    indexes: [[customer_id, ordered_on], [ordered_on], [taken_by_employee_id]]
+    load_order: 700
+    writer: daily
+    rows_expected: 870000
+    serves: [S1, S2, S3, S4, S5, S6, H-I]
+
+  - name: sales_order_line
+    group: orders
+    grain: an order × a SKU (free-goods lines included)
+    columns:
+      - { name: sales_order_line_id, type: bigint }
+      - { name: sales_order_id, type: bigint, ref: sales_order.sales_order_id }
+      - { name: line_no, type: integer }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: qty_cases, type: "numeric(12,3)" }
+      - { name: qty_pieces, type: "numeric(12,3)" }
+      - { name: list_price_case, type: "numeric(14,2)" }
+      - { name: discount_total_case, type: "numeric(14,2)" }
+      - { name: discount_total, type: "numeric(14,2)" }
+      - { name: invoice_price_case, type: "numeric(14,2)" }
+      - { name: is_free_goods, type: boolean }
+      - { name: purchase_price_case, type: "numeric(14,2)" }
+      - { name: inbound_cost_case, type: "numeric(14,2)" }
+      - { name: warehouse_cost_case, type: "numeric(14,2)", nullable: true }
+      - { name: delivery_cost_case, type: "numeric(14,2)", nullable: true }
+      - { name: marketing_cost_case, type: "numeric(14,2)", nullable: true }
+      - { name: vat_rate, type: "numeric(5,2)" }
+    pk: [sales_order_line_id]
+    id_key: [order_no, line_no]
+    unique: [[sales_order_id, line_no]]
+    indexes: [[sku_id]]
+    load_order: 710
+    writer: [daily, month_end]
+    rows_expected: 6500000
+    serves: [S1, S2, S3, S4, S5, S6, H-L]
+
+  - name: sales_order_line_discount
+    group: orders
+    grain: an order line × an applied discount, in the order applied (NH-D6)
+    columns:
+      - { name: sales_order_line_id, type: bigint, ref: sales_order_line.sales_order_line_id }
+      - { name: seq, type: integer }
+      - { name: kind, type: text, coded: discount_kind, label_cs: druh slevy }
+      - { name: code, type: text }
+      - { name: promotion_id, type: bigint, nullable: true, ref: promotion.promotion_id }
+      - { name: price_agreement_id, type: bigint, nullable: true, ref: price_agreement.price_agreement_id }
+      - { name: pct, type: "numeric(5,2)", nullable: true }
+      - { name: amount_case, type: "numeric(14,2)" }
+      - { name: amount_line, type: "numeric(14,2)" }
+      - { name: budget, type: text, coded: budget }
+    pk: [sales_order_line_id, seq]
+    indexes: [[promotion_id], [price_agreement_id], [kind]]
+    load_order: 720
+    writer: [daily, year_end]
+    rows_expected: 6000000
+    serves: [S2, S6, H-L]
+
+  # ── supply (the daily half) ───────────────────────────────────────────────
+  - name: purchase_order
+    group: supply
+    grain: a purchase order from the Center to a factory
+    columns:
+      - { name: purchase_order_id, type: bigint }
+      - { name: po_no, type: text }
+      - { name: supplier_entity_id, type: bigint, ref: legal_entity.legal_entity_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: ordered_on, type: date }
+      - { name: requested_on, type: date }
+      - { name: status, type: text, coded: po_status }
+      - { name: raised_by, type: text, coded: raised_by }
+    pk: [purchase_order_id]
+    id_key: [po_no]
+    unique: [[po_no]]
+    load_order: 730
+    writer: daily
+    rows_expected: 900
+    serves: [H-F]
+
+  - name: purchase_order_line
+    group: supply
+    grain: a purchase order × a SKU
+    columns:
+      - { name: purchase_order_line_id, type: bigint }
+      - { name: purchase_order_id, type: bigint, ref: purchase_order.purchase_order_id }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: qty_cases, type: "numeric(12,3)" }
+      - { name: purchase_price_case, type: "numeric(14,2)" }
+    pk: [purchase_order_line_id]
+    id_key: [po_no, sku]
+    indexes: [[purchase_order_id]]
+    load_order: 740
+    writer: daily
+    rows_expected: 35000
+    serves: []
+
+  - name: inbound_transport
+    group: supply
+    grain: a factory → DC trip by the contracted carrier
+    columns:
+      - { name: inbound_transport_id, type: bigint }
+      - { name: carrier_id, type: bigint, ref: carrier.carrier_id }
+      - { name: from_site_id, type: bigint, ref: site.site_id }
+      - { name: to_site_id, type: bigint, ref: site.site_id }
+      - { name: day, type: date }
+      - { name: cost, type: "numeric(14,2)" }
+    pk: [inbound_transport_id]
+    id_key: [from_site, to_site, day]
+    load_order: 750
+    writer: daily
+    rows_expected: 900
+    serves: []
+
+  - name: goods_receipt
+    group: supply
+    grain: a receipt at a DC
+    columns:
+      - { name: goods_receipt_id, type: bigint }
+      - { name: purchase_order_id, type: bigint, ref: purchase_order.purchase_order_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: received_on, type: date }
+      - { name: inbound_transport_id, type: bigint, nullable: true, ref: inbound_transport.inbound_transport_id }
+    pk: [goods_receipt_id]
+    id_key: [po_no, received_on]
+    load_order: 760
+    writer: daily
+    rows_expected: 900
+    serves: []
+
+  - name: goods_receipt_line
+    group: supply
+    grain: a receipt × a SKU, with its batch
+    columns:
+      - { name: goods_receipt_line_id, type: bigint }
+      - { name: goods_receipt_id, type: bigint, ref: goods_receipt.goods_receipt_id }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: qty_cases, type: "numeric(12,3)" }
+      - { name: batch, type: text }
+      - { name: best_before, type: date }
+    pk: [goods_receipt_line_id]
+    id_key: [goods_receipt, sku, batch]
+    indexes: [[goods_receipt_id], [batch]]
+    load_order: 770
+    writer: daily
+    rows_expected: 35000
+    serves: [H-M]
+
+  - name: stock_day
+    group: supply
+    grain: a SKU × a DC × a day — the ledger's daily snapshot
+    columns:
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: day, type: date }
+      - { name: on_hand_cases, type: "numeric(12,3)" }
+      - { name: reserved_cases, type: "numeric(12,3)" }
+      - { name: in_transit_cases, type: "numeric(12,3)" }
+      - { name: days_cover, type: "numeric(7,1)", nullable: true }
+      - { name: below_min, type: boolean }
+      - { name: above_max, type: boolean }
+    pk: [sku_id, dc_site_id, day]
+    load_order: 780
+    writer: daily
+    rows_expected: 260000
+    serves: [H-F, H-G]
+
+  - name: stock_movement
+    group: supply
+    grain: a stock movement (receipt, pick, transfer, write-off, return)
+    columns:
+      - { name: stock_movement_id, type: bigint }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: day, type: date }
+      - { name: kind, type: text, coded: movement_kind }
+      - { name: qty_cases, type: "numeric(12,3)" }
+      - { name: ref_table, type: text, nullable: true }
+      - { name: ref_id, type: bigint, nullable: true }
+    pk: [stock_movement_id]
+    id_key: [ref_table, ref_id, sku, dc, day, kind]
+    indexes: [[sku_id, dc_site_id, day]]
+    load_order: 790
+    writer: daily
+    rows_expected: 1000000
+    serves: []
+
+  - name: stockout
+    group: supply
+    grain: a SKU × a DC × an episode without stock
+    columns:
+      - { name: stockout_id, type: bigint }
+      - { name: sku_id, type: bigint, ref: sku.sku_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: from_day, type: date }
+      - { name: to_day, type: date, nullable: true }
+      - { name: lost_order_lines, type: integer }
+    pk: [stockout_id]
+    id_key: [sku, dc, from_day]
+    load_order: 800
+    writer: daily
+    rows_expected: 400
+    serves: [H-F, H-G]
+
+  # ── delivery (the daily half) ─────────────────────────────────────────────
+  - name: shipment
+    group: delivery
+    grain: an order (or part of one) → one delivery; web parcels aggregated per day × town
+    columns:
+      - { name: shipment_id, type: bigint }
+      - { name: sales_order_id, type: bigint, ref: sales_order.sales_order_id }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: delivery_point_id, type: bigint, ref: delivery_point.delivery_point_id }
+      - { name: planned_day, type: date }
+      - { name: cases, type: "numeric(12,3)" }
+      - { name: weight_kg, type: "numeric(10,1)" }
+      - { name: status, type: text, coded: shipment_status }
+      - { name: delivered_at, type: timestamptz, nullable: true }
+      - { name: otif, type: boolean, nullable: true }
+    pk: [shipment_id]
+    id_key: [order_no, seq]
+    indexes: [[sales_order_id], [planned_day]]
+    load_order: 810
+    writer: daily
+    rows_expected: 700000
+    serves: [H-E]
+
+  - name: route
+    group: delivery
+    grain: a DC × a day × a vehicle run — the plan, and each re-plan as a new version
+    columns:
+      - { name: route_id, type: bigint }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: day, type: date }
+      - { name: carrier_id, type: bigint, ref: carrier.carrier_id }
+      - { name: vehicle_id, type: bigint, nullable: true, ref: vehicle.vehicle_id }
+      - { name: version, type: integer }
+      - { name: superseded_by_route_id, type: bigint, nullable: true, ref: route.route_id }
+      - { name: planned_departure, type: timestamptz }
+      - { name: planned_km, type: "numeric(8,1)" }
+      - { name: planned_stops, type: integer }
+      - { name: planned_cost, type: "numeric(14,2)" }
+      - { name: actual_km, type: "numeric(8,1)", nullable: true }
+      - { name: actual_cost, type: "numeric(14,2)", nullable: true }
+      - { name: planner, type: text, coded: planner }
+      - { name: status, type: text, coded: route_status }
+    pk: [route_id]
+    id_key: [dc, day, vehicle, version]
+    indexes: [[day, dc_site_id], [carrier_id, day]]
+    load_order: 820
+    writer: daily
+    rows_expected: 42000
+    serves: [H-E]
+
+  - name: route_stop
+    group: delivery
+    grain: a route × a stop
+    columns:
+      - { name: route_stop_id, type: bigint }
+      - { name: route_id, type: bigint, ref: route.route_id }
+      - { name: seq, type: integer }
+      - { name: shipment_id, type: bigint, ref: shipment.shipment_id }
+      - { name: delivery_point_id, type: bigint, ref: delivery_point.delivery_point_id }
+      - { name: planned_arrival, type: timestamptz }
+      - { name: window_from, type: time, nullable: true }
+      - { name: window_to, type: time, nullable: true }
+      - { name: actual_arrival, type: timestamptz, nullable: true }
+      - { name: status, type: text, coded: stop_status }
+    pk: [route_stop_id]
+    id_key: [route, seq]
+    unique: [[route_id, seq]]
+    indexes: [[shipment_id]]
+    load_order: 830
+    writer: daily
+    rows_expected: 700000
+    serves: [H-E]
+
+  - name: delivery_event
+    group: delivery
+    grain: a real-time obstacle on a route
+    columns:
+      - { name: delivery_event_id, type: bigint }
+      - { name: route_id, type: bigint, ref: route.route_id }
+      - { name: route_stop_id, type: bigint, nullable: true, ref: route_stop.route_stop_id }
+      - { name: occurred_at, type: timestamptz }
+      - { name: kind, type: text, coded: event_kind }
+      - { name: severity, type: text, coded: severity }
+      - { name: description, type: text }
+      - { name: reported_by, type: text, coded: reporter }
+    pk: [delivery_event_id]
+    id_key: [route, occurred_at, kind]
+    indexes: [[route_id]]
+    load_order: 840
+    writer: daily
+    rows_expected: 1200
+    serves: [H-E]
+
+  - name: dispatch_case
+    group: delivery
+    grain: the handling of a delivery event — the decision, the re-plan, its cost
+    columns:
+      - { name: dispatch_case_id, type: bigint }
+      - { name: delivery_event_id, type: bigint, ref: delivery_event.delivery_event_id }
+      - { name: opened_at, type: timestamptz }
+      - { name: closed_at, type: timestamptz, nullable: true }
+      - { name: dispatcher_employee_id, type: bigint, ref: employee.employee_id }
+      - { name: resolution, type: text, coded: resolution }
+      - { name: extra_cost, type: "numeric(14,2)" }
+      - { name: stops_moved, type: integer }
+      - { name: stops_slipped, type: integer }
+      - { name: note, type: text, nullable: true }
+    pk: [dispatch_case_id]
+    id_key: [delivery_event]
+    load_order: 850
+    writer: daily
+    rows_expected: 1200
+    serves: [H-E]
+
+  - name: dc_invoice
+    group: delivery
+    grain: a DC operator's monthly invoice (fixed + per case) — the warehouse cost
+    columns:
+      - { name: dc_invoice_id, type: bigint }
+      - { name: dc_site_id, type: bigint, ref: site.site_id }
+      - { name: month, type: date }
+      - { name: fixed_amount, type: "numeric(14,2)" }
+      - { name: cases_handled, type: "numeric(12,3)" }
+      - { name: rate_per_case, type: "numeric(14,2)" }
+      - { name: amount, type: "numeric(14,2)" }
+    pk: [dc_invoice_id]
+    id_key: [dc, month]
+    load_order: 860
+    writer: month_end
+    rows_expected: 68
+    serves: []
+
+  # ── finance (the daily half) ──────────────────────────────────────────────
+  - name: invoice
+    group: finance
+    grain: an invoice or credit note
+    columns:
+      - { name: invoice_id, type: bigint }
+      - { name: invoice_no, type: text, label_cs: číslo faktury }
+      - { name: kind, type: text, coded: invoice_kind }
+      - { name: customer_id, type: bigint, nullable: true, ref: customer.customer_id }
+      - { name: legal_entity_id, type: bigint, ref: legal_entity.legal_entity_id }
+      - { name: issued_on, type: date }
+      - { name: due_on, type: date }
+      - { name: net_amount, type: "numeric(14,2)" }
+      - { name: vat_amount, type: "numeric(14,2)" }
+      - { name: gross_amount, type: "numeric(14,2)" }
+      - { name: shipment_id, type: bigint, nullable: true, ref: shipment.shipment_id }
+      - { name: sales_order_id, type: bigint, nullable: true, ref: sales_order.sales_order_id }
+      - { name: status, type: text, coded: invoice_status }
+    pk: [invoice_id]
+    id_key: [invoice_no]
+    unique: [[invoice_no]]
+    indexes: [[customer_id, due_on], [status]]
+    load_order: 870
+    writer: [daily, year_end]
+    rows_expected: 850000
+    serves: [H-I]
+
+  - name: invoice_line
+    group: finance
+    grain: an invoice × an order line (or a credit reason)
+    columns:
+      - { name: invoice_line_id, type: bigint }
+      - { name: invoice_id, type: bigint, ref: invoice.invoice_id }
+      - { name: sales_order_line_id, type: bigint, nullable: true, ref: sales_order_line.sales_order_line_id }
+      - { name: qty_cases, type: "numeric(12,3)" }
+      - { name: net_amount, type: "numeric(14,2)" }
+      - { name: vat_rate, type: "numeric(5,2)" }
+      - { name: vat_amount, type: "numeric(14,2)" }
+      - { name: credit_reason, type: text, nullable: true }
+    pk: [invoice_line_id]
+    id_key: [invoice_no, line]
+    indexes: [[invoice_id], [sales_order_line_id]]
+    load_order: 880
+    writer: [daily, year_end]
+    rows_expected: 6500000
+    serves: []
+
+  - name: payment
+    group: finance
+    grain: an incoming payment
+    columns:
+      - { name: payment_id, type: bigint }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: received_on, type: date }
+      - { name: amount, type: "numeric(14,2)" }
+      - { name: method, type: text, coded: payment_method }
+    pk: [payment_id]
+    id_key: [customer, received_on, seq]
+    indexes: [[customer_id, received_on]]
+    load_order: 890
+    writer: daily
+    rows_expected: 850000
+    serves: [H-I]
+
+  - name: payment_allocation
+    group: finance
+    grain: a payment ↔ an invoice
+    columns:
+      - { name: payment_id, type: bigint, ref: payment.payment_id }
+      - { name: invoice_id, type: bigint, ref: invoice.invoice_id }
+      - { name: amount, type: "numeric(14,2)" }
+    pk: [payment_id, invoice_id]
+    indexes: [[invoice_id]]
+    load_order: 900
+    writer: daily
+    rows_expected: 870000
+    serves: []
+
+  - name: dunning
+    group: finance
+    grain: a reminder sent
+    columns:
+      - { name: dunning_id, type: bigint }
+      - { name: invoice_id, type: bigint, ref: invoice.invoice_id }
+      - { name: level, type: integer }
+      - { name: sent_on, type: date }
+    pk: [dunning_id]
+    id_key: [invoice_no, level]
+    indexes: [[invoice_id]]
+    load_order: 910
+    writer: daily
+    rows_expected: 30000
+    serves: [H-I]
+
+  - name: return
+    group: orders
+    grain: goods returned (damaged, expired, wrong) — the goods movement; the customer's request is `return_request_hdr`
+    columns:
+      - { name: return_id, type: bigint }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: sales_order_line_id, type: bigint, ref: sales_order_line.sales_order_line_id }
+      - { name: returned_on, type: date }
+      - { name: qty_cases, type: "numeric(12,3)" }
+      - { name: reason, type: text, coded: return_reason }
+      - { name: credit_invoice_id, type: bigint, nullable: true, ref: invoice.invoice_id }
+    pk: [return_id]
+    id_key: [order_no, line_no, returned_on]
+    indexes: [[customer_id]]
+    load_order: 920
+    writer: daily
+    rows_expected: 15000
+    serves: []
+
+  - name: ap_invoice
+    group: finance
+    grain: a supplier invoice (intercompany for the purchase orders; carriers; DC operators; media; admin)
+    columns:
+      - { name: ap_invoice_id, type: bigint }
+      - { name: supplier_id, type: bigint, ref: supplier.supplier_id }
+      - { name: issued_on, type: date }
+      - { name: due_on, type: date }
+      - { name: net_amount, type: "numeric(14,2)" }
+      - { name: vat_amount, type: "numeric(14,2)" }
+      - { name: ref_kind, type: text, coded: ap_ref_kind }
+      - { name: ref_id, type: bigint, nullable: true }
+      - { name: paid_on, type: date, nullable: true }
+    pk: [ap_invoice_id]
+    id_key: [supplier, ref_kind, ref_id, issued_on]
+    indexes: [[supplier_id, issued_on]]
+    load_order: 930
+    writer: [daily, month_end]
+    rows_expected: 25000
+    serves: []
+
+  - name: gl_journal
+    group: finance
+    grain: a month × an account × a cost centre (× a product line and channel where allocable)
+    columns:
+      - { name: gl_journal_id, type: bigint }
+      - { name: month, type: date }
+      - { name: gl_account_id, type: bigint, ref: gl_account.gl_account_id }
+      - { name: cost_centre_id, type: bigint, nullable: true, ref: cost_centre.cost_centre_id }
+      - { name: product_line_id, type: bigint, nullable: true, ref: product_line.product_line_id }
+      - { name: channel, type: text, nullable: true, coded: channel }
+      - { name: amount, type: "numeric(14,2)" }
+      - { name: source, type: text, coded: gl_source }
+    pk: [gl_journal_id]
+    id_key: [month, account, cost_centre, product_line, channel, source]
+    indexes: [[month, gl_account_id]]
+    load_order: 940
+    writer: month_end
+    rows_expected: 46000
+    serves: [H-L]
+
+  # ── marketing (the period ends' half) ─────────────────────────────────────
+  - name: campaign_cost
+    group: marketing
+    grain: a campaign × a month × a media line — the marketing cost postings
+    columns:
+      - { name: campaign_cost_id, type: bigint }
+      - { name: campaign_id, type: bigint, ref: campaign.campaign_id }
+      - { name: month, type: date }
+      - { name: media, type: text, coded: media }
+      - { name: amount, type: "numeric(14,2)" }
+      - { name: ap_invoice_id, type: bigint, nullable: true, ref: ap_invoice.ap_invoice_id }
+    pk: [campaign_cost_id]
+    id_key: [campaign, month, media]
+    load_order: 950
+    writer: month_end
+    rows_expected: 500
+    serves: [S2]
+
+  - name: promotion_result
+    group: marketing
+    grain: a promotion × a week (its Monday) — the realised uplift, cost and result against the target
+    columns:
+      - { name: promotion_id, type: bigint, ref: promotion.promotion_id }
+      - { name: week, type: date }
+      - { name: baseline_cases, type: "numeric(12,3)" }
+      - { name: actual_cases, type: "numeric(12,3)" }
+      - { name: uplift_pct, type: "numeric(7,2)" }
+      - { name: promotion_cost, type: "numeric(14,2)" }
+      - { name: free_goods_cost, type: "numeric(14,2)" }
+      - { name: incremental_net_revenue, type: "numeric(14,2)" }
+      - { name: incremental_customer_margin, type: "numeric(14,2)" }
+    pk: [promotion_id, week]
+    load_order: 960
+    writer: month_end
+    rows_expected: 500
+    serves: [S2, S6, H-G, H-J]
+
+  - name: rep_prompt
+    group: field
+    grain: a prompt generated for a rep (by the rules, later by the agents), with its outcome
+    columns:
+      - { name: rep_prompt_id, type: bigint }
+      - { name: employee_id, type: bigint, ref: employee.employee_id }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: visit_id, type: bigint, nullable: true, ref: visit.visit_id }
+      - { name: generated_on, type: date }
+      - { name: kind, type: text, coded: prompt_kind }
+      - { name: prompt_rule_id, type: bigint, nullable: true, ref: prompt_rule.prompt_rule_id }
+      - { name: priority, type: integer }
+      - { name: payload, type: text }
+      - { name: explanation, type: text }
+      - { name: outcome, type: text, coded: prompt_outcome }
+      - { name: outcome_reason, type: text, nullable: true }
+      - { name: classified_on, type: date, nullable: true }
+      - { name: generated_by, type: text, coded: generated_by }
+    pk: [rep_prompt_id]
+    id_key: [employee, customer, generated_on, kind, seq]
+    indexes: [[employee_id, generated_on], [customer_id]]
+    load_order: 970
+    writer: daily
+    rows_expected: 120000
+    serves: [H-A, H-D, H-H, H-K]
+
+  # ── shops (the daily half) ────────────────────────────────────────────────
+  - name: shop_receipt
+    group: shops
+    grain: a till receipt in an own shop
+    columns:
+      - { name: shop_receipt_id, type: bigint }
+      - { name: site_id, type: bigint, ref: site.site_id }
+      - { name: at, type: timestamptz }
+      - { name: register_no, type: integer }
+      - { name: gross_amount, type: "numeric(14,2)" }
+      - { name: payment_method, type: text, coded: payment_method }
+    pk: [shop_receipt_id]
+    id_key: [site, register_no, at]
+    indexes: [[site_id, at]]
+    load_order: 980
+    writer: daily
+    rows_expected: 1500000
+    serves: [S1, H-G]
+
+  - name: shop_receipt_line
+    group: shops
+    grain: a receipt × an item (a SKU sold retail at 12 %, or a served drink at 21 %)
+    columns:
+      - { name: shop_receipt_line_id, type: bigint }
+      - { name: shop_receipt_id, type: bigint, ref: shop_receipt.shop_receipt_id }
+      - { name: sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: menu_item_id, type: bigint, nullable: true, ref: menu_item.menu_item_id }
+      - { name: qty, type: "numeric(12,3)" }
+      - { name: unit_price_gross, type: "numeric(14,2)" }
+      - { name: vat_rate, type: "numeric(5,2)" }
+    pk: [shop_receipt_line_id]
+    id_key: [shop_receipt, line]
+    indexes: [[shop_receipt_id], [sku_id]]
+    load_order: 990
+    writer: daily
+    rows_expected: 3500000
+    serves: [H-G]
+
+  # ── documents (the facts the documents are about) ─────────────────────────
+  - name: document_golden
+    group: documents
+    grain: the expected extraction of a generated document (the DocWH's answer key)
+    docwh: false
+    columns:
+      - { name: document_id, type: bigint, ref: document.document_id }
+      - { name: schema, type: text }
+      - { name: payload, type: jsonb }
+      - { name: mentions, type: jsonb }
+    pk: [document_id]
+    load_order: 1000
+    writer: documents
+    rows_expected: 9000
+    serves: [H-M]
+
+  - name: complaint
+    group: documents
+    grain: a complaint as the company records it
+    docwh: false
+    columns:
+      - { name: complaint_id, type: bigint }
+      - { name: code, type: text }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+      - { name: received_on, type: date }
+      - { name: kind, type: text, coded: complaint_kind }
+      - { name: sku_id, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: sales_order_id, type: bigint, nullable: true, ref: sales_order.sales_order_id }
+      - { name: invoice_id, type: bigint, nullable: true, ref: invoice.invoice_id }
+      - { name: shipment_id, type: bigint, nullable: true, ref: shipment.shipment_id }
+      - { name: severity, type: text, coded: severity }
+      - { name: status, type: text, coded: complaint_status }
+      - { name: resolution, type: text, nullable: true }
+      - { name: resolved_on, type: date, nullable: true }
+      - { name: owner_employee_id, type: bigint, nullable: true, ref: employee.employee_id }
+      - { name: source, type: text, coded: source }
+    pk: [complaint_id]
+    id_key: [code]
+    unique: [[code]]
+    indexes: [[customer_id], [received_on]]
+    load_order: 1010
+    writer: daily
+    rows_expected: 2500
+    serves: [H-M, H-G, H-H]
+
+  # The return-request family, taken over from the automation extension (its tables and column names unchanged; the
+  # ids widened to this world's bigint ids; `document_id` and `source` added — contracts §5, §9).
+  - name: return_request_hdr
+    group: documents
+    grain: a customer's return request (the header; its state is derived from its lines by the view return_request)
+    docwh: false
+    columns:
+      - { name: rr_request_number, type: bigint }
+      - { name: rr_customer_sk, type: bigint, ref: customer.customer_id }
+      - { name: rr_order_number, type: bigint, ref: sales_order.sales_order_id }
+      - { name: rr_channel, type: text }
+      - { name: rr_requested_date, type: date }
+      - { name: document_id, type: bigint, nullable: true, ref: document.document_id }
+      - { name: source, type: text, coded: source }
+    pk: [rr_request_number]
+    id_key: [customer, requested_date, seq]
+    indexes: [[rr_customer_sk]]
+    load_order: 1020
+    writer: daily
+    rows_expected: 15000
+    serves: [H-I, H-M]
+
+  - name: return_request_line
+    group: documents
+    grain: a line of a return request — the key of the return flow
+    docwh: false
+    columns:
+      - { name: rl_line_id, type: bigint }
+      - { name: rl_request_number, type: bigint, ref: return_request_hdr.rr_request_number }
+      - { name: rl_line_no, type: integer }
+      - { name: rl_item_sk, type: bigint, ref: sku.sku_id }
+      - { name: rl_quantity, type: integer }
+      - { name: rl_unit_price, type: "numeric(12,2)" }
+      - { name: rl_reason, type: text, coded: return_line_reason }
+      - { name: rl_requested_resolution, type: text, coded: requested_resolution }
+      - { name: rl_requested_variant_sk, type: bigint, nullable: true, ref: sku.sku_id }
+      - { name: rl_state, type: text, coded: return_line_state }
+      - { name: rl_way, type: text, nullable: true }
+      - { name: rl_customer_sk, type: bigint, ref: customer.customer_id }
+    pk: [rl_line_id]
+    id_key: [request, line_no]
+    indexes: [[rl_request_number], [rl_customer_sk]]
+    load_order: 1030
+    writer: daily
+    rows_expected: 20000
+    serves: [H-I, H-M]
+
+  - name: return_receipt
+    group: documents
+    grain: goods received back against a return line
+    docwh: false
+    columns:
+      - { name: rc_receipt_id, type: bigint }
+      - { name: rc_line_id, type: bigint, ref: return_request_line.rl_line_id }
+      - { name: rc_received_date, type: date }
+      - { name: rc_item_sk, type: bigint, ref: sku.sku_id }
+      - { name: rc_quantity, type: integer }
+      - { name: rc_condition, type: text, coded: receipt_condition }
+    pk: [rc_receipt_id]
+    id_key: [line, received_date]
+    indexes: [[rc_line_id]]
+    load_order: 1040
+    writer: daily
+    rows_expected: 10000
+    serves: [H-I]
+
+  - name: credit_note
+    group: documents
+    grain: a credit note settling a return line
+    docwh: false
+    columns:
+      - { name: cn_credit_note_id, type: bigint }
+      - { name: cn_line_id, type: bigint, ref: return_request_line.rl_line_id }
+      - { name: cn_customer_sk, type: bigint, ref: customer.customer_id }
+      - { name: cn_issued_date, type: date }
+      - { name: cn_amount, type: "numeric(12,2)" }
+      - { name: cn_status, type: text, coded: credit_note_status }
+    pk: [cn_credit_note_id]
+    id_key: [line, issued_date]
+    indexes: [[cn_line_id]]
+    load_order: 1050
+    writer: daily
+    rows_expected: 10000
+    serves: [H-I]
+
+  - name: refund_payment
+    group: documents
+    grain: the payment of a credit note
+    docwh: false
+    columns:
+      - { name: rp_payment_id, type: bigint }
+      - { name: rp_credit_note_id, type: bigint, ref: credit_note.cn_credit_note_id }
+      - { name: rp_paid_date, type: date }
+      - { name: rp_amount, type: "numeric(12,2)" }
+    pk: [rp_payment_id]
+    id_key: [credit_note, paid_date]
+    load_order: 1060
+    writer: daily
+    rows_expected: 8000
+    serves: [H-I]
+
+  - name: replacement_shipment
+    group: documents
+    grain: a replacement sent for a return line
+    docwh: false
+    columns:
+      - { name: rs_shipment_id, type: bigint }
+      - { name: rs_line_id, type: bigint, ref: return_request_line.rl_line_id }
+      - { name: rs_item_sk, type: bigint, ref: sku.sku_id }
+      - { name: rs_quantity, type: integer }
+      - { name: rs_shipped_date, type: date }
+    pk: [rs_shipment_id]
+    id_key: [line, shipped_date]
+    load_order: 1070
+    writer: daily
+    rows_expected: 3000
+    serves: [H-I]
+
+views:
+  - name: sales_pl
+    kind: materialized_view
+    group: views
+    grain: an order line with its P/L, from gross revenue to the product margin (contracts §4)
+    sql_file: views/sales_pl.sql
+    load_order: 2000
+    serves: [S1, S2, S3, S4, S5, S6, H-L]
+  - name: trade_spend
+    kind: materialized_view
+    group: views
+    grain: a month × a discount kind × a code (promotion, agreement or tier) — the trade spend by what caused it
+    sql_file: views/trade_spend.sql
+    load_order: 2010
+    serves: [S2, S6, H-L]
+  - name: route_current
+    kind: materialized_view
+    group: views
+    grain: the route version current at the end of its day (the last re-plan)
+    sql_file: views/route_current.sql
+    load_order: 2020
+    serves: [H-E]
+  - name: receivable
+    kind: materialized_view
+    group: views
+    grain: an invoice with what is paid and what is open, its days overdue and ageing bucket as of the refresh
+    sql_file: views/receivable.sql
+    load_order: 2030
+    serves: [H-I, H-L]
+  - name: return_request
+    kind: view
+    group: views
+    grain: a return request with its state derived from its lines (received · decided · closed) — the family's own view
+    docwh: false
+    sql_file: views/return_request.sql
+    load_order: 2040
+    serves: [H-I, H-M]

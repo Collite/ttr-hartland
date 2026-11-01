@@ -1,0 +1,36 @@
+# S2 — TV-supported promotions: stronger for premium lines, stronger in rich okresy (design 04 §S2).
+# uplift = base_uplift(mechanic) × premium_factor × affluence_index ^ affluence_exponent × tv_factor.
+story: S2
+title_cs: Televizní promoce – silnější u prémiových řad a v bohatších okresech
+enabled: true
+seed_stream: demand
+parameters:
+  base_uplift: # the extra cases, by mechanic
+    price_off_10: 0.18
+    price_off_20: 0.40
+    conditional_condition: 0.25 # on the SKU that sets the condition
+    conditional_reward: 0.60 # on the rewarded SKU
+    free_goods_1_1: 0.90 # cases, half of them free
+  premium_factor: { tv: 1.8, no_tv: 1.1, not_premium: 1.0 }
+  affluence_exponent: { tv: 2.5, no_tv: 0.5 } # 0.8 → 0.57, 1.3 → 1.93 with TV
+  tv_factor: { tv: 1.4, no_tv: 1.0 }
+  post_promotion_dip: { pct: -10, weeks: 2 } # pantry loading
+  cannibalisation_share: 0.30 # of a promoted SKU's uplift, taken from its line siblings
+  # The TV-supported promotions planted each year: premium lines against non-premium ones, the same mechanics on both
+  # sides so the comparison is fair.
+  tv_promotions_per_year: { GOLD: 3, ESPRESSO: 1, PREMIUM: 1, CLASSIC: 1, SMESI: 1, POLEVKY: 1 }
+  baseline_weeks: 8 # promotion_result's baseline: the same customers' mean of the weeks before, season-corrected
+detector:
+  sql: detectors/s2.sql
+  metric: tv_premium_over_tv_basic_uplift_by_mechanic # the premium ÷ basic uplift per mechanic, averaged
+  threshold: 1.6
+  direction: ">="
+  null_world: "<"
+also:
+  # A ratio of lifts (during ÷ before), which stay positive. With the mechanics above, the okresy's affluence
+  # quarters (means 0.855 and 1.246) give about 1.68; with no affluence term, 1.0.
+  - sql: detectors/s2_affluence.sql
+    metric: tv_rich_over_poor_lift
+    threshold: 1.35
+    direction: ">="
+    null_world: "<"

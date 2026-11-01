@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/product.schema.json",
+  "title": "product.csv — the products (variants) of each line (01 §3; ~45 live, 3 delisted with their last SKU)",
+  "x-rows": [
+    40,
+    60
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "product_line",
+    "name_cs",
+    "nicknames_cs"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
+    },
+    "product_line": {
+      "type": "string",
+      "x-ref": "product_line.code"
+    },
+    "name_cs": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "nicknames_cs": {
+      "type": "string",
+      "pattern": "^[^;]+(;[^;]+)*$",
+      "x-czech": true
+    }
+  }
+}

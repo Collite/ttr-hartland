@@ -1,0 +1,41 @@
+code,competitor,name,equivalent_product,typical_price,strengths,weaknesses
+KAV-KLASIK-200,KAVALIR,"Kavalír Klasik, sklenice 200 g",CLASSIC,159.90,nízká cena; časté letákové akce,slabší aroma; menší sklenice za stejnou cenu
+KAV-KLASIK-100,KAVALIR,"Kavalír Klasik, sklenice 100 g",CLASSIC,89.90,nízká cena,slabší aroma
+KAV-DOPLNEK-150,KAVALIR,"Kavalír Klasik, doplňovací sáček 150 g",CLASSIC,99.90,nejlevnější doplňovací balení na trhu,sáček se špatně zavírá
+KAV-ZLATY-100,KAVALIR,"Kavalír Zlatý, sklenice 100 g",GOLD,119.90,cena o čtvrtinu nižší než Gold,méně výrazná chuť; slabá značka ve městech
+KAV-ZLATY-200,KAVALIR,"Kavalír Zlatý, sklenice 200 g",GOLD,209.90,zimní akce s dárkem,kolísavá dostupnost mimo východní Čechy
+KAV-3V1-10,KAVALIR,"Kavalír 3v1, 10 tyčinek",3V1,39.90,velká pokladní vystavení,sladší chuť; menší tyčinky
+KAV-2V1-10,KAVALIR,"Kavalír 2v1, 10 tyčinek",2V1,37.90,nízká cena,málo vidět v regálu
+KAV-CAPPUCCINO-10,KAVALIR,"Kavalír Cappuccino, 10 sáčků",CAPPUCCINO,54.90,pěna drží dlouho,umělé aroma
+KAV-BEZKOF-100,KAVALIR,"Kavalír bez kofeinu, sklenice 100 g",CLASSIC-BEZKOFEINU,99.90,jediná levná bezkofeinová káva,úzká distribuce
+KAV-AUTOMAT-1KG,KAVALIR,"Kavalír Automat, sáček 1 kg",AUTOMATOVA-SMES,399.00,nízká cena pro provozovatele automatů,zanáší automaty; nestálá kvalita
+NOR-GOLD-100,NORDCAFE,"Nordcafé Zlatá, sklenice 100 g",GOLD,169.90,prémiový obal; silná značka ve velkých městech,vyšší cena; slabá v malých prodejnách
+NOR-GOLD-200,NORDCAFE,"Nordcafé Zlatá, sklenice 200 g",GOLD,299.90,vyhrává v řetězcích na vystavení,drahá; málo akcí
+NOR-INTENSE-100,NORDCAFE,"Nordcafé Tmavá, sklenice 100 g",GOLD-INTENZIVNI,179.90,plná tmavá chuť,úzká distribuce
+NOR-CREMA-100,NORDCAFE,"Nordcafé Krema, sklenice 100 g",GOLD-CREMA,184.90,hustá pěna,vysoká cena
+NOR-ESPRESSO-100,NORDCAFE,"Nordcafé Espresso, sklenice 100 g",ESPRESSO,199.90,kvalita blízká mleté kávě,drahé; malé zásoby v prodejnách
+NOR-ESPRESSO-TYC,NORDCAFE,"Nordcafé Espresso, 10 tyčinek",ESPRESSO,69.90,oblíbené v kancelářích,málo vidět mimo velká města
+NOR-LATTE-10,NORDCAFE,"Nordcafé Latte, 10 sáčků",LATTE,79.90,jemná mléčná chuť,vysoká cena za porci
+NOR-CAPPUCCINO-10,NORDCAFE,"Nordcafé Cappuccino, 10 sáčků",CAPPUCCINO,74.90,silná reklama na sociálních sítích,drahé
+NOR-DECAF-100,NORDCAFE,"Nordcafé bez kofeinu, sklenice 100 g",GOLD-BEZKOFEINU,189.90,prémiová bezkofeinová káva,málo prodejen
+NOR-KAVARNA-1KG,NORDCAFE,"Nordcafé Kavárna, sáček 1 kg",KAVARENSKA-SMES,549.00,dodává hotelovým řetězcům,dlouhé dodací lhůty
+POL-SLEPICI,POLEVKARNA,"Polévkárna Slepičí s nudlemi, sáček",POLEVKA-KURECI,12.90,nejnižší cena v regálu,méně masa; řídká
+POL-HOVEZI,POLEVKARNA,"Polévkárna Hovězí, sáček",POLEVKA-HOVEZI,12.90,nízká cena,slaná chuť
+POL-GULAS,POLEVKARNA,"Polévkárna Gulášová, sáček",POLEVKA-GULASOVA,14.90,výrazná chuť,umělé barvivo na obalu
+POL-HRACH,POLEVKARNA,"Polévkárna Hrachová, sáček",POLEVKA-HRACHOVA,13.90,oblíbená ve vesnických prodejnách,hrudkovatí
+POL-HOUBA,POLEVKARNA,"Polévkárna Houbová, sáček",POLEVKA-HOUBOVA,13.90,levná,málo hub
+POL-ZELNA,POLEVKARNA,"Polévkárna Zelňačka, sáček",POLEVKA-ZELNA,13.90,tradiční recept,kyselá
+POL-KELIMEK-KURE,POLEVKARNA,"Polévkárna Kuřecí, kelímek",KELIMEK-KURECI,17.90,velký kelímek,slabá chuť
+POL-KELIMEK-RAJ,POLEVKARNA,"Polévkárna Rajská, kelímek",KELIMEK-RAJSKA,17.90,nízká cena na čerpacích stanicích,sladká
+POL-NUDLE-KURE,POLEVKARNA,"Polévkárna Nudle kuřecí, sáček",NUDLE-KURECI,8.90,nejlevnější nudle,lámou se v sáčku
+POL-NUDLE-HOVEZI,POLEVKARNA,"Polévkárna Nudle hovězí, sáček",NUDLE-HOVEZI,8.90,nízká cena,malá porce
+ZV-VYVAR-KURECI,ZLATA-VYVARKA,"Zlatá vývarka Kuřecí vývar, dóza 1 kg",BUJON-KURECI,239.00,poctivá chuť; oblíbená v restauracích,vyšší cena
+ZV-VYVAR-HOVEZI,ZLATA-VYVARKA,"Zlatá vývarka Hovězí vývar, dóza 1 kg",BUJON-HOVEZI,259.00,silná značka v gastru,dlouhé dodací lhůty
+ZV-ZELENINOVY,ZLATA-VYVARKA,"Zlatá vývarka Zeleninový vývar, dóza 1 kg",BUJON-ZELENINOVY,219.00,bez dochucovadel,krátká trvanlivost
+ZV-DYNE,ZLATA-VYVARKA,"Zlatá vývarka Dýňový krém, kapsička",KREM-DYNOVY,54.90,sezónní podzimní akce,jen v létě a na podzim
+ZV-HOUBY,ZLATA-VYVARKA,"Zlatá vývarka Houbový krém, kapsička",KREM-Z-HUB,54.90,česká lesní houba na obalu,vysoká cena
+ZV-CIBULE,ZLATA-VYVARKA,"Zlatá vývarka Cibulová, kapsička",CIBULACKA-FRANCOUZSKA,49.90,dobrá cena za prémiovou polévku,menší kapsička
+ZV-KURECI-NUDLE,ZLATA-VYVARKA,"Zlatá vývarka Kuřecí s nudlemi, sáček",POLEVKA-KURECI,19.90,domácí chuť,dražší než ostatní sáčkové polévky
+ZV-RAJSKA,ZLATA-VYVARKA,"Zlatá vývarka Rajská, sáček",POLEVKA-RAJSKA,19.90,kousky rajčat,málo prodejen na venkově
+ZV-GULAS,ZLATA-VYVARKA,"Zlatá vývarka Gulášová, sáček",POLEVKA-GULASOVA,21.90,hodně masa,drahá
+ZV-KOPR,ZLATA-VYVARKA,"Zlatá vývarka Koprová, sáček",POLEVKA-KOPROVA,19.90,čerstvý kopr,krátká trvanlivost

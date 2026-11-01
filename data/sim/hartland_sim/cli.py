@@ -81,8 +81,34 @@ def _reference_check_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def ddl(args: argparse.Namespace) -> int:
+    from hartland_sim.config import ConfigError, InventoryConfig
+    from hartland_sim.io.ddl import drift, write
+
+    try:
+        inventory = InventoryConfig.load()
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+    if args.check:
+        problems = drift(inventory, args.ddl_dir)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        if problems:
+            print("hartland-sim ddl --check: run `just ddl` and commit data/ddl/", file=sys.stderr)
+            return 1
+        print(f"hartland-sim ddl --check: data/ddl/ matches data/inventory.yaml ({len(inventory.tables)} tables)")
+        return 0
+    changed = write(inventory, args.ddl_dir)
+    print(f"hartland-sim ddl: {', '.join(changed) or 'nothing'} {'written' if changed else 'changed'}")
+    return 0
+
+
 def _ddl_arguments(parser: argparse.ArgumentParser) -> None:
+    from hartland_sim.config import DDL_DIR
+
     parser.add_argument("--check", action="store_true", help="fail when data/ddl/ differs from the render (CI)")
+    parser.add_argument("--ddl-dir", type=Path, default=DDL_DIR, help="the DDL folder (default: the repo's data/ddl)")
 
 
 def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
@@ -98,6 +124,42 @@ def _load_world_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _prolong_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("until", type=date.fromisoformat, metavar="DAY", help="simulate up to this day (ISO date)")
+
+
+def stories_check(args: argparse.Namespace) -> int:
+    """`--dry` lists the answer key; running the detectors and probes arrives with the runner (G5 S5.2)."""
+    if not args.dry:
+        print(
+            "hartland-sim stories-check: not implemented yet — running the detectors arrives at G5 S5.2"
+            " (--dry lists them)",
+            file=sys.stderr,
+        )
+        return 1
+    from hartland_sim.config import ConfigError, StoriesConfig
+
+    try:
+        stories = StoriesConfig.load()
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+    for story in stories.stories:
+        print(f"{story.story}  {story.title_cs}{'' if story.enabled else '  [vypnuto]'}")
+        for detector in story.detectors:
+            print(
+                f"      {detector.sql:<28} {detector.metric} {detector.direction} {detector.threshold}"
+                f" · null world {detector.null_world}"
+            )
+    for anomaly in stories.anomalies:
+        print(f"{anomaly.id:<4} {anomaly.title_cs}{'' if anomaly.enabled else '  [vypnuto]'}")
+        print(f"      {anomaly.probe.sql:<28} expect {anomaly.probe.expect}")
+    reps = ", ".join(f"{pin.slot} {pin.profile}" for pin in stories.pins.reps)
+    print(f"pins: {len(stories.pins.reps)} reps ({reps}); {len(stories.pins.customers)} customers by rule")
+    detectors = sum(len(story.detectors) for story in stories.stories)
+    print(
+        f"hartland-sim stories-check --dry: {len(stories.stories)} stories, {detectors} detectors,"
+        f" {len(stories.anomalies)} probes — nothing run (stories sha256 {stories.sha256[:12]})"
+    )
+    return 0
 
 
 def _stories_check_arguments(parser: argparse.ArgumentParser) -> None:
@@ -141,12 +203,15 @@ VERBS: dict[str, Verb] = {
         _osm_extract_arguments,
         osm_extract,
     ),
-    "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments),
+    "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments, ddl),
     "build-world": Verb("the simulation → data/build/<run>/", "G1 S1.4", _build_world_arguments),
     "load-world": Verb("COPY in load order · views · indexes · the _sim_meta guard", "G5 S5.1", _load_world_arguments),
     "prolong": Verb("from the last checkpoint: the world reacts, appends", "G5 S5.3", _prolong_arguments),
     "stories-check": Verb(
-        "the answer key: every detector and probe", "G0 S0.4 (--dry) · G5 S5.2", _stories_check_arguments
+        "the answer key: every detector and probe",
+        "G0 S0.4 (--dry) · G5 S5.2",
+        _stories_check_arguments,
+        stories_check,
     ),
     "recon": Verb("the invariants + the R0/R1 diff", "G5 S5.1"),
     "load-documents": Verb(

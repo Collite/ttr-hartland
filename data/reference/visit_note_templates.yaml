@@ -1,0 +1,52 @@
+# The reps' visit notes (`visit.note`, G2 S2.1 T6): a note is 2–4 sentences picked from these by the visit's outcome
+# and its situations (stream `note`), the slots filled from the visit — {{ sku }} a SKU's name, {{ nickname }} its
+# nickname (catalogue), {{ competitor }} a competitor's name, {{ promotion }} a promotion's name, {{ objection }} one of
+# `objections`. The planted situations (A-6's sightings, A-13's refusals) keep their own hand-written notes; A-8's rep
+# leaves the note empty. Schema: data/schemas/visit_note_templates.schema.json.
+
+slots: [sku, nickname, competitor, promotion, objection]
+
+outcomes:
+  order:
+    - Objednávka převzata, {{ sku }} doplněno na regál.
+    - Majitel objednal i {{ nickname }}, prý se mu to teď dobře prodává.
+    - Objednávka podle plánu, regál srovnaný, cenovky v pořádku.
+    - Domluvena týdenní objednávka, příště přivezu ochutnávku.
+  no_order:
+    - Bez objednávky, zboží mají ještě dost z minulé dodávky.
+    - Majitel tentokrát neobjednal, důvod – {{ objection }}.
+    - Zásoba vystačí do příští návštěvy, objednávku pošlou přes portál.
+    - Probrali jsme sortiment, rozhodnou se do konce týdne.
+  closed:
+    - Prodejna byla zavřená, na dveřích cedule „dovolená“.
+    - Zavřeno, majitel nebere telefon, zkusím to příští týden.
+  refused:
+    - Majitel odmítl jednat, nemá čas.
+    - Odmítli návštěvu, prý mají nového dodavatele.
+  not_found:
+    - Prodejnu jsem na adrese nenašel, na místě je jiný obchod.
+    - Provozovna je zrušená, prostory se pronajímají.
+
+situations:
+  promotion:
+    - Představil jsem akci {{ promotion }}, majitel zvažuje větší objednávku.
+    - Akce {{ promotion }} je vystavená u pokladny, letáky na místě.
+  out_of_stock:
+    - Chybělo {{ sku }}, regál prázdný asi týden.
+    - Výpadek {{ nickname }}, zákazníci se ptali, doplnit co nejdřív.
+  competitor:
+    - "{{ competitor }} má novou akci, cena o několik korun nižší než naše."
+    - Na regálu přibyly výrobky značky {{ competitor }}, vzaly nám dvě pozice.
+  display:
+    - Stojan na Gold umístěný u vchodu, majitel spokojený.
+    - Stojan je poškozený, je potřeba ho vyměnit.
+  listing:
+    - Nabídl jsem {{ sku }}, zatím nechtějí, důvod – {{ objection }}.
+    - "{{ sku }} zalistováno, první objednávka příští týden."
+
+objections:
+  - nemáme místo v regálu
+  - zákazníci to nežádají
+  - je to pro nás moc drahé
+  - máme to od jiného dodavatele
+  - počkáme na akci

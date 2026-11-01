@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/schemas/story.schema.json",
+  "title": "stories/s<n>.yaml — a story of the answer key (contracts §3, design 04), read by config.StoriesConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "story",
+    "title_cs",
+    "enabled",
+    "seed_stream",
+    "parameters",
+    "detector"
+  ],
+  "properties": {
+    "story": {
+      "type": "string",
+      "pattern": "^S[1-6]$"
+    },
+    "title_cs": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "seed_stream": {
+      "enum": [
+        "demand",
+        "basket",
+        "acquire",
+        "churn",
+        "visit",
+        "note",
+        "observe",
+        "sighting",
+        "prompt_outcome",
+        "pos",
+        "pricing_agree",
+        "payment",
+        "return",
+        "complaint",
+        "supply",
+        "route",
+        "event",
+        "shop",
+        "weather",
+        "letter",
+        "scan"
+      ]
+    },
+    "parameters": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "detector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sql",
+        "metric",
+        "threshold",
+        "direction",
+        "null_world"
+      ],
+      "properties": {
+        "sql": {
+          "type": "string",
+          "pattern": "^detectors/[a-z0-9_]+\\.sql$"
+        },
+        "metric": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "threshold": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "direction": {
+          "enum": [
+            ">=",
+            "<=",
+            ">",
+            "<",
+            "between"
+          ]
+        },
+        "null_world": {
+          "enum": [
+            ">=",
+            "<=",
+            ">",
+            "<",
+            "between"
+          ]
+        }
+      }
+    },
+    "also": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sql",
+          "metric",
+          "threshold",
+          "direction",
+          "null_world"
+        ],
+        "properties": {
+          "sql": {
+            "type": "string",
+            "pattern": "^detectors/[a-z0-9_]+\\.sql$"
+          },
+          "metric": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "threshold": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            ]
+          },
+          "direction": {
+            "enum": [
+              ">=",
+              "<=",
+              ">",
+              "<",
+              "between"
+            ]
+          },
+          "null_world": {
+            "enum": [
+              ">=",
+              "<=",
+              ">",
+              "<",
+              "between"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+code,brand,name_cs,is_premium,is_professional
+CLASSIC,HARCAFE,Classic,false,false
+GOLD,HARCAFE,Gold,true,false
+ESPRESSO,HARCAFE,Espresso,true,false
+SMESI,HARCAFE,Kávové směsi,false,false
+BEZKOFEIN,HARCAFE,Bez kofeinu,false,false
+PROFIKAVA,HARCAFE,Profi káva,false,true
+POLEVKY,HARSOUP,Sáčkové polévky,false,false
+KELIMKY,HARSOUP,Polévky v kelímku,false,false
+NUDLE,HARSOUP,Instantní nudle,false,false
+PREMIUM,HARSOUP,Prémiové polévky,true,false
+PROFIGASTRO,HARSOUP,Profi gastro,false,true

@@ -1,0 +1,36 @@
+# The seed of the marketing templates (G0 S0.4 T6). DOC.1 defines the format, the house .docx and the loader; DOC.3
+# fills the library — at least three templates per marketing family. This one shows the shape: a promotion sheet as
+# the Markdown twin of the house document.
+family: promotion_sheet
+variant:
+  tone: formální
+  completeness: úplný
+channel: internal
+slots:
+  code: promotion.code
+  name: promotion.name
+  goal: promotion.goal
+  mechanic: promotion.mechanic_cs
+  valid_from: promotion.valid_from
+  valid_to: promotion.valid_to
+  eligibility: promotion.eligibility_cs
+  exclusions: promotion.exclusions_cs
+  budget: promotion.estimated_budget
+  target: promotion.target_uplift_pct
+  owner: promotion.owner_name
+injectors: []
+body: |
+  # Promoční list {{ code }} – {{ name }}
+
+  **Cíl:** {{ goal }}
+
+  | | |
+  |---|---|
+  | Mechanika | {{ mechanic }} |
+  | Platnost | {{ valid_from }} – {{ valid_to }} |
+  | Pro koho | {{ eligibility }} |
+  | Nekombinuje se s | {{ exclusions }} |
+  | Odhadovaný rozpočet | {{ budget }} Kč |
+  | Cílový nárůst prodeje | {{ target }} % |
+
+  Za promoci odpovídá {{ owner }}, produktový manažer řady.
