@@ -163,6 +163,13 @@ def test_the_discount_list_of_contracts_4(inventory: InventoryConfig) -> None:
     inventory.table("sales_order_line").column("discount_total")
 
 
+def test_a_promotion_always_names_its_line(inventory: InventoryConfig) -> None:
+    """S2's detectors reach a promotion through its line only: one with only a SKU would leave its days "clean"."""
+    promotion = inventory.table("promotion")
+    assert not promotion.column("target_product_line_id").nullable
+    assert promotion.column("target_sku_id").nullable
+
+
 def test_the_registry_of_contracts_5(inventory: InventoryConfig) -> None:
     assert set(inventory.codes["document_family"]) == {
         "return_request",

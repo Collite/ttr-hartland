@@ -3,7 +3,10 @@
 -- quarter (by okres.affluence_index; Praha counts as its 22 districts). Both sides count only the clean days, when no
 -- other promotion of the line ran: Gold's September 1+1 falls in its Christmas promotion's 8 weeks before. A lift, not
 -- an uplift (lift − 1), so the denominator stays positive. Promotions count from 2024-02-26 (their 8 weeks before
--- inside the history) and up to the world's last order day.
+-- inside the history) and up to the world's last order day. The cases are the orders delivered where they are sold,
+-- in that place's okres: a store (HoReCa included), an own shop, a web consumer's town. Any other delivery point
+-- without a store is not where its buyers are and drops out: a chain's own DC (world.yaml big_retail.dc_level_orders,
+-- whose national volume would land in the DC's okres), a vending operator's depot, a wholesaler's warehouse.
 WITH as_of AS (
     SELECT MAX(ordered_on) AS day FROM sales_order
 ),
@@ -13,8 +16,7 @@ tv AS (
     FROM promotion pr
     CROSS JOIN as_of
     JOIN campaign ca ON ca.campaign_id = pr.campaign_id
-    WHERE ca.has_tv AND pr.target_product_line_id IS NOT NULL
-      AND pr.valid_from BETWEEN DATE '2024-02-26' AND as_of.day
+    WHERE ca.has_tv AND pr.valid_from BETWEEN DATE '2024-02-26' AND as_of.day
 ),
 clean_day AS (
     SELECT tv.promotion_id, tv.line_id, d.day, d.day >= tv.valid_from AS during
@@ -30,7 +32,10 @@ clean_day AS (
     )
 ),
 span AS (
-    SELECT promotion_id, COUNT(*) FILTER (WHERE during) AS during_days, COUNT(*) FILTER (WHERE NOT during) AS before_days
+    SELECT
+        promotion_id,
+        COUNT(*) FILTER (WHERE during) AS during_days,
+        COUNT(*) FILTER (WHERE NOT during) AS before_days
     FROM clean_day
     GROUP BY promotion_id
 ),
@@ -52,6 +57,7 @@ cases AS (
     JOIN product p ON p.product_id = s.product_id AND p.product_line_id = cd.line_id
     JOIN delivery_point dp ON dp.delivery_point_id = o.delivery_point_id
     JOIN quartile ON quartile.okres_id = dp.okres_id
+    WHERE dp.store_id IS NOT NULL OR o.channel IN ('web', 'own_shops')
     GROUP BY cd.promotion_id, quartile.q
 ),
 lift AS (

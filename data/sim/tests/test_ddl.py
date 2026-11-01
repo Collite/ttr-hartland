@@ -11,7 +11,7 @@ import pytest
 from hartland_sim.checks.czech import assert_czech
 from hartland_sim.cli import main
 from hartland_sim.config import DDL_DIR, InventoryConfig
-from hartland_sim.io.ddl import GENERATED, LICENCE_NOTICE, drift, render, write
+from hartland_sim.io.ddl import GENERATED, LICENCE_NOTICE, _wrapped, drift, render, write
 
 
 @pytest.fixture(scope="module")
@@ -132,6 +132,12 @@ def test_a_view_the_docwh_loader_reads_reads_no_answer(inventory: InventoryConfi
             assert not words & hidden, view.name
 
 
+def test_the_grant_header_wraps_the_names_it_is_given() -> None:
+    """The list ends at its last place, not at the first name equal to the last; an empty list is still a list."""
+    assert _wrapped(["a", "b", "a"], "--   ", width=12) == ["--   a, b,", "--   a;"]
+    assert _wrapped([], "--   ") == ["--   ;"]
+
+
 def test_every_index_of_the_inventory(inventory: InventoryConfig) -> None:
     indexes = render(inventory)["indexes.sql"]
     assert len(re.findall(r"^CREATE INDEX ", indexes, re.M)) == sum(len(table.indexes) for table in inventory.tables)
@@ -162,6 +168,22 @@ def test_check_fails_naming_each_file_that_drifted(ddl_copy: Path, capsys: pytes
         "data/ddl/indexes.sql: missing",
         "hartland-sim ddl --check: run `just ddl` and commit data/ddl/",
     ]
+
+
+def test_a_view_file_missing_from_the_ddl_dir_is_named(ddl_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The inventory checks the repo's own view files; `--ddl-dir` names another folder, checked when rendered. The
+    generated files go first, so one written before the error would show."""
+    (ddl_copy / "views" / "trade_spend.sql").unlink()
+    (ddl_copy / "views" / "receivable.sql").unlink()
+    for name in GENERATED:
+        (ddl_copy / name).unlink()
+    for check in (["--check"], []):
+        assert main(["ddl", *check, "--ddl-dir", str(ddl_copy)]) == 1
+        assert capsys.readouterr().err.splitlines() == [
+            f"trade_spend: no {ddl_copy}/views/trade_spend.sql",
+            f"receivable: no {ddl_copy}/views/receivable.sql",
+        ]
+    assert [name for name in GENERATED if (ddl_copy / name).exists()] == []  # nothing written
 
 
 def test_ddl_writes_what_changed(ddl_copy: Path, inventory: InventoryConfig) -> None:
