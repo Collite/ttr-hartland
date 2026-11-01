@@ -171,17 +171,19 @@ def test_check_fails_naming_each_file_that_drifted(ddl_copy: Path, capsys: pytes
 
 
 def test_a_view_file_missing_from_the_ddl_dir_is_named(ddl_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The inventory checks the repo's own view files; `--ddl-dir` names another folder, checked when rendered."""
+    """The inventory checks the repo's own view files; `--ddl-dir` names another folder, checked when rendered. The
+    generated files go first, so one written before the error would show."""
     (ddl_copy / "views" / "trade_spend.sql").unlink()
     (ddl_copy / "views" / "receivable.sql").unlink()
-    schema = (ddl_copy / "schema.sql").read_text(encoding="utf-8")
+    for name in GENERATED:
+        (ddl_copy / name).unlink()
     for check in (["--check"], []):
         assert main(["ddl", *check, "--ddl-dir", str(ddl_copy)]) == 1
         assert capsys.readouterr().err.splitlines() == [
             f"trade_spend: no {ddl_copy}/views/trade_spend.sql",
             f"receivable: no {ddl_copy}/views/receivable.sql",
         ]
-    assert (ddl_copy / "schema.sql").read_text(encoding="utf-8") == schema  # nothing written
+    assert [name for name in GENERATED if (ddl_copy / name).exists()] == []  # nothing written
 
 
 def test_ddl_writes_what_changed(ddl_copy: Path, inventory: InventoryConfig) -> None:
