@@ -5,10 +5,13 @@ the history's years from it (`05` §2 step 6); `prolong` goes past the committed
 
 A template starts on the Monday of its ISO `start_week` and runs `weeks` weeks; the start must fall in its `month`,
 which the code carries. Exclusions pair templates by `<line>-<tag>`; each year's calendar excludes the pair both ways.
+Two promotions of one line never stack on an order: where their days and their eligibility meet, they exclude each
+other (`clashes` finds the pairs that do not).
 """
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -97,3 +100,24 @@ def calendar(templates: Templates, year: int, code: str) -> list[PlannedPromotio
             PlannedPromotion(codes[template.key], template, start, end, tuple(sorted(partners.get(template.key, ()))))
         )
     return sorted(planned, key=lambda promotion: (promotion.valid_from, promotion.code))
+
+
+def clashes(promotions: list[PlannedPromotion]) -> list[tuple[str, str]]:
+    """The pairs of promotions of one line that share a day and an eligible order, without excluding each other."""
+    found = []
+    for first, second in itertools.combinations(promotions, 2):
+        if (
+            first.template.line == second.template.line
+            and first.valid_from <= second.valid_to
+            and second.valid_from <= first.valid_to
+            and _may_meet(first.template, second.template)
+            and second.code not in first.excludes
+        ):
+            found.append((first.code, second.code))
+    return found
+
+
+def _may_meet(first: Template, second: Template) -> bool:
+    """An order could qualify for both: on every scope kind that both restrict, their values meet."""
+    kinds = first.eligibility.keys() & second.eligibility.keys()
+    return all(set(first.eligibility[kind]) & set(second.eligibility[kind]) for kind in kinds)

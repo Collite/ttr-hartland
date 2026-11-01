@@ -22,13 +22,15 @@ parameters:
   baseline_weeks: 8 # promotion_result's baseline: the same customers' mean of the weeks before, season-corrected
 detector:
   sql: detectors/s2.sql
-  metric: tv_premium_over_tv_basic_uplift
+  metric: tv_premium_over_tv_basic_uplift_by_mechanic # the premium ÷ basic uplift per mechanic, averaged
   threshold: 1.6
   direction: ">="
   null_world: "<"
 also:
+  # A ratio of lifts (during ÷ before), which stay positive. With the mechanics above, the okresy's affluence
+  # quarters (means 0.855 and 1.246) give about 1.68; with no affluence term, 1.0.
   - sql: detectors/s2_affluence.sql
-    metric: tv_rich_over_poor_uplift
-    threshold: 1.8
+    metric: tv_rich_over_poor_lift
+    threshold: 1.35
     direction: ">="
     null_world: "<"

@@ -86,6 +86,76 @@ def _last_order_day(db: psycopg.Connection, put: Put, day: date) -> None:
 TENURE = {"valid_from": date(2023, 1, 1), "valid_to": date(2026, 12, 31)}
 
 
+# ── S2: like against like ────────────────────────────────────────────────────
+
+
+def test_s2_compares_mechanic_with_mechanic(db: psycopg.Connection, put: Put) -> None:
+    """Premium and basic gain alike per mechanic, but the premium side runs two 1+1s to one price-off: the metric is
+    1.0 (a pooled mean gave 1.13)."""
+    with db.transaction(force_rollback=True):
+        put(db, "campaign", campaign_id=1, has_tv=True)
+        for line, premium in ((1, True), (2, False)):
+            put(db, "product_line", product_line_id=line, is_premium=premium)
+        runs = [(1, "price_off", 20, 40), (1, "free_goods_same", None, 90), (1, "free_goods_same", None, 90)]
+        runs += [(2, "price_off", 20, 40), (2, "free_goods_same", None, 90)]
+        for line, mechanic, discount, uplift in runs:
+            promotion = next(_ids)
+            put(
+                db,
+                "promotion",
+                promotion_id=promotion,
+                campaign_id=1,
+                target_product_line_id=line,
+                mechanic=mechanic,
+                discount_pct=discount,
+            )
+            put(db, "promotion_result", promotion_id=promotion, week=date(2025, 3, 3), uplift_pct=uplift)
+        metric = _one(db, "detectors/s2.sql")
+    assert float(metric) == pytest.approx(1.0)
+
+
+def test_s2_affluence_reads_the_clean_days_only(db: psycopg.Connection, put: Put) -> None:
+    """Gold's 1+1 surges in the TV promotion's 8 weeks before; the days it ran are left out on both sides. The rich
+    okres doubles its daily cases, the poor one keeps them: lift 2 over lift 1."""
+    with db.transaction(force_rollback=True):
+        _catalogue(db, put)
+        for okres, affluence in ((1, 0.8), (2, 0.9), (3, 1.0), (4, 1.3)):
+            put(db, "okres", okres_id=okres, affluence_index=affluence)
+        put(db, "campaign", campaign_id=1, has_tv=True)
+        put(
+            db,
+            "promotion",
+            promotion_id=1,
+            campaign_id=1,
+            target_product_line_id=1,
+            valid_from=date(2025, 11, 10),
+            valid_to=date(2025, 12, 21),
+        )  # 42 days, 35 clean days before
+        put(
+            db,
+            "promotion",
+            promotion_id=2,
+            target_product_line_id=1,
+            valid_from=date(2025, 9, 8),
+            valid_to=date(2025, 10, 5),
+        )  # inside the 8 weeks before
+
+        def cases(okres: int, day: date, qty: float) -> None:
+            n = next(_ids)
+            put(db, "delivery_point", delivery_point_id=n, okres_id=okres)
+            put(db, "sales_order", sales_order_id=n, delivery_point_id=n, ordered_on=day)
+            put(db, "sales_order_line", sales_order_line_id=n, sales_order_id=n, sku_id=1, qty_cases=qty)
+
+        cases(4, date(2025, 9, 20), 350)  # the 1+1's surge
+        cases(4, date(2025, 10, 20), 35)
+        cases(4, date(2025, 11, 20), 84)
+        cases(1, date(2025, 10, 20), 35)
+        cases(1, date(2025, 11, 20), 42)
+        _last_order_day(db, put, date(2026, 10, 31))
+        metric = _one(db, "detectors/s2_affluence.sql")
+    assert float(metric) == pytest.approx(2.0)
+
+
 # ── S3: rates over their bases ───────────────────────────────────────────────
 
 

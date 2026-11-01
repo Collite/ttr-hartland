@@ -15,7 +15,7 @@ from hartland_sim.checks.czech import assert_czech, assert_czech_all
 from hartland_sim.config import ConfigError, InventoryConfig, StoriesConfig, WorldConfig, read_yaml, validate
 from hartland_sim.io.reference import read
 from hartland_sim.setup.classifier.chains import BY_CODE
-from hartland_sim.setup.promotions import TEMPLATES_FILE, PlannedPromotion, Templates, calendar
+from hartland_sim.setup.promotions import TEMPLATES_FILE, PlannedPromotion, Templates, calendar, clashes
 
 HISTORY_YEARS = (2024, 2025, 2026)
 
@@ -70,6 +70,37 @@ def test_every_start_falls_in_its_month_for_years_to_come(templates: Templates, 
     """The warm-up year and the prolongs ahead (G5 S5.3) get the same months, so the codes keep their month."""
     for year in range(2023, 2036):
         _year(templates, world, year)
+
+
+def test_no_two_promotions_of_a_line_stack_without_an_exclusion(templates: Templates, world: WorldConfig) -> None:
+    """Every year to 2035, with the next year's January, since a December promotion can run into it."""
+    for year in range(2023, 2036):
+        assert clashes(_year(templates, world, year) + _year(templates, world, year + 1)) == [], year
+
+
+def test_a_clash_is_two_promotions_of_a_line_on_one_day_for_one_order(tmp_path: Path, world: WorldConfig) -> None:
+    """The rule itself: a web-only Gold promotion inside Gold's TV weeks (which the web takes too) clashes until the
+    pair excludes each other; one for big retail only, where the other is web only, does not."""
+
+    def overlap(data: dict[str, Any]) -> None:
+        (valentine,) = [item for item in data["templates"] if item["tag"] == "VALENTYN"]
+        valentine["start_week"] = 7
+
+    year = _year(Templates.load(_broken(tmp_path, overlap)), world, 2025)
+    assert clashes(year) == [("PR-2025-02-GOLD-VALENTYN", "PR-2025-03-GOLD-TV")]
+
+    def excluded(data: dict[str, Any]) -> None:
+        overlap(data)
+        data["exclusions"].append(["GOLD-VALENTYN", "GOLD-TV"])
+
+    assert clashes(_year(Templates.load(_broken(tmp_path, excluded)), world, 2025)) == []
+
+    def apart(data: dict[str, Any]) -> None:
+        overlap(data)
+        (tv,) = [item for item in data["templates"] if item["line"] == "GOLD" and item["tag"] == "TV"]
+        tv["eligibility"] = {"channel": ["big_retail"]}
+
+    assert clashes(_year(Templates.load(_broken(tmp_path, apart)), world, 2025)) == []
 
 
 def test_the_tv_eight_are_s2s(templates: Templates, ref: Path) -> None:

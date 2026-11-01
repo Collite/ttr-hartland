@@ -77,13 +77,14 @@ def test_every_sql_file_is_one_read_only_select(stories: StoriesConfig) -> None:
 
 
 def test_the_sql_reads_only_the_inventory(stories: StoriesConfig) -> None:
-    """Every relation after FROM or JOIN is a table or view of the inventory, or a CTE of the same file."""
+    """Every relation after FROM or JOIN is a table or view of the inventory, or a CTE of the same file (a function
+    after FROM, such as generate_series, is not a relation)."""
     inventory = InventoryConfig.load()
     known = {table.name for table in inventory.tables} | {view.name for view in inventory.views}
     for path in sorted(STORIES_DIR.glob("*/*.sql")):
         code = "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if not line.startswith("--"))
         ctes = set(re.findall(r"(?:WITH|,)\s*(\w+)(?: \([^)]*\))? AS \(", code))
-        named = set(re.findall(r"\b(?:FROM|JOIN)\s+(\w+)\b(?!\.)", code, re.I)) - {"LATERAL"}
+        named = set(re.findall(r"\b(?:FROM|JOIN)\s+(\w+)\b(?!\.|\()", code, re.I)) - {"LATERAL"}
         assert named - ctes <= known, f"{path.name}: {sorted(named - ctes - known)}"
 
 

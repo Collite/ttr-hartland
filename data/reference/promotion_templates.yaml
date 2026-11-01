@@ -5,6 +5,9 @@
 #
 # The TV-supported eight are S2's (stories/s2.yaml): Gold ×3, Espresso and Premium soups against Classic, Mixes and
 # Dried soups, with the same mechanics on both sides. October's Classic 200 g price-off is A-10's.
+#
+# Two promotions of one line that an order could both qualify for (their eligibility meets) never share a day unless
+# they exclude each other (`setup.promotions.clashes`, tested for every year to 2035).
 
 templates:
   # ── TV-supported ───────────────────────────────────────────────────────────
@@ -151,7 +154,7 @@ templates:
   - line: GOLD
     tag: VALENTYN
     month: 2
-    start_week: 7
+    start_week: 6 # ends before GOLD-TV, which the web takes too
     weeks: 4
     mechanic: price_off
     discount_pct: 10
@@ -281,8 +284,8 @@ templates:
   - line: POLEVKY
     tag: PODZIM
     month: 10
-    start_week: 42
-    weeks: 6
+    start_week: 41 # ends before POLEVKY-TV, which small retail takes too
+    weeks: 4
     mechanic: free_goods_other
     condition_sku: "2931000000616" # Hovězí, sáček
     condition_qty: 6

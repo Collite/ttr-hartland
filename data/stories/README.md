@@ -22,9 +22,9 @@ A detector returns its `metric`. The story passes when `metric direction thresho
 story that passes in the null world is an artefact of the mechanics, not a story. A probe returns a count; `expect`
 is what it must reach (`>= n`, `= n`, or `rows`), and in the null world it must find nothing.
 
-A metric is never a ratio whose denominator can be zero or negative: where one side can lose, the detector takes a
-difference or a ratio of positive quantities. A metric that comes out NULL (an empty base, a region whose displays
-destroy margin) fails. Every window ends on the world's last order day, read from the data, so a prolonged world is
+A metric is never a ratio whose denominator the mechanics can bring to zero or below: where one side can lose, the
+detector takes a difference, or a ratio of positive quantities (a lift, gain ÷ cost). A metric that comes out NULL (an
+empty base, a region whose displays destroy margin) fails. Every window ends on the world's last order day, read from the data, so a prolonged world is
 judged to its new end; the fixed windows (S1's 2024–2025, S4's 2025, a case's month) stay.
 
 `just stories-check` runs them all against the database (the runner arrives at G5 S5.2, `--csv` reads a CSV build)
