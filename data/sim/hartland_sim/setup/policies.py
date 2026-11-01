@@ -29,7 +29,7 @@ from pathlib import Path
 from hartland_sim.config import WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
-from hartland_sim.rng import rng
+from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, row
@@ -187,7 +187,7 @@ def pos(out: Tables, world: WorldConfig, geography: Geography, root: Path = REFE
             for n in range(1, material["assets_per_region"] + 1):
                 asset_no = f"{material['code']}-{region}-{n:04d}"
                 draw = rng("pos", "asset", asset_no)
-                acquired = ASSETS_FROM + timedelta(days=int(draw.integers(0, (last - ASSETS_FROM).days + 1)))
+                acquired = draw_day(draw, ASSETS_FROM, last)
                 age = (last - acquired).days / 365.25
                 worn = min(0.6, 0.12 * age)
                 condition = "new" if age < 1 else ("worn" if draw.random() < worn else "good")

@@ -57,7 +57,7 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row, read
-from hartland_sim.rng import Generator, rng
+from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup import market as market_setup
 from hartland_sim.setup.affluence import load as affluence
 from hartland_sim.setup.classifier import osm_order
@@ -153,11 +153,7 @@ def _active(world: WorldConfig, *key: object) -> tuple[bool, date]:
     assert settings.active_share_at_start is not None and settings.since_from and settings.since_until
     draw = rng("acquire", *key)
     active = bool(draw.random() < settings.active_share_at_start)
-    return active, _day(draw, settings.since_from, settings.since_until)
-
-
-def _day(draw: Generator, first: date, last: date) -> date:
-    return first + timedelta(days=int(draw.integers(0, (last - first).days + 1)))
+    return active, draw_day(draw, settings.since_from, settings.since_until)
 
 
 def _since_from(world: WorldConfig) -> date:
@@ -293,7 +289,7 @@ def _horeca(made: Customers, world: WorldConfig, copies: Sequence[Row], market: 
     assert spread.since_from and spread.since_until
     for n, pick in enumerate(market.horeca, start=1):
         store = stores[pick.osm_id]
-        since = _day(rng("acquire", "horeca", pick.osm_id), spread.since_from, spread.since_until)
+        since = draw_day(rng("acquire", "horeca", pick.osm_id), spread.since_from, spread.since_until)
         active = pick.role == "customer"
         customer = _customer(
             world,
@@ -385,7 +381,7 @@ def _web(made: Customers, world: WorldConfig, geography: Geography) -> None:
     for n in range(1, consumers + 1):
         draw = rng("acquire", "web", n)
         okres = str(draw.choice(leaves, p=weights))
-        since = _day(draw, settings.since_from, settings.since_until)
+        since = draw_day(draw, settings.since_from, settings.since_until)
         code = f"ES-{n:06d}"
         name = f"Zákazník e-shopu {n:06d}"
         town = _town(geography, okres)

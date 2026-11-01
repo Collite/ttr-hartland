@@ -26,7 +26,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import IO, Any
 
-from hartland_sim.config import InventoryConfig, Table
+from hartland_sim.config import Table, inventory
 
 _NUMERIC = re.compile(r"numeric\((\d+),(\d+)\)")
 
@@ -37,7 +37,7 @@ class CellError(ValueError):
 
 @cache
 def _tables() -> dict[str, Table]:
-    return {table.name: table for table in InventoryConfig.load().tables}
+    return {table.name: table for table in inventory().tables}
 
 
 def cell(value: Any, kind: str) -> str | None:

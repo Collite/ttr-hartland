@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 from functools import cache
 
-from hartland_sim.config import InventoryConfig
+from hartland_sim.config import inventory
 from hartland_sim.rng import canonical
 
 SEPARATOR = "\x1f"
@@ -31,7 +31,7 @@ def business_id(table: str, key: str) -> int:
 
 @cache
 def _id_keys() -> dict[str, tuple[str, ...] | None]:
-    return {table.name: table.id_key for table in InventoryConfig.load().tables}
+    return {table.name: table.id_key for table in inventory().tables}
 
 
 def row_id(table: str, **key: object) -> int:

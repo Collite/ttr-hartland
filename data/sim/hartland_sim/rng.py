@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import numpy as np
 
@@ -76,3 +76,8 @@ def seed_of(stream: str, *key: object) -> int:
 def rng(stream: str, *key: object) -> np.random.Generator:
     """The generator for one draw site: `stream` from `streams.STREAMS`, `key` the site's business key (+ day)."""
     return np.random.default_rng(seed_of(stream, *key))
+
+
+def draw_day(draw: Generator, first: date, last: date) -> date:
+    """A day drawn evenly from `first` to `last`, both included — one integer from `draw`."""
+    return first + timedelta(days=int(draw.integers(0, (last - first).days + 1)))

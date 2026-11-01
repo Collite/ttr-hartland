@@ -8,7 +8,7 @@ from collections import defaultdict
 from functools import cache
 from typing import Any
 
-from hartland_sim.config import InventoryConfig
+from hartland_sim.config import inventory
 
 Row = dict[str, Any]
 Tables = defaultdict[str, list[Row]]
@@ -16,7 +16,7 @@ Tables = defaultdict[str, list[Row]]
 
 @cache
 def _columns() -> dict[str, tuple[str, ...]]:
-    return {table.name: tuple(column.name for column in table.columns) for table in InventoryConfig.load().tables}
+    return {table.name: tuple(column.name for column in table.columns) for table in inventory().tables}
 
 
 def columns(table: str) -> tuple[str, ...]:

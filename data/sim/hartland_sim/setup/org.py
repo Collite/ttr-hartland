@@ -45,7 +45,7 @@ from typing import Any
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
-from hartland_sim.rng import rng
+from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup.reference import Geography, regions
 from hartland_sim.setup.rows import Tables, row
 from hartland_sim.world import OPEN, Actor, Duty, Skills
@@ -181,7 +181,7 @@ def build(
         login = _ascii(last)
         seen[login] += 1
         code = f"{login}{seen[login]:02d}"
-        hired = _day(rng("org", "hired", post.slot), HIRED_FROM, last_day)
+        hired = draw_day(rng("org", "hired", post.slot), HIRED_FROM, last_day)
         manager = actors[post.manager].employee_id if post.manager else None
         employee = row_id("employee", code=code)
         actor = Actor(employee, code, first, last, post.role, post.org_unit, hired, manager, None, skills.of(post))
@@ -270,10 +270,6 @@ def area_steps(region: str, size: int, moves: int) -> list[int]:
         allowed = [step for step in range(1, size) if size <= 2 or (sum(steps) + step) % size != 0]
         steps.append(int(rng("org", "area_move", region, k).choice(allowed)))
     return steps
-
-
-def _day(generator: Any, first: date, last: date) -> date:
-    return first + timedelta(days=int(generator.integers(0, (last - first).days + 1)))
 
 
 def _ascii(text: str) -> str:

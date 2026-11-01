@@ -110,22 +110,50 @@ def _modules() -> list[Path]:
     return sorted(PACKAGE.rglob("*.py"))
 
 
+def _random_reaches(source: str) -> list[str]:
+    """Where `source` reaches a random generator but through `rng`: `random`, `numpy.random` however imported, the
+    attribute `np.random`."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == "random" or alias.name.startswith("numpy.random"):
+                    found.append(f"{node.lineno} import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module.split(".")[0] == "random" or module.startswith("numpy.random"):
+                found.append(f"{node.lineno} from {module}")
+            elif module == "numpy" and any(alias.name == "random" for alias in node.names):
+                found.append(f"{node.lineno} from numpy import random")
+        elif isinstance(node, ast.Attribute) and node.attr == "random" and _is_numpy(node.value):
+            found.append(f"{node.lineno} np.random")
+    return found
+
+
 def test_no_module_but_rng_py_makes_a_random_generator() -> None:
-    offenders = []
-    for path in _modules():
-        if path == Path(rng_module.__file__).resolve():
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import) and any(alias.name.split(".")[0] == "random" for alias in node.names):
-                offenders.append(f"{path.name}:{node.lineno} import random")
-            elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "random":
-                offenders.append(f"{path.name}:{node.lineno} from random")
-            elif isinstance(node, ast.ImportFrom) and node.module == "numpy.random":
-                offenders.append(f"{path.name}:{node.lineno} from numpy.random")
-            elif isinstance(node, ast.Attribute) and node.attr == "random" and _is_numpy(node.value):
-                offenders.append(f"{path.name}:{node.lineno} np.random")
+    offenders = [
+        f"{path.name}:{where}"
+        for path in _modules()
+        if path != Path(rng_module.__file__).resolve()
+        for where in _random_reaches(path.read_text(encoding="utf-8"))
+    ]
     assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from numpy import random\nrandom.default_rng()",
+        "import numpy.random as r\nr.default_rng()",
+        "from numpy import array, random as npr\nnpr.default_rng()",
+        "import numpy.random\n",
+        "from numpy.random import default_rng\n",
+        "import random\n",
+        "import numpy as np\nnp.random.default_rng()",
+    ],
+)
+def test_the_guard_sees_every_way_to_numpy_s_random(source: str) -> None:
+    assert _random_reaches(source)
 
 
 def _is_numpy(node: ast.expr) -> bool:

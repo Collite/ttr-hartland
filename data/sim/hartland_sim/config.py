@@ -22,6 +22,7 @@ import typing
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -629,6 +630,12 @@ class InventoryConfig:
                     f" {table.load_order}"
                 )
         return problems
+
+
+@cache
+def inventory() -> InventoryConfig:
+    """The committed inventory, read once per process: the ids, the rows and the writer share it."""
+    return InventoryConfig.load()
 
 
 # ── StoriesConfig (data/stories/) ────────────────────────────────────────────
