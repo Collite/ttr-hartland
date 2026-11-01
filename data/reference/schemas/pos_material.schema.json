@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/pos_material.schema.json",
+  "title": "pos_material.csv — the point-of-sale items (03 §9): give-aways and inventoried assets, with the asset pool each region holds",
+  "x-rows": [
+    15,
+    40
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "kind",
+    "unit_cost",
+    "product_line",
+    "assets_per_region"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}-[A-Z]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "kind": {
+      "enum": [
+        "giveaway",
+        "asset"
+      ]
+    },
+    "unit_cost": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "product_line": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-ref": "product_line.code",
+      "description": "the line it brands; empty for the brand's or the company's"
+    },
+    "assets_per_region": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "the pos_asset instances each region holds at the start; 0 for a give-away"
+    }
+  }
+}

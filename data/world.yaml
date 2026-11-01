@@ -32,6 +32,7 @@ suppliers:
   fallback: HKO
   lead_time_days: { HKO: 3, HHO: 4, HCH: 3 }
   reliability_pct: { HKO: 97, HHO: 94, HCH: 96 }
+  min_lot_cases: { HKO: 40, HHO: 40, HCH: 60 } # the smallest purchase-order line per SKU
 
 channels:
   big_retail:
@@ -140,6 +141,14 @@ pricing:
   budgets:
     rep_discount_pct_of_planned_gross: 2 # a rep's quarterly discount budget (⚑NH-7)
     kam_discount_pct_of_planned_gross: 2
+    # The opening quarter's planned gross per customer, by channel: the base of the first budgets, before the first
+    # sales_plan exists (G1 S1.4 rolls the plan from the warm-up's first month-end).
+    opening_quarter_gross:
+      small_retail: 45000
+      big_retail: 40000000
+      gas_ka: 9000000
+      vending: 450000
+      horeca: 120000
   retro_bonus_pct: { default: 1, TESCO: 2 } # the chains' year-end volume bonus (01 §5.3; A-11 plants Tesco's)
 
 promotions: # ⚑NH-8
@@ -167,7 +176,55 @@ policies:
     lookback_months: 6
     regular_min_order_months: 4
     vip_min_net_revenue: 150000
+    # lifecycle_rule's three kinds per phase (R-4): the visit cycle, the share of a line's max agreed discount the
+    # rep may grant, and the lines offered first to a customer of the phase.
+    contact_weeks: { potential: 8, occasional: 4, regular: 2, vip: 2 }
+    concession_share: { potential: 0, occasional: 0.5, regular: 1, vip: 1 }
+    listing_sequence:
+      potential: [CLASSIC, SMESI, POLEVKY]
+      occasional: [GOLD, KELIMKY, NUDLE]
+      regular: [ESPRESSO, PREMIUM, BEZKOFEIN]
+      vip: [ESPRESSO, PREMIUM, GOLD]
   prompt_caps: { potential: 3, occasional: 4, regular: 5, vip: 6 } # prompts per visit, by phase (G2 S2.2)
+  # The rep-prompt rules (R-5…R-7, R-12; prompt_rule): priority 1 first; a mandatory rule cannot be hidden, an
+  # adaptable one an agent may tune. The sales director owns them. G2 S2.2 applies the parameters.
+  prompt_rules:
+    - code: PO-POVINNA-AKCE
+      kind: mandatory_promotion
+      priority: 1
+      mandatory: true
+      adaptable: false
+      parameters: { below_share_of_threshold: 1.0, period_days: 28 } # R-6
+    - code: PO-POHLEDAVKA
+      kind: debt
+      priority: 1
+      mandatory: true
+      adaptable: false
+      parameters: { overdue_days: 14 }
+    - code: PO-NEODEBIRANE
+      kind: unsupplied_items
+      priority: 2
+      mandatory: false
+      adaptable: true
+      parameters: { lookback_days: 365, rejection_memory_days: 90, stop_after_rejections: 3, max_items: 3 } # R-7
+    - code: PO-STOJAN
+      kind: pos_placement
+      priority: 3
+      mandatory: false
+      adaptable: true
+      parameters: { min_display_uplift: 0.15 }
+    - code: PO-KONKURENCE
+      kind: competitor_response
+      priority: 3
+      mandatory: false
+      adaptable: true
+      parameters: { sighting_days: 14 }
+    - code: PO-TIP
+      kind: ai_tip
+      priority: 4
+      mandatory: false
+      adaptable: true
+      parameters: { importance: 5 }
   seasonal_exclusion: # months in which a line's listing prompts are suppressed (R-7)
     POLEVKY: [5, 6, 7, 8]
     KELIMKY: [5, 6, 7, 8, 9]
@@ -213,6 +270,21 @@ delivery:
   parcel_carriers: 1
   inbound_carriers: 1
   events_per_route_day: 0.03
+  # The vehicle classes' capacities; each carrier's fleet is in reference/carrier.csv.
+  capacity:
+    van: { cases: 120, kg: 900 }
+    truck_7_5t: { cases: 420, kg: 3500 }
+    truck_12t: { cases: 720, kg: 6500 }
+  # A delivery point's time window (opens–closes, HH:MM; none for a parcel) and unloading minutes, by the kind
+  # of place.
+  windows:
+    chain_dc: { opens: "06:00", closes: "14:00", unloading_minutes: 45 } # a DC-level chain's own DC (⚑R196-F)
+    chain_store: { opens: "05:00", closes: "10:00", unloading_minutes: 20 } # a key account's store or station
+    store: { opens: "07:00", closes: "15:00", unloading_minutes: 10 } # a small-retail customer's store or station shop
+    horeca: { opens: "08:00", closes: "11:00", unloading_minutes: 10 }
+    depot: { opens: "07:00", closes: "15:00", unloading_minutes: 20 } # a vending operator's, a wholesaler's
+    own_shop: { opens: "06:00", closes: "09:00", unloading_minutes: 15 }
+    web: { opens: null, closes: null, unloading_minutes: 2 } # a parcel to a consumer's town
 
 # The volume dials (03 §14): turned down first if the demo VM minds; no story depends on them.
 dials:

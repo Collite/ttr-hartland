@@ -127,7 +127,8 @@
         "coffee_split",
         "fallback",
         "lead_time_days",
-        "reliability_pct"
+        "reliability_pct",
+        "min_lot_cases"
       ],
       "properties": {
         "coffee_split": {
@@ -157,6 +158,14 @@
             "type": "number",
             "minimum": 0,
             "maximum": 100
+          },
+          "minProperties": 1
+        },
+        "min_lot_cases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
           },
           "minProperties": 1
         }
@@ -708,7 +717,8 @@
           "additionalProperties": false,
           "required": [
             "rep_discount_pct_of_planned_gross",
-            "kam_discount_pct_of_planned_gross"
+            "kam_discount_pct_of_planned_gross",
+            "opening_quarter_gross"
           ],
           "properties": {
             "rep_discount_pct_of_planned_gross": {
@@ -720,6 +730,29 @@
               "type": "number",
               "minimum": 0,
               "maximum": 100
+            },
+            "opening_quarter_gross": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              },
+              "required": [
+                "big_retail",
+                "small_retail",
+                "gas_ka",
+                "vending",
+                "horeca"
+              ],
+              "propertyNames": {
+                "enum": [
+                  "big_retail",
+                  "small_retail",
+                  "gas_ka",
+                  "vending",
+                  "horeca"
+                ]
+              }
             }
           }
         },
@@ -807,7 +840,8 @@
         "credit_limit",
         "lifecycle",
         "prompt_caps",
-        "seasonal_exclusion"
+        "seasonal_exclusion",
+        "prompt_rules"
       ],
       "properties": {
         "stock": {
@@ -863,7 +897,10 @@
             "phases",
             "lookback_months",
             "regular_min_order_months",
-            "vip_min_net_revenue"
+            "vip_min_net_revenue",
+            "contact_weeks",
+            "concession_share",
+            "listing_sequence"
           ],
           "properties": {
             "phases": {
@@ -885,6 +922,114 @@
             "vip_min_net_revenue": {
               "type": "number",
               "minimum": 0
+            },
+            "contact_weeks": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "potential",
+                "occasional",
+                "regular",
+                "vip"
+              ],
+              "properties": {
+                "potential": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "occasional": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "regular": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "vip": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "concession_share": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "potential",
+                "occasional",
+                "regular",
+                "vip"
+              ],
+              "properties": {
+                "potential": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "occasional": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "regular": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "vip": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "listing_sequence": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "potential",
+                "occasional",
+                "regular",
+                "vip"
+              ],
+              "properties": {
+                "potential": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]+$"
+                  }
+                },
+                "occasional": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]+$"
+                  }
+                },
+                "regular": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]+$"
+                  }
+                },
+                "vip": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]+$"
+                  }
+                }
+              }
             }
           }
         },
@@ -916,6 +1061,52 @@
             }
           },
           "minProperties": 1
+        },
+        "prompt_rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "kind",
+              "priority",
+              "mandatory",
+              "adaptable",
+              "parameters"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^PO-[A-Z]+(-[A-Z]+)*$"
+              },
+              "kind": {
+                "enum": [
+                  "mandatory_promotion",
+                  "unsupplied_items",
+                  "pos_placement",
+                  "competitor_response",
+                  "ai_tip",
+                  "debt"
+                ]
+              },
+              "priority": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "mandatory": {
+                "type": "boolean"
+              },
+              "adaptable": {
+                "type": "boolean"
+              },
+              "parameters": {
+                "type": "object",
+                "minProperties": 1
+              }
+            }
+          }
         }
       }
     },
@@ -1129,7 +1320,9 @@
         "carriers_per_dc",
         "parcel_carriers",
         "inbound_carriers",
-        "events_per_route_day"
+        "events_per_route_day",
+        "capacity",
+        "windows"
       ],
       "properties": {
         "carriers_per_dc": {
@@ -1148,6 +1341,289 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "capacity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "van",
+            "truck_7_5t",
+            "truck_12t"
+          ],
+          "properties": {
+            "van": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cases",
+                "kg"
+              ],
+              "properties": {
+                "cases": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "kg": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "truck_7_5t": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cases",
+                "kg"
+              ],
+              "properties": {
+                "cases": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "kg": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "truck_12t": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cases",
+                "kg"
+              ],
+              "properties": {
+                "cases": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "kg": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "windows": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "chain_dc",
+            "chain_store",
+            "store",
+            "horeca",
+            "depot",
+            "own_shop",
+            "web"
+          ],
+          "properties": {
+            "chain_dc": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "chain_store": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "store": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "horeca": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "depot": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "own_shop": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "web": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "opens",
+                "closes",
+                "unloading_minutes"
+              ],
+              "properties": {
+                "opens": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "closes": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "unloading_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
         }
       }
     },

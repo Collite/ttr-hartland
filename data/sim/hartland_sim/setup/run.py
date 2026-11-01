@@ -1,0 +1,97 @@
+"""Setup, once per build (`05` §2): steps 1–7 in order, from the committed inputs — `world.yaml`, `stories/`,
+`data/reference/` — into the opening `World` and the rows of the setup-time tables.
+
+The opening is the state the warm-up starts from: `World.day` is the day before `history.warm_up_from`. The tables
+that hold the loop's state are not among setup's rows: they are rendered from the `World` (`opening.state_rows`,
+`Setup.rows`). Every draw
+is made under `world.yaml`'s master seed, from a named stream (contracts §2), so two runs give the same world and the
+same rows."""
+
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass
+from datetime import timedelta
+from functools import cached_property
+
+from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.rng import using_master_seed
+from hartland_sim.setup import customers, opening, policies, portfolio, reference
+from hartland_sim.setup import org as org_setup
+from hartland_sim.setup.customers import Customers
+from hartland_sim.setup.market import Market
+from hartland_sim.setup.opening import STATE_TABLES, state_rows
+from hartland_sim.setup.org import KAM_TEAM, SALES, Org
+from hartland_sim.setup.portfolio import Portfolio
+from hartland_sim.setup.reference import Geography
+from hartland_sim.setup.rows import Row, Tables, tables
+from hartland_sim.world import World
+
+
+@dataclass
+class Setup:
+    world: World
+    tables: Tables  # setup's rows; not the state tables'
+    geography: Geography
+    org: Org
+    portfolio: Portfolio
+    covers: dict[tuple[int, int], tuple[float, float]]  # (sku_id, dc_site_id) → the policy's (min, max) days
+    customers: Customers
+    config: WorldConfig
+
+    @cached_property
+    def state(self) -> Tables:
+        """The state tables' opening rows, rendered from `world` once."""
+        return state_rows(self.world, self.config)
+
+    def rows(self, table: str) -> list[Row]:
+        """`table`'s opening rows: a state table's from `state`, another from `tables`."""
+        return self.state[table] if table in STATE_TABLES else self.tables.get(table, [])
+
+
+def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, market: Market | None = None) -> Setup:
+    """The opening world and the setup tables' rows, from the committed reference files (`REFERENCE_DIR`, which
+    `opening.meta` hashes). `market` saves rebuilding the OSM market (`setup.market`)."""
+    world = world or WorldConfig.load()
+    stories = stories or StoriesConfig.load()
+    with using_master_seed(world.master_seed):
+        out = tables()
+        geography = reference.build(out, world)
+        org = org_setup.build(out, world, stories, geography)
+        products = portfolio.build(out, world, stories)
+        covers = policies.stock_policies(out, world, products)
+        policies.rules(out, world, owner=org.actors[SALES].employee_id)
+        policies.pos(out, world, geography)
+        policies.fleet(out, world)
+        made = customers.build(out, world, stories, geography, org, market)
+        state = World(world.history.warm_up_from - timedelta(days=1))
+        state.actors = {actor.employee_id: actor for actor in org.actors.values()}
+        state.duties = list(org.duties)
+        state.customers = {customer.customer_id: customer for customer in made.customers}
+        state.budgets = policies.budgets(world, planned(state))
+        state.stock = opening.stock(out, world, products, covers, made, geography)
+    return Setup(state, out, geography, org, products, covers, made, world)
+
+
+def planned(state: World) -> list[tuple[int, str, int]]:
+    """Each rep's and KAM's (employee_id, channel, customers active) on the opening quarter's first day — the
+    base of the opening discount budgets: a rep's area's small-retail customers, a KAM's accounts by channel. A KAM
+    with no active account gets its team's channel and 0, as a rep of an empty area does, so every one has a
+    budget."""
+    first = state.day + timedelta(days=1)
+    by_code = {customer.code: customer for customer in state.customers.values()}
+    in_area = Counter(c.area for c in by_code.values() if c.channel == "small_retail" and c.active_on(first))
+    out = []
+    for duty in state.duties:
+        if not duty.on(first):
+            continue
+        if duty.kind == "rep_area":
+            out.append((duty.employee_id, "small_retail", in_area[duty.target]))
+        elif duty.kind == "kam_customer" and by_code[duty.target].active_on(first):
+            out.append((duty.employee_id, by_code[duty.target].channel, 1))
+    team = {unit: channel for channel, unit in KAM_TEAM.items()}
+    held = {employee for employee, _, _ in out}
+    for actor in state.actors.values():
+        if actor.role == "kam" and actor.employee_id not in held:
+            out.append((actor.employee_id, team[actor.org_unit], 0))
+    return out

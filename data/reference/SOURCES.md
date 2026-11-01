@@ -9,6 +9,11 @@ Every file in `data/reference/` is one of three kinds:
 Each file is checked against its schema in `schemas/` by `just reference-check`. The OpenStreetMap extract (G0 S0.3)
 is under the ODbL; see [`LICENSE-DATA.md`](../../LICENSE-DATA.md).
 
+**Renamed stores.** The world keeps every OSM name, except for the customers the planted payment cases pin
+(`stories/anomalies.yaml`: A-1's chronic late payers, A-14's credit-blocked customer). Their behaviour is invented
+and the businesses are real, so setup gives each of them an invented Czech name (`Potraviny U Musilů`) on the
+customer, the store and the delivery point; their OSM id, okres and coordinates stay (⚑R196-B).
+
 ## Public facts
 
 **Terms.** Data from ČSÚ (Český statistický úřad) is published under
@@ -50,4 +55,6 @@ the 22 add up to it exactly.
 | `brand.csv`, `product_line.csv`, `product.csv`, `catalogue.csv` | the portfolio of `01` §3: two brands, 11 lines, the products and their SKUs (117 in the range on 2026-10-31, 12 of them launched and 6 others delisted during the history). Prices and costs are invented, shaped like the Czech market of 2024; `sku_code` is an EAN-13 in GS1's 29x prefix, which is for restricted circulation, so no real product carries one |
 | `competitor.csv`, `competitor_product.csv` | the four competitors of ⚑NH-18 and 40 of their products, each with the Hartland product it competes with; brands, products and prices are invented |
 | `promotion_templates.yaml`, `visit_note_templates.yaml`, `templates/` | the promotion calendar's 25 yearly shapes, the sentences of the reps' visit notes, and the seeds of the letter and marketing templates; written for Hartland |
+| `pos_material.csv`, `carrier.csv` | the PoS items (give-aways and the assets each region holds) and the contracted carriers with their rates and fleets; companies and prices invented, written for Hartland |
+| `org_unit.csv` | the Center's five units and their teams (`03` §2), each on its cost centre; written for Hartland |
 | `cost_centre.csv`, `gl_account.csv` | the Center's cost centres; accounts numbered on the Czech chart of accounts (classes 1–7), one or more per P/L line of the contracts, plus VAT, the balance accounts and `361100`, what the Center owes the three factories (intercompany) |
