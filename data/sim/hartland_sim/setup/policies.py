@@ -11,6 +11,7 @@ vehicles. The price lists, promotions and campaigns are S1.3's.
 - **`discount_budget`**: a rep's or KAM's quarter is 2 % (`pricing.budgets`) of its planned gross. The opening
   quarter has no `sales_plan` yet (S1.4 rolls it at the warm-up's first month-end), so its planned gross is
   `opening_quarter_gross` per customer the rep's area or the KAM's accounts hold active on the quarter's first day.
+  The `World` holds the budgets (the loop accrues `used_amount`); the rows are rendered from it (`budget_row`).
 - **`pos_material`** (`pos_material.csv`) and **`pos_asset`**: each region holds `assets_per_region` of each asset
   type, acquired on a day drawn between 2019 and the warm-up (stream `pos`), new in its first year, then good or worn
   as it ages; held by the region, lent by G2 S2.3.
@@ -27,7 +28,7 @@ from pathlib import Path
 
 from hartland_sim.config import WorldConfig
 from hartland_sim.ids import row_id
-from hartland_sim.io.reference import REFERENCE_DIR, read
+from hartland_sim.io.reference import REFERENCE_DIR, Row, read
 from hartland_sim.rng import rng
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
@@ -130,13 +131,9 @@ def rules(out: Tables, world: WorldConfig, owner: int) -> None:
             )
 
 
-def budgets(
-    out: Tables,
-    world: WorldConfig,
-    planned: Iterable[tuple[int, str, int]],
-) -> dict[tuple[int, date], Budget]:
-    """`discount_budget` of the opening quarter into `out`: for each (employee_id, channel, customers) of `planned`,
-    the reps' or KAMs' share of `opening_quarter_gross` × customers."""
+def budgets(world: WorldConfig, planned: Iterable[tuple[int, str, int]]) -> dict[tuple[int, date], Budget]:
+    """The opening quarter's budgets by (employee_id, quarter): for each (employee_id, channel, customers) of
+    `planned`, the reps' or KAMs' share of `opening_quarter_gross` × customers."""
     quarter = _quarter(world.history.warm_up_from)
     shares = world.pricing.budgets
     gross = shares.opening_quarter_gross
@@ -149,14 +146,18 @@ def budgets(
             if channel == "small_retail"
             else shares.kam_discount_pct_of_planned_gross
         )
-    state = {}
-    for employee, total in totals.items():
-        amount = round(total * pct[employee] / 100, 2)
-        out["discount_budget"].append(
-            row("discount_budget", employee_id=employee, quarter=quarter, budget_amount=amount, used_amount=0.0)
-        )
-        state[employee, quarter] = Budget(amount)
-    return state
+    return {(employee, quarter): Budget(round(total * pct[employee] / 100, 2)) for employee, total in totals.items()}
+
+
+def budget_row(employee: int, quarter: date, budget: Budget) -> Row:
+    """The `discount_budget` row of `employee`'s `quarter`."""
+    return row(
+        "discount_budget",
+        employee_id=employee,
+        quarter=quarter,
+        budget_amount=budget.budget_amount,
+        used_amount=budget.used_amount,
+    )
 
 
 def _quarter(day: date) -> date:

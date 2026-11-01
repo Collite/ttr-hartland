@@ -1,7 +1,8 @@
 """Row ids from business keys (contracts §2).
 
 Every id is `blake2b(table ‖ business key, digest_size=8)` read as a signed bigint, so a rebuild with the same inputs
-gives the same ids and an id never depends on generation order; the table is part of the hash, so a store and its
+gives the same ids and an id never depends on generation order — except where the business key is a sequence:
+customer codes number the market in order (`setup.customers`). The table is part of the hash, so a store and its
 customer never share an id. The business key of each table is its `id_key` in `data/inventory.yaml`: names of the
 key's parts, not columns (`delivery_point`: `customer`, `place`). `row_id(table, **key)` takes the parts by those
 names; each is made canonical as `rng`'s key parts are (an `int` whatever numpy type, a date's ISO text), and the

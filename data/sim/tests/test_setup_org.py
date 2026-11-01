@@ -30,7 +30,7 @@ def setup(opening: Setup) -> Setup:
 
 
 def _rows(setup: Setup, table: str) -> list[dict[str, Any]]:
-    return setup.tables[table]
+    return setup.rows(table)
 
 
 def _by_slot(setup: Setup, prefix: str) -> dict[str, Actor]:
@@ -220,7 +220,7 @@ def test_the_null_world_gives_everyone_average_skills(osm_market: Market) -> Non
 def test_two_runs_give_the_same_rows(setup: Setup, osm_market: Market) -> None:
     again = run(market=osm_market)
     for table in ("employee", "assignment", "org_unit", "region", "okres"):
-        assert again.tables[table] == setup.tables[table], table
+        assert again.rows(table) == setup.rows(table), table
 
 
 def test_rep_areas_in_a_ring_of_two_alternate(setup: Setup) -> None:

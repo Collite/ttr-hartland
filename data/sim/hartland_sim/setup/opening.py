@@ -8,8 +8,14 @@ its quarter's gross spread over its delivery points' DCs, then over the SKUs its
 in cases at the SKU's list price for the channel. The warm-up year's reorder runs (G3) bring the stock to the plan's
 own rate before the first written day. The opening `stock_day` rows are dated the day before the warm-up.
 
-**Writing** (`write`): the setup tables through the CSV writer in `load_order`, `_sim_meta` (the inputs' hashes, the
-day before the warm-up as `last_day_done`) and the opening checkpoint. A run folder is written once.
+**The state tables** (`STATE_TABLES`, ⚑R201-A): `employee`, `assignment`, `customer`, `lifecycle_phase` and
+`discount_budget` hold state the loop changes — a churned customer's `until`, a closed phase episode or duty, a
+budget's `used_amount`. They are rendered from the `World` when a build ends (`state_rows`), never appended, and a
+prolong renders them from the checkpoint alone. The opening is a build of zero days: setup makes no rows for them.
+
+**Writing** (`write`): setup's other tables and the state tables, through the CSV writer in `load_order`,
+`_sim_meta` (the inputs' hashes, the day before the warm-up as `last_day_done`) and the opening checkpoint. A run
+folder is written once.
 """
 
 from __future__ import annotations
@@ -26,11 +32,15 @@ from hartland_sim.config import INVENTORY_FILE, STORIES_DIR, WORLD_FILE, Stories
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import REFERENCE_DIR
-from hartland_sim.setup.customers import Customers
+from hartland_sim.setup.customers import Customers, customer_row, phases
+from hartland_sim.setup.org import assignment, employee_row
+from hartland_sim.setup.policies import budget_row
 from hartland_sim.setup.portfolio import Portfolio, listed
 from hartland_sim.setup.reference import Geography
-from hartland_sim.setup.rows import Tables, row
+from hartland_sim.setup.rows import Tables, row, tables
 from hartland_sim.world import Checkpoint, Meta, Stock, World, digest
+
+STATE_TABLES = ("employee", "assignment", "customer", "lifecycle_phase", "discount_budget")
 
 
 def rates(
@@ -121,13 +131,29 @@ def meta(world: WorldConfig, stories: StoriesConfig, last_day_done: date) -> Met
     )
 
 
-def write(world_state: World, tables: Tables, run: Path, world: WorldConfig, stories: StoriesConfig) -> Meta:
-    """The opening into `run`: every setup table, `_sim_meta`, the opening checkpoint. `FileExistsError` when `run`
-    already holds a CSV."""
+def state_rows(world_state: World, world: WorldConfig) -> Tables:
+    """The state tables' rows, rendered from `world_state` in its own order (module docstring)."""
+    out = tables()
+    codes = {employee: actor.code for employee, actor in world_state.actors.items()}
+    out["employee"] = [employee_row(actor) for actor in world_state.actors.values()]
+    out["assignment"] = [assignment(duty, codes) for duty in world_state.duties]
+    out["customer"] = [customer_row(customer, world) for customer in world_state.customers.values()]
+    out["lifecycle_phase"] = phases(world_state.customers.values())
+    out["discount_budget"] = [budget_row(*key, budget) for key, budget in world_state.budgets.items()]
+    return out
+
+
+def write(world_state: World, setup_rows: Tables, run: Path, world: WorldConfig, stories: StoriesConfig) -> Meta:
+    """The opening into `run`: setup's tables, the state tables rendered from `world_state`, `_sim_meta`, the opening
+    checkpoint. `FileExistsError` when `run` already holds a CSV; `ValueError` when `setup_rows` holds a state table's
+    rows, which only the `World` may give."""
+    held = [name for name in STATE_TABLES if setup_rows.get(name)]
+    if held:
+        raise ValueError(f"{held} are rendered from the World, not written from setup's rows")
     if run.exists() and any(run.glob("*.csv")):
         raise FileExistsError(f"{run} already holds a build")
     with CsvWriter(run) as writer:
-        writer.write_all(tables)
+        writer.write_all({**setup_rows, **state_rows(world_state, world)})
     opening = meta(world, stories, world_state.day)
     opening.save(run)
     Checkpoint.of(world_state).save(run)

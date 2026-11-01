@@ -16,7 +16,7 @@ from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import read
 from hartland_sim.setup.classifier import osm_order
-from hartland_sim.setup.customers import family_plural, small_retail_pool
+from hartland_sim.setup.customers import family_plural, first_episodes, small_retail_pool
 from hartland_sim.setup.market import Market
 from hartland_sim.setup.run import Setup, run
 from hartland_sim.world import OPEN
@@ -32,7 +32,7 @@ def setup(opening: Setup) -> Setup:
 
 
 def _rows(setup: Setup, table: str) -> list[dict[str, Any]]:
-    return setup.tables[table]
+    return setup.rows(table)
 
 
 def _customers(setup: Setup, channel: str) -> list[dict[str, Any]]:
@@ -274,6 +274,32 @@ def test_small_retail_customers_open_with_a_phase(setup: Setup) -> None:
             assert mine[0]["valid_to"] == customer["since"] - timedelta(days=1)
         else:
             assert [(e["phase"], e["valid_from"]) for e in mine] == [("occasional", customer["since"])]
+
+
+def test_the_world_s_phase_is_the_table_s(setup: Setup) -> None:
+    """R-4's rows are rendered from the `World`'s episodes: on the warm-up's first and last day and on each `since`,
+    the phase in the `World` is the phase of the row that covers the day."""
+    rows: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for episode in _rows(setup, "lifecycle_phase"):
+        rows[episode["customer_id"]].append(episode)
+    last = WORLD.history.first_day - timedelta(days=1)
+    for customer in setup.world.customers.values():
+        if customer.channel != "small_retail":
+            continue
+        for day in (START, last, *([customer.since] if customer.since else [])):
+            (covering,) = [e for e in rows[customer.customer_id] if e["valid_from"] <= day <= e["valid_to"]]
+            assert customer.phase_on(day) == covering["phase"], (customer.code, day)
+
+
+def test_every_channel_s_customer_is_potential_until_its_since(setup: Setup) -> None:
+    for customer in setup.world.customers.values():
+        assert customer.phase_on(START) == ("occasional" if customer.active_on(START) else "potential"), customer.code
+        if customer.since:
+            assert customer.phase_on(customer.since) == "occasional"
+    joins = date(2023, 8, 15)
+    customer = replace(setup.world.customers[_customers(setup, "web")[0]["customer_id"]], since=joins)
+    customer = replace(customer, episodes=first_episodes("active", joins, START))
+    assert (customer.phase_on(joins - timedelta(days=1)), customer.phase_on(joins)) == ("potential", "occasional")
 
 
 def test_the_opening_budgets_cover_every_rep_and_kam(setup: Setup) -> None:

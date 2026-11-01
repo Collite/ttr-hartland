@@ -1,7 +1,9 @@
 """Setup, once per build (`05` §2): steps 1–7 in order, from the committed inputs — `world.yaml`, `stories/`,
 `data/reference/` — into the opening `World` and the rows of the setup-time tables.
 
-The opening is the state the warm-up starts from: `World.day` is the day before `history.warm_up_from`. Every draw
+The opening is the state the warm-up starts from: `World.day` is the day before `history.warm_up_from`. The tables
+that hold the loop's state are not among setup's rows: they are rendered from the `World` (`opening.state_rows`,
+`Setup.rows`). Every draw
 is made under `world.yaml`'s master seed, from a named stream (contracts §2), so two runs give the same world and the
 same rows."""
 
@@ -10,6 +12,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import cached_property
 from pathlib import Path
 
 from hartland_sim.config import StoriesConfig, WorldConfig
@@ -19,22 +22,33 @@ from hartland_sim.setup import customers, opening, policies, portfolio, referenc
 from hartland_sim.setup import org as org_setup
 from hartland_sim.setup.customers import Customers
 from hartland_sim.setup.market import Market
+from hartland_sim.setup.opening import STATE_TABLES, state_rows
 from hartland_sim.setup.org import SALES, Org
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
-from hartland_sim.setup.rows import Tables, tables
+from hartland_sim.setup.rows import Row, Tables, tables
 from hartland_sim.world import World
 
 
 @dataclass
 class Setup:
     world: World
-    tables: Tables
+    tables: Tables  # setup's rows; not the state tables'
     geography: Geography
     org: Org
     portfolio: Portfolio
     covers: dict[tuple[int, int], tuple[float, float]]  # (sku_id, dc_site_id) → the policy's (min, max) days
     customers: Customers
+    config: WorldConfig
+
+    @cached_property
+    def state(self) -> Tables:
+        """The state tables' opening rows, rendered from `world` once."""
+        return state_rows(self.world, self.config)
+
+    def rows(self, table: str) -> list[Row]:
+        """`table`'s opening rows: a state table's from `state`, another from `tables`."""
+        return self.state[table] if table in STATE_TABLES else self.tables.get(table, [])
 
 
 def run(
@@ -60,9 +74,9 @@ def run(
         state.actors = {actor.employee_id: actor for actor in org.actors.values()}
         state.duties = list(org.duties)
         state.customers = {customer.customer_id: customer for customer in made.customers}
-        state.budgets = policies.budgets(out, world, planned(state, made))
+        state.budgets = policies.budgets(world, planned(state, made))
         state.stock = opening.stock(out, world, products, covers, made, geography)
-    return Setup(state, out, geography, org, products, covers, made)
+    return Setup(state, out, geography, org, products, covers, made, world)
 
 
 def planned(state: World, made: Customers) -> list[tuple[int, str, int]]:

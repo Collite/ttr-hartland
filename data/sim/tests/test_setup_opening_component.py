@@ -37,7 +37,7 @@ def test_the_opening_copies_into_postgres_and_its_keys_hold(
             (counts[table.name],) = hartland_db.execute(
                 sql.SQL("SELECT count(*) FROM hartland.{}").format(sql.Identifier(table.name))
             ).fetchone() or (0,)
-    assert counts == {name: len(rows) for name, rows in opening.tables.items()}
+    assert counts == {name: len(rows) for name, rows in {**opening.tables, **opening.state}.items()}
     opening_day = WorldConfig.load().history.warm_up_from - timedelta(days=1)
     (day,) = hartland_db.execute("SELECT DISTINCT day FROM hartland.stock_day").fetchone() or (None,)
     assert day == opening_day

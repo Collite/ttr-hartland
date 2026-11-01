@@ -16,10 +16,24 @@ from typing import Any
 import pytest
 
 from hartland_sim.config import InventoryConfig, StoriesConfig, WorldConfig
+from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CellError, CsvWriter, cell
-from hartland_sim.setup.opening import rates, write
+from hartland_sim.setup.opening import STATE_TABLES, rates, state_rows, write
+from hartland_sim.setup.rows import tables
 from hartland_sim.setup.run import Setup
-from hartland_sim.world import CHECKPOINT_FILE, META_FILE, Checkpoint, Meta
+from hartland_sim.world import (
+    CHECKPOINT_FILE,
+    META_FILE,
+    OPEN,
+    Actor,
+    Budget,
+    Checkpoint,
+    Customer,
+    Duty,
+    Episode,
+    Meta,
+)
+from hartland_sim.world import World as WorldState
 
 WORLD = WorldConfig.load()
 STORIES = StoriesConfig.load()
@@ -123,12 +137,74 @@ def test_the_opening_stock_sits_at_each_policy_s_midpoint(opening: Setup) -> Non
 
 
 def test_every_setup_table_is_written_with_the_inventory_s_header(opening: Setup, written: Path) -> None:
-    for name, rows in opening.tables.items():
+    every = {**opening.tables, **opening.state}
+    for name, rows in every.items():
         with (written / f"{name}.csv").open(encoding="utf-8", newline="") as source:
             reader = csv.reader(source)
             assert next(reader) == [column.name for column in INVENTORY.table(name).columns]
             assert sum(1 for _ in reader) == len(rows), name
-    assert {path.stem for path in written.glob("*.csv")} == set(opening.tables) | {"_sim_meta", "_sim_checkpoint"}
+    assert {path.stem for path in written.glob("*.csv")} == set(every) | {"_sim_meta", "_sim_checkpoint"}
+
+
+# ── the state tables (⚑R201-A) ───────────────────────────────────────────────
+
+
+def test_setup_makes_no_state_rows_the_world_renders_them(opening: Setup) -> None:
+    assert not set(opening.tables) & set(STATE_TABLES)
+    world = opening.world
+    assert [len(opening.state[name]) for name in STATE_TABLES] == [
+        len(world.actors),
+        len(world.duties),
+        len(world.customers),
+        sum(len(c.episodes) for c in world.customers.values() if c.channel == "small_retail"),
+        len(world.budgets),
+    ]
+
+
+def test_the_state_tables_render_from_the_checkpoint_alone(opening: Setup, written: Path) -> None:
+    """A prolong has only the checkpoint: the `World` it restores renders the same rows, in the same order."""
+    assert state_rows(Checkpoint.load(written).restore(), WORLD) == opening.state
+
+
+def test_a_change_in_the_world_renders_into_the_state_rows() -> None:
+    joined, churned = date(2023, 3, 1), date(2024, 5, 31)
+    world = WorldState(date(2024, 5, 31))
+    world.actors[5] = Actor(5, "novak01", "Jan", "Novák", "rep", "OU-TP-SJC", date(2019, 3, 1), manager_id=4)
+    world.duties.append(Duty(5, "rep_area", "SJC-06", date(2019, 3, 1)))
+    world.customers[11] = Customer(
+        11, "MO-000001", "Potraviny U Lípy", "small_retail", None, "active", joined, None, "CZ0201", "SJC-06",
+        "node/1", None, [Episode("potential", date(2023, 1, 1), "Neodebírá"), Episode("occasional", joined, "První")],
+    )  # fmt: skip
+    world.budgets[5, date(2024, 4, 1)] = Budget(25_000.0)
+    before = state_rows(world, WORLD)
+    customer = world.customers[11]
+    customer.status, customer.until = "lost", churned
+    customer.episodes.append(Episode("lost", churned + timedelta(days=1), "Odešel ke konkurenci"))
+    world.actors[5].left_on = date(2024, 5, 31)
+    world.duties[0].valid_to = date(2024, 5, 31)
+    world.budgets[5, date(2024, 4, 1)].used_amount = 1_234.5
+    after = state_rows(world, WORLD)
+    assert [(c["status"], c["until"]) for c in before["customer"]] == [("active", None)]
+    assert [(c["status"], c["until"]) for c in after["customer"]] == [("lost", churned)]
+    assert [(e["phase"], e["valid_to"]) for e in after["lifecycle_phase"]] == [
+        ("potential", joined - timedelta(days=1)),
+        ("occasional", churned),
+        ("lost", OPEN),
+    ]
+    assert after["lifecycle_phase"][:1] == before["lifecycle_phase"][:1]
+    assert [e["left_on"] for e in after["employee"]] == [date(2024, 5, 31)]
+    assert [(a["valid_to"], a["area_id"]) for a in after["assignment"]] == [
+        (date(2024, 5, 31), row_id("area", code="SJC-06"))
+    ]
+    assert [(b["budget_amount"], b["used_amount"]) for b in after["discount_budget"]] == [(25_000.0, 1_234.5)]
+
+
+def test_write_refuses_state_rows_from_setup(opening: Setup, tmp_path: Path) -> None:
+    rows = tables()
+    rows["customer"] = opening.state["customer"][:1]
+    with pytest.raises(ValueError, match="rendered from the World"):
+        write(opening.world, rows, tmp_path / "run", WORLD, STORIES)
+    assert not (tmp_path / "run").exists()
 
 
 def test_the_meta_names_the_inputs(written: Path) -> None:

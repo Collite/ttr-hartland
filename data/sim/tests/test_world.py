@@ -20,6 +20,7 @@ from hartland_sim.world import (
     Condition,
     Customer,
     Duty,
+    Episode,
     Meta,
     Skills,
     Stock,
@@ -34,15 +35,17 @@ WARM_UP_END = date(2023, 12, 31)
 def _world(day: date = date(2022, 12, 31)) -> World:
     world = World(day)
     world.customers[11] = Customer(
-        11, "RT-000001", "small_retail", None, "active", date(2021, 5, 3), None, "CZ0201", "SJC-06", "node/1", None,
-        "occasional", traits=("chronic_late_payer",), condition=Condition(date(2023, 1, 1), "VOL-T1", 2.0),
-        basket={7: 1.5, 3: 0.25},
+        11, "RT-000001", "Potraviny U Lípy", "small_retail", None, "active", date(2021, 5, 3), None, "CZ0201",
+        "SJC-06", "node/1", None, [Episode("occasional", date(2021, 5, 3), "První objednávka")],
+        traits=("chronic_late_payer",), condition=Condition(date(2023, 1, 1), "VOL-T1", 2.0), basket={7: 1.5, 3: 0.25},
     )  # fmt: skip
     world.customers[12] = Customer(
-        12, "RT-000002", "small_retail", "special_retail", "potential", None, None, "CZ0202", "SJC-06", "node/2",
-        "MOL", "potential",
+        12, "RT-000002", "Čerpací stanice Lhota", "small_retail", "special_retail", "potential", None, None, "CZ0202",
+        "SJC-06", "node/2", "MOL", [Episode("potential", date(2023, 1, 1), "Neodebírá")],
     )  # fmt: skip
-    world.actors[5] = Actor(5, "novak01", "rep", "TP-SJC", date(2019, 3, 1), skills=Skills(conversion=1.35))
+    world.actors[5] = Actor(
+        5, "novak01", "Jan", "Novák", "rep", "TP-SJC", date(2019, 3, 1), manager_id=4, skills=Skills(conversion=1.35)
+    )
     world.duties.append(Duty(5, "rep_area", "SJC-06", date(2023, 1, 1), date(2024, 8, 31)))
     world.stock[(100, 200)] = Stock(120.0)
     world.budgets[(5, date(2023, 1, 1))] = Budget(25_000.0)
@@ -139,6 +142,29 @@ def test_a_customer_is_active_from_since_until_until() -> None:
     assert customer.active_on(date(2024, 3, 31))
     assert not customer.active_on(date(2024, 4, 1))
     assert not _world().customers[12].active_on(date(2024, 1, 1))
+
+
+def test_a_customer_s_phase_on_a_day_is_its_episode_s() -> None:
+    customer = _world().customers[11]
+    customer.episodes.append(Episode("regular", date(2023, 8, 15), "Pravidelné objednávky"))
+    assert customer.phase_on(date(2021, 5, 2)) == "potential"  # before the first episode
+    assert customer.phase_on(date(2021, 5, 3)) == "occasional"
+    assert customer.phase_on(date(2023, 8, 14)) == "occasional"
+    assert customer.phase_on(date(2023, 8, 15)) == "regular"
+    assert _world().customers[12].phase_on(date(2030, 1, 1)) == "potential"
+
+
+def test_episodes_and_names_survive_the_checkpoint() -> None:
+    world = _world()
+    world.customers[11].episodes.append(Episode("regular", date(2023, 8, 15), "Pravidelné objednávky"))
+    restored = Checkpoint.of(world).restore()
+    assert restored == world
+    assert restored.customers[11].episodes[-1] == Episode("regular", date(2023, 8, 15), "Pravidelné objednávky")
+    assert (restored.customers[12].name, restored.actors[5].last_name, restored.actors[5].manager_id) == (
+        "Čerpací stanice Lhota",
+        "Novák",
+        4,
+    )
 
 
 def test_the_duty_on_a_day() -> None:

@@ -15,9 +15,8 @@ from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.config import Channel, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import read
-from hartland_sim.setup.policies import budgets
+from hartland_sim.setup.policies import budget_row, budgets
 from hartland_sim.setup.portfolio import CHANNELS, listed
-from hartland_sim.setup.rows import tables
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import OPEN, Budget
 
@@ -31,7 +30,7 @@ def setup(opening: Setup) -> Setup:
 
 
 def _rows(setup: Setup, table: str) -> list[dict[str, Any]]:
-    return setup.tables[table]
+    return setup.rows(table)
 
 
 def test_the_hierarchy_is_the_catalogue(setup: Setup) -> None:
@@ -151,18 +150,15 @@ def test_the_rules_are_world_yaml_s_owned_by_the_sales_director(setup: Setup) ->
 
 
 def test_budgets_are_two_percent_of_the_opening_quarter_s_planned_gross() -> None:
-    out = tables()
-    state = budgets(out, WORLD, [(1, "small_retail", 80), (2, "big_retail", 2), (2, "gas_ka", 1)])
+    state = budgets(WORLD, [(1, "small_retail", 80), (2, "big_retail", 2), (2, "gas_ka", 1)])
     gross = WORLD.pricing.budgets.opening_quarter_gross
     quarter = date(2023, 1, 1)
     assert state == {
         (1, quarter): Budget(round(0.02 * 80 * gross["small_retail"], 2)),
         (2, quarter): Budget(round(0.02 * (2 * gross["big_retail"] + gross["gas_ka"]), 2)),
     }
-    assert [(b["employee_id"], b["quarter"], b["used_amount"]) for b in out["discount_budget"]] == [
-        (1, quarter, 0.0),
-        (2, quarter, 0.0),
-    ]
+    rows = [budget_row(*key, budget) for key, budget in state.items()]
+    assert [(b["employee_id"], b["quarter"], b["used_amount"]) for b in rows] == [(1, quarter, 0.0), (2, quarter, 0.0)]
 
 
 def test_pos_materials_and_each_region_s_asset_pool(setup: Setup) -> None:

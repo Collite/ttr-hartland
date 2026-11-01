@@ -1,10 +1,14 @@
 """The simulation's state and its daily checkpoint (contracts §2, architecture §2).
 
-`World` holds everything the day loop carries from one day to the next — customers with their condition, phase and
-basket, stock per SKU × DC, open orders, shipments and invoices, tourplans, loans, running promotions, budgets, the
-actors' hidden skills and their duties. Setup (`setup.build`) makes the opening `World`; the loop moves it a day at a
-time. `Checkpoint` is the pickled `World` after a day, hashed, stored as `_sim_checkpoint(day, sha256, blob)`;
-`prolong` resumes from the last one, and the 2023-12-31 checkpoint (the end of the warm-up year) lets a null-world or
+`World` holds everything the day loop carries from one day to the next — customers with their condition, phase
+episodes and basket, stock per SKU × DC, open orders, shipments and invoices, tourplans, loans, running promotions,
+budgets, the actors' hidden skills and their duties. Setup (`setup.build`) makes the opening `World`; the loop moves
+it a day at a time. The tables that hold the state the loop changes (`customer`, `lifecycle_phase`, `employee`,
+`assignment`, `discount_budget`) are rendered from the `World` when a build ends (`setup.opening.state_rows`), so it
+holds every value of their rows: the customer's name, the actor's name and manager.
+
+`Checkpoint` is the pickled `World` after a day, hashed, stored as `_sim_checkpoint(day, sha256, blob)`; `prolong`
+resumes from the last one, and the 2023-12-31 checkpoint (the end of the warm-up year) lets a null-world or
 re-parameterised build start from the same opening. `Meta` is `_sim_meta(key, value)`: the master seed, the hashes of
 the inputs, the last day done and the build id. Neither table is in the inventory (contracts §1): the generator
 writes both beside the CSVs, `load-world` creates them.
@@ -56,9 +60,12 @@ class Actor:
 
     employee_id: int
     code: str
+    first_name: str
+    last_name: str
     role: str
     org_unit: str
     hired_on: date
+    manager_id: int | None = None  # the manager's employee_id
     left_on: date | None = None
     skills: Skills = field(default_factory=Skills)
 
@@ -89,12 +96,22 @@ class Condition:
     cross_sell_pct: float = 0.0
 
 
+@dataclass(frozen=True)
+class Episode:
+    """A lifecycle phase from `valid_from` until the next episode starts (`lifecycle_phase`, R-4)."""
+
+    phase: str  # potential · occasional · regular · vip · lost
+    valid_from: date
+    reason: str  # the row's `reason`, in Czech
+
+
 @dataclass
 class Customer:
-    """A trading partner's state: who it is (codes, so a row can be written) and where it stands today."""
+    """A trading partner's state: who it is (its name and codes, so its row can be written) and where it stands."""
 
     customer_id: int
     code: str
+    name: str
     channel: str
     sub_channel: str | None
     status: str  # potential · active · lost
@@ -104,7 +121,7 @@ class Customer:
     area: str | None
     store: str | None  # the store's osm_id (a retail customer, a HoReCa place)
     chain: str | None
-    phase: str
+    episodes: list[Episode]  # in order, the last one open
     traits: tuple[str, ...] = ()  # the planted cases' (`anomalies.yaml pins.customers`)
     condition: Condition | None = None
     basket: dict[int, float] = field(default_factory=dict)  # product_line_id → latent cases not yet ordered
@@ -114,6 +131,15 @@ class Customer:
         if self.status == "potential" or self.since is None or self.since > day:
             return False
         return self.until is None or day <= self.until
+
+    def phase_on(self, day: date) -> str:
+        """The phase of the last episode that starts on or before `day`; `potential` before the first."""
+        phase = "potential"
+        for episode in self.episodes:
+            if episode.valid_from > day:
+                break
+            phase = episode.phase
+        return phase
 
 
 @dataclass

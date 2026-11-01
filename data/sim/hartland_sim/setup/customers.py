@@ -19,7 +19,10 @@ delivery points, their KAMs, the planted cases' pins and the first lifecycle pha
   their first order drawn over 2019–2023.
 
 A customer is active from its `since` (`World.Customer.active_on`), so a store whose `since` falls in 2023 joins
-during the warm-up. Codes: `KA-<chain>`, `MO-`, `GA-`, `VO-`, `AU-`, `VP-`, `ES-` + a number in market order.
+during the warm-up. Codes: `KA-<chain>`, `MO-`, `GA-`, `VO-`, `AU-`, `VP-`, `ES-` + a number in market order. The
+number is a position, not a business key: a readable customer number is what the documents and the demos show, at a
+price — one store more or fewer in S0.3's market renumbers every later `MO-`/`GA-` code and, through `id_key: [code]`,
+its `customer_id`.
 
 **Delivery points**: one per customer and place — a store, a station, a chain's DC, a depot, an own shop, a web
 consumer's town — each in a leaf okres (one of Praha's 22 districts, never Praha), served by its region's DC, with
@@ -32,14 +35,19 @@ KAMs the operators in turn, the HoReCa KAMs the region-ordered HoReCa customers 
 class) in `osm_order` gets the case's trait. A-1's and A-14's customers are renamed to an invented Czech name on the
 customer, its store and its delivery point (⚑R196-B): their behaviour is invented, the business is real.
 
-**Lifecycle**: a small-retail customer's first episode is `potential` from the warm-up's first day, or `occasional`
-from its `since` (after a `potential` one when it joins during the warm-up); the month-ends re-phase it.
+**Lifecycle**: the `World` holds each customer's phase episodes (`Customer.episodes`). The first is `potential` from
+the warm-up's first day, or `occasional` from its `since`, after a `potential` one when it joins during the warm-up;
+the month-ends re-phase it. Only small retail's are rows (R-4's world): `phases` renders them from the episodes, so
+the table and the `World` cannot differ; the other channels' phase is in the `World` only.
+
+**Rows**: `chain`, `store` and `delivery_point` are setup's; `customer` and `lifecycle_phase` are rendered from the
+`World` when a build ends (`customer_row`, `phases`, `opening.state_rows`), as the loop changes them.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -55,10 +63,10 @@ from hartland_sim.setup.affluence import load as affluence
 from hartland_sim.setup.classifier import osm_order
 from hartland_sim.setup.classifier.chains import BY_CODE
 from hartland_sim.setup.market import UNNAMED, Market
-from hartland_sim.setup.org import Org, assignment
+from hartland_sim.setup.org import Org
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, row
-from hartland_sim.world import OPEN, Customer, Duty
+from hartland_sim.world import OPEN, Customer, Duty, Episode
 
 SMALL_RETAIL_CLASSES = ("super", "convenience", "minimarket", "village", "petrol", "hyper", "discount")
 RETAIL_FRANCHISES = ("convenience_franchise", "petrol")
@@ -67,6 +75,9 @@ VENDING_WORDS = ("Nápojové automaty", "Kávové automaty", "Automaty")
 WHOLESALERS = ("Gastro velkoobchod Čechy s.r.o.", "Gastro velkoobchod Morava s.r.o.")
 FINANCIAL_TRAITS = ("chronic_late_payer", "crosses_credit_limit")  # renamed (⚑R196-B)
 PRAHA = "CZ0100"
+PHASED_CHANNELS = ("small_retail",)  # the channels whose phase episodes are `lifecycle_phase` rows
+NOT_BUYING = "Neodebírá"
+FIRST_ORDER = "První objednávka"
 
 
 @dataclass(frozen=True)
@@ -88,7 +99,6 @@ class Place:
 @dataclass
 class Customers:
     customers: list[Customer]
-    names: dict[str, str]  # customer code → its name
     places: dict[str, list[Place]]  # customer code → its delivery points
     pins: dict[str, str]  # customer code → the trait a pin gave it
     stores: list[Row]  # the market's stores, renamed where a pin renames one
@@ -102,7 +112,7 @@ def build(
     org: Org,
     market: Market | None = None,
 ) -> Customers:
-    """`chain`, `store`, `customer`, `delivery_point`, the KAMs' `assignment`s and `lifecycle_phase` into `out`."""
+    """`chain`, `store` and `delivery_point` into `out`; the customers, and the KAMs' duties added to `org`'s."""
     market = market or market_setup.build()
     copies = [dict(store) for store in market.stores]  # a pin renames a store: never the market's own row
     stores = {store["osm_id"]: store for store in copies}
@@ -117,7 +127,7 @@ def build(
         )
         for chain in market.chains
     ]
-    made = Customers([], {}, {}, {}, copies)
+    made = Customers([], {}, {}, copies)
     _key_accounts(made, world, geography, copies)
     _small_retail(made, world, copies)
     _horeca(made, world, copies, market, geography)
@@ -128,13 +138,9 @@ def build(
     for store in copies:
         out["store"].append(_store_row(store))
     for customer in made.customers:
-        out["customer"].append(_customer_row(customer, made.names[customer.code], world))
         for place in made.places[customer.code]:
             out["delivery_point"].append(_point_row(customer.code, place, world, geography))
-    duties = kam_duties(made.customers, org, geography)
-    org.duties += duties
-    out["assignment"] += [assignment(duty, org.codes) for duty in duties]
-    out["lifecycle_phase"] += phases(made.customers, world)
+    org.duties += kam_duties(made.customers, org, geography)
     return made
 
 
@@ -175,12 +181,20 @@ def _store_place(store: Row, kind: str, name: str | None = None) -> Place:
 
 
 def _customer(
-    code: str, name: str, channel: str, status: str, since: date | None, *, okres: str | None, **extra: Any
+    world: WorldConfig,
+    code: str,
+    name: str,
+    channel: str,
+    status: str,
+    since: date | None,
+    *,
+    okres: str | None,
+    **extra: Any,
 ) -> Customer:
-    phase = "potential" if status == "potential" else "occasional"
     return Customer(
         row_id("customer", code=code),
         code,
+        name,
         channel,
         extra.get("sub_channel"),
         status,
@@ -190,13 +204,21 @@ def _customer(
         extra.get("area"),
         extra.get("store"),
         extra.get("chain"),
-        phase,
+        first_episodes(status, since, world.history.warm_up_from),
     )
 
 
-def _add(made: Customers, customer: Customer, name: str, places: Sequence[Place]) -> None:
+def first_episodes(status: str, since: date | None, start: date) -> list[Episode]:
+    """A customer's phase at the opening (module docstring): `start` is the warm-up's first day."""
+    if status == "potential" or since is None:
+        return [Episode("potential", start, NOT_BUYING)]
+    if since > start:
+        return [Episode("potential", start, NOT_BUYING), Episode("occasional", since, FIRST_ORDER)]
+    return [Episode("occasional", since, FIRST_ORDER)]
+
+
+def _add(made: Customers, customer: Customer, places: Sequence[Place]) -> None:
     made.customers.append(customer)
-    made.names[customer.code] = name
     made.places[customer.code] = list(places)
 
 
@@ -215,8 +237,8 @@ def _key_accounts(made: Customers, world: WorldConfig, geography: Geography, sto
             places = [_chain_dc(name, dc, geography) for dc in world.sites.dcs]
         else:
             places = [_store_place(store, "chain_store") for store in by_chain[chain]]
-        customer = _customer(code, name, channel, "active", since, okres=None, chain=chain)
-        _add(made, customer, name, places)
+        customer = _customer(world, code, name, channel, "active", since, okres=None, chain=chain)
+        _add(made, customer, places)
 
 
 def _chain_dc(chain: str, dc: str, geography: Geography) -> Place:
@@ -249,6 +271,7 @@ def _small_retail(made: Customers, world: WorldConfig, stores: Sequence[Row]) ->
         active, since = _active(world, "small_retail", store["osm_id"])
         station = store["store_class"] == "petrol"
         customer = _customer(
+            world,
             f"MO-{n:06d}",
             store["name"],
             "small_retail",
@@ -260,7 +283,7 @@ def _small_retail(made: Customers, world: WorldConfig, stores: Sequence[Row]) ->
             store=store["osm_id"],
             chain=store["chain"],
         )
-        _add(made, customer, store["name"], [_store_place(store, "store")])
+        _add(made, customer, [_store_place(store, "store")])
 
 
 def _horeca(made: Customers, world: WorldConfig, copies: Sequence[Row], market: Market, geography: Geography) -> None:
@@ -273,6 +296,7 @@ def _horeca(made: Customers, world: WorldConfig, copies: Sequence[Row], market: 
         since = _day(rng("acquire", "horeca", pick.osm_id), spread.since_from, spread.since_until)
         active = pick.role == "customer"
         customer = _customer(
+            world,
             f"GA-{n:06d}",
             store["name"],
             "horeca",
@@ -282,14 +306,14 @@ def _horeca(made: Customers, world: WorldConfig, copies: Sequence[Row], market: 
             area=store["area"],
             store=pick.osm_id,
         )
-        _add(made, customer, store["name"], [_store_place(store, "horeca")])
+        _add(made, customer, [_store_place(store, "horeca")])
     assert settings.wholesalers is not None
     sides = list(world.sites.dcs)
     for n, name in enumerate(WHOLESALERS[: settings.wholesalers], start=1):
         dc = sides[(n - 1) % len(sides)]
         okres = _depot_okres(geography, "wholesaler", n, dc)
-        customer = _customer(f"VO-{n:02d}", name, "horeca", "active", _since_from(world), okres=okres)
-        _add(made, customer, name, [_depot(okres, name, geography)])
+        customer = _customer(world, f"VO-{n:02d}", name, "horeca", "active", _since_from(world), okres=okres)
+        _add(made, customer, [_depot(okres, name, geography)])
 
 
 def _population(geography: Geography, dc: str | None = None) -> tuple[list[str], np.ndarray]:
@@ -326,9 +350,9 @@ def _vending(made: Customers, world: WorldConfig, geography: Geography) -> None:
             if name not in used:
                 used.append(name)
                 break
-        okres = _depot_okres(geography, "vending", n)
-        customer = _customer(f"AU-{n:02d}", name, "vending", "active", _since_from(world), okres=okres)
-        _add(made, customer, name, [_depot(okres, name, geography)])
+        okres = _depot_okres(geography, "vending_depot", n)  # not the name's key: the okres would follow the name
+        customer = _customer(world, f"AU-{n:02d}", name, "vending", "active", _since_from(world), okres=okres)
+        _add(made, customer, [_depot(okres, name, geography)])
 
 
 def _own_shops(made: Customers, world: WorldConfig, geography: Geography) -> None:
@@ -345,8 +369,8 @@ def _own_shops(made: Customers, world: WorldConfig, geography: Geography) -> Non
             lat=site["lat"],
             lon=site["lon"],
         )
-        customer = _customer(code, site["name"], "own_shops", "active", _since_from(world), okres=site["okres"])
-        _add(made, customer, site["name"], [place])
+        customer = _customer(world, code, site["name"], "own_shops", "active", _since_from(world), okres=site["okres"])
+        _add(made, customer, [place])
 
 
 def _web(made: Customers, world: WorldConfig, geography: Geography) -> None:
@@ -365,8 +389,8 @@ def _web(made: Customers, world: WorldConfig, geography: Geography) -> None:
         code = f"ES-{n:06d}"
         name = f"Zákazník e-shopu {n:06d}"
         town = _town(geography, okres)
-        customer = _customer(code, name, "web", "active", since, okres=okres)
-        _add(made, customer, name, [Place(key=okres, kind="web", name=f"{town} – zásilka", okres=okres, town=town)])
+        customer = _customer(world, code, name, "web", "active", since, okres=okres)
+        _add(made, customer, [Place(key=okres, kind="web", name=f"{town} – zásilka", okres=okres, town=town)])
 
 
 # ── the planted cases ────────────────────────────────────────────────────────
@@ -400,7 +424,7 @@ def _pin(made: Customers, stories: StoriesConfig, stores: Mapping[str, Row], hor
             word = HORECA_WORD.get(horeca_kind.get(customer.store, ""), UNNAMED.get(store["store_class"], "Prodejna"))
             name = f"{word} U {family}"
             store["name"] = name
-            made.names[customer.code] = name
+            customer.name = name
             made.places[customer.code] = [_store_place(store, made.places[customer.code][0].kind)]
 
 
@@ -450,31 +474,24 @@ def kam_duties(customers: Sequence[Customer], org: Org, geography: Geography) ->
     return duties
 
 
-def phases(customers: Sequence[Customer], world: WorldConfig) -> list[Row]:
-    """The first `lifecycle_phase` episodes of the small-retail customers (module docstring)."""
-    start = world.history.warm_up_from
+def phases(customers: Iterable[Customer]) -> list[Row]:
+    """The `lifecycle_phase` rows of the phased channels' customers, from their episodes: each valid until the day
+    before the next one starts, the last one open."""
     rows = []
     for customer in customers:
-        if customer.channel != "small_retail":
+        if customer.channel not in PHASED_CHANNELS:
             continue
-        episodes: list[tuple[str, date, date, str]] = []
-        if customer.status == "potential" or customer.since is None:
-            episodes.append(("potential", start, OPEN, "Neodebírá"))
-        elif customer.since > start:
-            episodes.append(("potential", start, customer.since - timedelta(days=1), "Neodebírá"))
-            episodes.append(("occasional", customer.since, OPEN, "První objednávka"))
-        else:
-            episodes.append(("occasional", customer.since, OPEN, "První objednávka"))
-        for phase, valid_from, valid_to, reason in episodes:
+        ends = [episode.valid_from - timedelta(days=1) for episode in customer.episodes[1:]] + [OPEN]
+        for episode, valid_to in zip(customer.episodes, ends, strict=True):
             rows.append(
                 row(
                     "lifecycle_phase",
-                    lifecycle_phase_id=row_id("lifecycle_phase", customer=customer.code, valid_from=valid_from),
+                    lifecycle_phase_id=row_id("lifecycle_phase", customer=customer.code, valid_from=episode.valid_from),
                     customer_id=customer.customer_id,
-                    phase=phase,
-                    valid_from=valid_from,
+                    phase=episode.phase,
+                    valid_from=episode.valid_from,
                     valid_to=valid_to,
-                    reason=reason,
+                    reason=episode.reason,
                 )
             )
     return rows
@@ -508,7 +525,8 @@ def _store_row(store: Row) -> Row:
     )
 
 
-def _customer_row(customer: Customer, name: str, world: WorldConfig) -> Row:
+def customer_row(customer: Customer, world: WorldConfig) -> Row:
+    """The `customer` row of `customer`: its terms and credit limit by channel (`world.yaml`)."""
     terms = "special_retail" if customer.sub_channel == "special_retail" else customer.channel
     limits = {str(channel): limit for channel, limit in world.policies.credit_limit.items()}
     days = {str(channel): days for channel, days in world.finance.payment_terms_days.items()}
@@ -516,13 +534,13 @@ def _customer_row(customer: Customer, name: str, world: WorldConfig) -> Row:
         "customer",
         customer_id=customer.customer_id,
         code=customer.code,
-        name=name,
+        name=customer.name,
         channel=customer.channel,
         sub_channel=customer.sub_channel,
         chain_id=row_id("chain", code=customer.chain) if customer.chain else None,
         store_id=row_id("store", osm_id=customer.store) if customer.store else None,
         okres_id=row_id("okres", code=customer.okres) if customer.okres else None,
-        legal_form="s.r.o." if name.endswith(" s.r.o.") else None,
+        legal_form="s.r.o." if customer.name.endswith(" s.r.o.") else None,
         vat_id=None,
         payment_terms_days=days[terms],
         credit_limit=limits.get(terms),

@@ -1,15 +1,19 @@
 """Setup step 3 (`05` §2): the organisation — `org_unit` (the Center's five units and their teams, `org_unit.csv`),
 `employee` (one per post of `world.yaml salesforce`, with a Czech name), `assignment` (the duties: a rep's area with
 the two moves of `04` S3, an area manager's region, a product manager's line, a dispatcher's DC; a KAM's customers
-are `customers`'), and the hidden skills each actor carries in the `World`, never in a table (NH-16).
+are `customers`'), and the hidden skills each actor carries in the `World`, never in a table (NH-16). The `employee`
+and `assignment` rows are rendered from the `World`'s actors and duties (`employee_row`, `assignment`,
+`opening.state_rows`).
 
 **Posts.** Every person sits on a post with a stable key (`rep:PHA-03`, `kam:horeca:2`, `pm:GOLD`, …), so a draw
-keyed by the post does not move when another post is added. The order: management, the area managers by region, the
-reps by `area.csv rep_slot`, the head of key accounts, the KAMs by channel, the product managers by line, the
-dispatchers by DC, supply, finance, marketing, the shop managers by shop. Each reports to its post's manager: a rep to
-the region's area manager, a KAM to the head of key accounts, the field and the key accounts to the sales director, the
-product managers and marketing to the marketing director, finance to the finance director, supply and dispatch to the
-managing director.
+keyed by the post does not move when another post is added, unless an earlier post takes its name or its surname: a
+taken name is drawn again, and the code counts the surname in post order, so a post added before it can move a
+post's name, code and, through `id_key: [code]`, its `employee_id`. The order: management, the area managers by
+region, the reps by `area.csv rep_slot`, the head of key accounts, the KAMs by channel, the product managers by line,
+the dispatchers by DC, supply, finance, marketing, the shop managers by shop. Each reports to its post's manager: a rep
+to the region's area manager, a KAM to the head of key accounts, the field and the key accounts to the sales director,
+the product managers and marketing to the marketing director, finance to the finance director, supply and dispatch to
+the managing director.
 
 **Names** (stream `org`): a woman on 45 % of the posts; a first name of that gender and a surname in its form, drawn
 again until the full name is new. `employee.code` is the surname folded to ASCII, lower case, and a two-digit count
@@ -153,7 +157,7 @@ def build(
     geography: Geography,
     root: Path = REFERENCE_DIR,
 ) -> Org:
-    """`org_unit`, `employee`, `assignment` (but a KAM's) and `region` into `out`; the actors and their duties."""
+    """`org_unit` and `region` into `out`; the actors and their duties (but a KAM's, which are `customers`')."""
     units = read("org_unit", root)
     for unit in units:
         out["org_unit"].append(
@@ -178,22 +182,10 @@ def build(
         seen[login] += 1
         code = f"{login}{seen[login]:02d}"
         hired = _day(rng("org", "hired", post.slot), HIRED_FROM, last_day)
-        actor = Actor(row_id("employee", code=code), code, post.role, post.org_unit, hired, None, skills.of(post))
+        manager = actors[post.manager].employee_id if post.manager else None
+        employee = row_id("employee", code=code)
+        actor = Actor(employee, code, first, last, post.role, post.org_unit, hired, manager, None, skills.of(post))
         actors[post.slot] = actor
-        out["employee"].append(
-            row(
-                "employee",
-                employee_id=actor.employee_id,
-                code=code,
-                first_name=first,
-                last_name=last,
-                org_unit_id=row_id("org_unit", code=post.org_unit),
-                role=post.role,
-                manager_employee_id=actors[post.manager].employee_id if post.manager else None,
-                hired_on=hired,
-                left_on=None,
-            )
-        )
     org = Org(actors, [], every, {actor.employee_id: actor.code for actor in actors.values()})
     moves = tuple(stories.story("S3").parameters["area_move_days"])
     if len(moves) != world.salesforce.rep_area_moves:
@@ -212,10 +204,24 @@ def build(
         for post, actor in org.by_role(role):
             assert post.target is not None
             org.duties.append(Duty(actor.employee_id, kind, post.target, actor.hired_on))
-    for duty in org.duties:
-        out["assignment"].append(assignment(duty, org.codes))
     regions(out, {post.target: actor.employee_id for post, actor in org.by_role("area_manager") if post.target}, root)
     return org
+
+
+def employee_row(actor: Actor) -> Row:
+    """The `employee` row of `actor`."""
+    return row(
+        "employee",
+        employee_id=actor.employee_id,
+        code=actor.code,
+        first_name=actor.first_name,
+        last_name=actor.last_name,
+        org_unit_id=row_id("org_unit", code=actor.org_unit),
+        role=actor.role,
+        manager_employee_id=actor.manager_id,
+        hired_on=actor.hired_on,
+        left_on=actor.left_on,
+    )
 
 
 def assignment(duty: Duty, codes: Mapping[int, str]) -> Row:
