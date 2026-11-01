@@ -35,9 +35,10 @@ first full build.
 
 A threshold comes from the mechanics, never from a build: S2-affluence's 1.35 lies between the ≈ 1.68 that `s2.yaml`'s
 mechanics give over the real affluence quarters and the null world's 1.0. One is still to be set that way: S5's
-spread (`s5_best_worst.sql`), whose 3 is `04`'s, set for the return rather than for gain ÷ cost. G2 S2.3 T1 builds
-`display_uplift`'s street × size grid, derives the spread that grid gives over the market, and sets the threshold
-between it and 1.0, before the first build.
+spread (`s5_best_worst.sql`), whose 3 is `04`'s, set for the return rather than for gain ÷ cost. G2 S2.3 derives it
+once T2's placements and T4's give-aways exist (at T6, before the first build): the expected gain ÷ cost of PHA and
+of VCH from `s5.yaml`'s and `world.yaml`'s mechanics over the market. It sets the threshold between that spread and
+the null world's 1.0, never from a build.
 
 ## The pins
 

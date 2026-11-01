@@ -153,8 +153,8 @@ def test_s5_names_the_managers_skills(stories: StoriesConfig) -> None:
 
 
 def test_s5s_spread_waits_for_its_threshold(stories: StoriesConfig) -> None:
-    """The spread is gain ÷ cost, not 04's return, so 04's 3 is provisional until G2 S2.3 T1 derives it from the
-    mechanics: the YAML, the SQL's header and the stories README say so."""
+    """The spread is gain ÷ cost, not 04's return, so 04's 3 is provisional until G2 S2.3 derives it from the
+    mechanics, at T6: the YAML, the SQL's header and the stories README say so."""
     (spread,) = stories.story("S5").also
     assert (spread.sql, spread.metric, spread.threshold, spread.direction) == (
         "detectors/s5_best_worst.sql",
