@@ -1,0 +1,25 @@
+code,name,parent,cost_centre,unit
+OU-HCZ,Vedení společnosti,,CC-100,finance_admin
+OU-FIN,Finance a správa,OU-HCZ,CC-110,finance_admin
+OU-HR,Personalistika,OU-FIN,CC-120,finance_admin
+OU-IT,Informační technologie,OU-FIN,CC-130,finance_admin
+OU-ZAS,Zásobování,OU-HCZ,CC-200,supply
+OU-DOP,Doprava,OU-HCZ,CC-300,delivery
+OU-DIS-JIRNY,Dispečink Západ – Jirny,OU-DOP,CC-310,delivery
+OU-DIS-MODRICE,Dispečink Východ – Modřice,OU-DOP,CC-320,delivery
+OU-OBC,Obchod,OU-HCZ,CC-400,sales
+OU-KA-RET,Klíčoví zákazníci – obchodní řetězce,OU-OBC,CC-410,sales
+OU-KA-CS,Klíčoví zákazníci – čerpací stanice,OU-OBC,CC-420,sales
+OU-AUT,Prodejní automaty,OU-OBC,CC-430,sales
+OU-GAS,Gastronomie,OU-OBC,CC-440,sales
+OU-TP-PHA,Terénní prodej – Praha,OU-OBC,CC-461,sales
+OU-TP-SJC,Terénní prodej – Střední a jižní Čechy,OU-OBC,CC-462,sales
+OU-TP-ZSC,Terénní prodej – Západní a severní Čechy,OU-OBC,CC-463,sales
+OU-TP-VCH,Terénní prodej – Východní Čechy,OU-OBC,CC-464,sales
+OU-TP-JMV,Terénní prodej – Jižní Morava a Vysočina,OU-OBC,CC-465,sales
+OU-TP-SMS,Terénní prodej – Severní Morava a Slezsko,OU-OBC,CC-466,sales
+OU-VP,Vlastní prodejny,OU-OBC,CC-600,sales
+OU-MKT,Marketing,OU-HCZ,CC-500,marketing
+OU-PM-HARCAFE,Produktový management Harcafé,OU-MKT,CC-510,marketing
+OU-PM-HARSOUP,Produktový management Harsoup,OU-MKT,CC-520,marketing
+OU-WEB,Internetový obchod,OU-MKT,CC-530,marketing

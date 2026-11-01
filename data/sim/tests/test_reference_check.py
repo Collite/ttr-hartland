@@ -31,6 +31,7 @@ COMMITTED = (
     "names_first",
     "names_last",
     "okres",
+    "org_unit",
     "osm-context",
     "osm-horeca",
     "osm-stores",

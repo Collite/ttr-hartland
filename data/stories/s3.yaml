@@ -12,6 +12,8 @@ parameters:
   churn_base: 0.012 # the monthly churn hazard = base ÷ skill
   cross_sell_base: 0.08 # the monthly chance an active customer adds a line it never bought = base × skill
   area_moves: 2
+  # The days the reps change areas (each rep, within its region, at a quarter's start so a budget stays one rep's).
+  area_move_days: [2024-10-01, 2025-10-01]
 detector:
   sql: detectors/s3.sql
   metric: pinned_placements # the two stars in the top five, the two weak ones in the bottom five, on the composite
