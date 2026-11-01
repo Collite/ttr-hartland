@@ -1,6 +1,9 @@
 # the generator's outputs (data/build/<run>/ — CSV sets, stories.md, timing) — never committed
 data/build/
 
+# macOS Finder
+.DS_Store
+
 # Python
 .venv/
 __pycache__/

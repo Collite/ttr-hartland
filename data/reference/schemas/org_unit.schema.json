@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/org_unit.schema.json",
+  "title": "org_unit.csv — the Center's units and their teams (03 §2, review-189 ⚑D), each on its cost centre",
+  "x-rows": [
+    20,
+    30
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "parent",
+    "cost_centre",
+    "unit"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^OU-[A-Z]+(-[A-Z]+)?$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "parent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-ref": "org_unit.code",
+      "description": "the unit it belongs to; empty for the company's management"
+    },
+    "cost_centre": {
+      "type": "string",
+      "x-ref": "cost_centre.code"
+    },
+    "unit": {
+      "enum": [
+        "supply",
+        "delivery",
+        "sales",
+        "marketing",
+        "finance_admin"
+      ],
+      "description": "the Center's unit (01 §2); its cost centre's unit"
+    }
+  }
+}
