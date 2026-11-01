@@ -37,7 +37,7 @@ def table promotion {
         def column name                   { type: text },
         def column campaign_id            { type: bigint, optional: true },
         def column goal                   { type: text },
-        def column target_product_line_id { type: bigint, optional: true },
+        def column target_product_line_id { type: bigint },
         def column target_sku_id          { type: bigint, optional: true },
         def column target_uplift_pct      { type: { type: decimal, length: 6, precision: 2 } },
         def column target_period_weeks    { type: int },
