@@ -1,0 +1,295 @@
+package hartland
+
+model lexicon locale cs
+
+// The product word list — seeded by scripts/seed_members.py from data/reference/product.csv (name_cs, nicknames_cs)
+// (M0 S0.1 T5). Do not edit: edit the sources and re-seed. One term per member, its words in `forms`; `for:` is the
+// member vocabulary's column until M3 S3.1 T5 re-targets each term to its member (README.md).
+
+def term product_classic_cs {
+    description: "Harcafé Classic (CLASSIC)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Classic", "klasik", "klasika"]
+}
+
+def term product_classic_silna_cs {
+    description: "Harcafé Classic Silná (CLASSIC-SILNA)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Classic Silná", "silný klasik"]
+}
+
+def term product_classic_jemna_cs {
+    description: "Harcafé Classic Jemná (CLASSIC-JEMNA)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Classic Jemná", "jemný klasik"]
+}
+
+def term product_gold_cs {
+    description: "Harcafé Gold (GOLD)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Gold", "zlatý kafe", "zlatá"]
+}
+
+def term product_gold_intenzivni_cs {
+    description: "Harcafé Gold Intenzivní (GOLD-INTENZIVNI)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Gold Intenzivní", "silná zlatá"]
+}
+
+def term product_gold_crema_cs {
+    description: "Harcafé Gold Crema (GOLD-CREMA)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Gold Crema", "zlatá krema"]
+}
+
+def term product_espresso_cs {
+    description: "Harcafé Espresso (ESPRESSO)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Espresso", "espresko"]
+}
+
+def term product_espresso_bezkofeinu_cs {
+    description: "Harcafé Espresso bez kofeinu (ESPRESSO-BEZKOFEINU)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Espresso bez kofeinu", "espresko bez kofeinu"]
+}
+
+def term product_3v1_cs {
+    description: "Harcafé 3v1 (3V1)"
+    for: db.hartland.product.name
+    forms: ["Harcafé 3v1", "trojka", "tři v jednom"]
+}
+
+def term product_2v1_cs {
+    description: "Harcafé 2v1 (2V1)"
+    for: db.hartland.product.name
+    forms: ["Harcafé 2v1", "dvojka", "dva v jednom"]
+}
+
+def term product_cappuccino_cs {
+    description: "Harcafé Cappuccino (CAPPUCCINO)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Cappuccino", "kapučíno"]
+}
+
+def term product_latte_cs {
+    description: "Harcafé Latte (LATTE)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Latte", "late"]
+}
+
+def term product_classic_bezkofeinu_cs {
+    description: "Harcafé Classic bez kofeinu (CLASSIC-BEZKOFEINU)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Classic bez kofeinu", "bezkofeinový klasik"]
+}
+
+def term product_gold_bezkofeinu_cs {
+    description: "Harcafé Gold bez kofeinu (GOLD-BEZKOFEINU)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Gold bez kofeinu", "bezkofeinová zlatá"]
+}
+
+def term product_automatova_smes_cs {
+    description: "Harcafé Automatová směs (AUTOMATOVA-SMES)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Automatová směs", "automatovka"]
+}
+
+def term product_mlecna_pena_cs {
+    description: "Harcafé Mléčná pěna do automatů (MLECNA-PENA)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Mléčná pěna do automatů", "mléčná pěna", "topping"]
+}
+
+def term product_kavarenska_smes_cs {
+    description: "Harcafé Kavárenská směs (KAVARENSKA-SMES)"
+    for: db.hartland.product.name
+    forms: ["Harcafé Kavárenská směs", "kavárenská"]
+}
+
+def term product_polevka_kureci_cs {
+    description: "Harsoup Kuřecí s nudlemi (POLEVKA-KURECI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Kuřecí s nudlemi", "kuřecí polívka", "slepičí"]
+}
+
+def term product_polevka_hovezi_cs {
+    description: "Harsoup Hovězí (POLEVKA-HOVEZI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Hovězí", "hovězí polívka"]
+}
+
+def term product_polevka_houbova_cs {
+    description: "Harsoup Houbová (POLEVKA-HOUBOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Houbová", "houbovka"]
+}
+
+def term product_polevka_rajska_cs {
+    description: "Harsoup Rajská (POLEVKA-RAJSKA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Rajská", "rajská polívka"]
+}
+
+def term product_polevka_hrachova_cs {
+    description: "Harsoup Hrachová (POLEVKA-HRACHOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Hrachová", "hrachovka"]
+}
+
+def term product_polevka_gulasova_cs {
+    description: "Harsoup Gulášová (POLEVKA-GULASOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Gulášová", "gulášovka"]
+}
+
+def term product_polevka_koprova_cs {
+    description: "Harsoup Koprová (POLEVKA-KOPROVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Koprová", "koprovka"]
+}
+
+def term product_polevka_zelna_cs {
+    description: "Harsoup Zelňačka (POLEVKA-ZELNA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Zelňačka", "zelňačka"]
+}
+
+def term product_polevka_cockova_cs {
+    description: "Harsoup Čočková (POLEVKA-COCKOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Čočková", "čočkovka"]
+}
+
+def term product_polevka_cibulova_cs {
+    description: "Harsoup Cibulová (POLEVKA-CIBULOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Cibulová", "cibulačka"]
+}
+
+def term product_polevka_kvetakova_cs {
+    description: "Harsoup Květáková (POLEVKA-KVETAKOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Květáková", "květákovka"]
+}
+
+def term product_kelimek_kureci_cs {
+    description: "Harsoup Kuřecí v kelímku (KELIMEK-KURECI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Kuřecí v kelímku", "kuřecí kelímek"]
+}
+
+def term product_kelimek_rajska_cs {
+    description: "Harsoup Rajská v kelímku (KELIMEK-RAJSKA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Rajská v kelímku", "rajský kelímek"]
+}
+
+def term product_kelimek_houbova_cs {
+    description: "Harsoup Houbová v kelímku (KELIMEK-HOUBOVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Houbová v kelímku", "houbový kelímek"]
+}
+
+def term product_kelimek_asijska_cs {
+    description: "Harsoup Asijská s nudlemi v kelímku (KELIMEK-ASIJSKA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Asijská s nudlemi v kelímku", "asijský kelímek"]
+}
+
+def term product_kelimek_syrova_cs {
+    description: "Harsoup Sýrová v kelímku (KELIMEK-SYROVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Sýrová v kelímku", "sýrový kelímek"]
+}
+
+def term product_kelimek_kari_cs {
+    description: "Harsoup Kari v kelímku (KELIMEK-KARI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Kari v kelímku", "kari kelímek"]
+}
+
+def term product_nudle_kureci_cs {
+    description: "Harsoup Nudle kuřecí (NUDLE-KURECI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Nudle kuřecí", "čínské nudle", "kuřecí nudle"]
+}
+
+def term product_nudle_hovezi_cs {
+    description: "Harsoup Nudle hovězí (NUDLE-HOVEZI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Nudle hovězí", "hovězí nudle"]
+}
+
+def term product_nudle_kari_cs {
+    description: "Harsoup Nudle kari (NUDLE-KARI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Nudle kari", "kari nudle"]
+}
+
+def term product_nudle_palive_cs {
+    description: "Harsoup Nudle pálivé s chilli (NUDLE-PALIVE)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Nudle pálivé s chilli", "pálivé nudle"]
+}
+
+def term product_nudle_zeleninove_cs {
+    description: "Harsoup Nudle zeleninové (NUDLE-ZELENINOVE)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Nudle zeleninové", "zeleninové nudle"]
+}
+
+def term product_nudle_krevetove_cs {
+    description: "Harsoup Nudle krevetové (NUDLE-KREVETOVE)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Nudle krevetové", "krevetové nudle"]
+}
+
+def term product_krem_dynovy_cs {
+    description: "Harsoup Dýňový krém (KREM-DYNOVY)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Dýňový krém", "dýňovka", "dýňová polévka"]
+}
+
+def term product_bisque_humrova_cs {
+    description: "Harsoup Humrová bisque (BISQUE-HUMROVA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Humrová bisque", "humrová polévka"]
+}
+
+def term product_krem_z_hub_cs {
+    description: "Harsoup Krém z lesních hub (KREM-Z-HUB)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Krém z lesních hub", "lesní houbovka"]
+}
+
+def term product_cibulacka_francouzska_cs {
+    description: "Harsoup Francouzská cibulová (CIBULACKA-FRANCOUZSKA)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Francouzská cibulová", "francouzská cibulačka"]
+}
+
+def term product_bujon_kureci_cs {
+    description: "Harsoup Profi kuřecí bujón (BUJON-KURECI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Profi kuřecí bujón", "kuřecí bujón"]
+}
+
+def term product_bujon_hovezi_cs {
+    description: "Harsoup Profi hovězí bujón (BUJON-HOVEZI)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Profi hovězí bujón", "hovězí bujón"]
+}
+
+def term product_bujon_zeleninovy_cs {
+    description: "Harsoup Profi zeleninový bujón (BUJON-ZELENINOVY)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Profi zeleninový bujón", "zeleninový bujón"]
+}
+
+def term product_zaklad_nudlovy_cs {
+    description: "Harsoup Profi základ na nudlovou polévku (ZAKLAD-NUDLOVY)"
+    for: db.hartland.product.name
+    forms: ["Harsoup Profi základ na nudlovou polévku", "nudlový základ"]
+}

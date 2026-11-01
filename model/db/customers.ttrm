@@ -13,8 +13,8 @@ def table chain {
     primaryKey: [chain_id]
     columns: [
         def column chain_id       { type: bigint, isKey: true },
-        def column code           { type: text },
-        def column name           { type: text },
+        def column code           { type: text, search { searchable method: EXACT } },
+        def column name           { type: text, search { searchable method: TYPOS(1) } },
         def column kind           { type: text },
         def column is_key_account { type: bool }
     ]

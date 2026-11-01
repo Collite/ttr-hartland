@@ -25,8 +25,8 @@ def table kraj {
     primaryKey: [kraj_id]
     columns: [
         def column kraj_id { type: bigint, isKey: true },
-        def column code    { type: text },
-        def column name    { type: text }
+        def column code    { type: text, search { searchable method: EXACT } },
+        def column name    { type: text, search { searchable method: TOKENS } }
     ]
 }
 
@@ -35,8 +35,8 @@ def table okres {
     primaryKey: [okres_id]
     columns: [
         def column okres_id        { type: bigint, isKey: true },
-        def column code            { type: text },
-        def column name            { type: text },
+        def column code            { type: text, search { searchable method: EXACT } },
+        def column name            { type: text, search { searchable method: TYPOS(1) } },
         def column kraj_id         { type: bigint },
         def column parent_okres_id { type: bigint, optional: true },
         def column affluence_index { type: { type: decimal, length: 4, precision: 3 } },
@@ -49,10 +49,10 @@ def table site {
     primaryKey: [site_id]
     columns: [
         def column site_id         { type: bigint, isKey: true },
-        def column code            { type: text },
+        def column code            { type: text, search { searchable method: EXACT } },
         def column kind            { type: text },
         def column legal_entity_id { type: bigint },
-        def column name            { type: text },
+        def column name            { type: text, search { searchable method: TOKENS } },
         def column town            { type: text },
         def column okres_id        { type: bigint },
         def column lat             { type: { type: decimal, length: 9, precision: 6 } },

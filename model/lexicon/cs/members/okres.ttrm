@@ -1,0 +1,602 @@
+package hartland
+
+model lexicon locale cs
+
+// The okres word list — seeded by scripts/seed_members.py from data/reference/okres.csv + declension.csv
+// (nominative, genitive, locative) (M0 S0.1 T5). Do not edit: edit the sources and re-seed. One term per member,
+// its words in `forms`; `for:` is the member vocabulary's column until M3 S3.1 T5 re-targets each term to its
+// member (README.md).
+
+def term okres_cz0100_cs {
+    description: "Praha (CZ0100)"
+    for: db.hartland.okres.name
+    forms: ["Praha", "Prahy", "Praze"]
+}
+
+def term okres_cz0201_cs {
+    description: "Benešov (CZ0201)"
+    for: db.hartland.okres.name
+    forms: ["Benešov", "Benešova", "Benešově"]
+}
+
+def term okres_cz0202_cs {
+    description: "Beroun (CZ0202)"
+    for: db.hartland.okres.name
+    forms: ["Beroun", "Berouna", "Berouně"]
+}
+
+def term okres_cz0203_cs {
+    description: "Kladno (CZ0203)"
+    for: db.hartland.okres.name
+    forms: ["Kladno", "Kladna", "Kladně"]
+}
+
+def term okres_cz0204_cs {
+    description: "Kolín (CZ0204)"
+    for: db.hartland.okres.name
+    forms: ["Kolín", "Kolína", "Kolíně"]
+}
+
+def term okres_cz0205_cs {
+    description: "Kutná Hora (CZ0205)"
+    for: db.hartland.okres.name
+    forms: ["Kutná Hora", "Kutné Hory", "Kutné Hoře"]
+}
+
+def term okres_cz0206_cs {
+    description: "Mělník (CZ0206)"
+    for: db.hartland.okres.name
+    forms: ["Mělník", "Mělníka", "Mělníku"]
+}
+
+def term okres_cz0207_cs {
+    description: "Mladá Boleslav (CZ0207)"
+    for: db.hartland.okres.name
+    forms: ["Mladá Boleslav", "Mladé Boleslavi"]
+}
+
+def term okres_cz0208_cs {
+    description: "Nymburk (CZ0208)"
+    for: db.hartland.okres.name
+    forms: ["Nymburk", "Nymburka", "Nymburce"]
+}
+
+def term okres_cz0209_cs {
+    description: "Praha-východ (CZ0209)"
+    for: db.hartland.okres.name
+    forms: ["Praha-východ", "Prahy-východ", "Praze-východ"]
+}
+
+def term okres_cz020a_cs {
+    description: "Praha-západ (CZ020A)"
+    for: db.hartland.okres.name
+    forms: ["Praha-západ", "Prahy-západ", "Praze-západ"]
+}
+
+def term okres_cz020b_cs {
+    description: "Příbram (CZ020B)"
+    for: db.hartland.okres.name
+    forms: ["Příbram", "Příbrami"]
+}
+
+def term okres_cz020c_cs {
+    description: "Rakovník (CZ020C)"
+    for: db.hartland.okres.name
+    forms: ["Rakovník", "Rakovníka", "Rakovníku"]
+}
+
+def term okres_cz0311_cs {
+    description: "České Budějovice (CZ0311)"
+    for: db.hartland.okres.name
+    forms: ["České Budějovice", "Českých Budějovic", "Českých Budějovicích"]
+}
+
+def term okres_cz0312_cs {
+    description: "Český Krumlov (CZ0312)"
+    for: db.hartland.okres.name
+    forms: ["Český Krumlov", "Českého Krumlova", "Českém Krumlově"]
+}
+
+def term okres_cz0313_cs {
+    description: "Jindřichův Hradec (CZ0313)"
+    for: db.hartland.okres.name
+    forms: ["Jindřichův Hradec", "Jindřichova Hradce", "Jindřichově Hradci"]
+}
+
+def term okres_cz0314_cs {
+    description: "Písek (CZ0314)"
+    for: db.hartland.okres.name
+    forms: ["Písek", "Písku"]
+}
+
+def term okres_cz0315_cs {
+    description: "Prachatice (CZ0315)"
+    for: db.hartland.okres.name
+    forms: ["Prachatice", "Prachatic", "Prachaticích"]
+}
+
+def term okres_cz0316_cs {
+    description: "Strakonice (CZ0316)"
+    for: db.hartland.okres.name
+    forms: ["Strakonice", "Strakonic", "Strakonicích"]
+}
+
+def term okres_cz0317_cs {
+    description: "Tábor (CZ0317)"
+    for: db.hartland.okres.name
+    forms: ["Tábor", "Tábora", "Táboře"]
+}
+
+def term okres_cz0321_cs {
+    description: "Domažlice (CZ0321)"
+    for: db.hartland.okres.name
+    forms: ["Domažlice", "Domažlic", "Domažlicích"]
+}
+
+def term okres_cz0322_cs {
+    description: "Klatovy (CZ0322)"
+    for: db.hartland.okres.name
+    forms: ["Klatovy", "Klatov", "Klatovech"]
+}
+
+def term okres_cz0323_cs {
+    description: "Plzeň-město (CZ0323)"
+    for: db.hartland.okres.name
+    forms: ["Plzeň-město", "Plzně-města", "Plzni-městě"]
+}
+
+def term okres_cz0324_cs {
+    description: "Plzeň-jih (CZ0324)"
+    for: db.hartland.okres.name
+    forms: ["Plzeň-jih", "Plzně-jih", "Plzni-jih"]
+}
+
+def term okres_cz0325_cs {
+    description: "Plzeň-sever (CZ0325)"
+    for: db.hartland.okres.name
+    forms: ["Plzeň-sever", "Plzně-sever", "Plzni-sever"]
+}
+
+def term okres_cz0326_cs {
+    description: "Rokycany (CZ0326)"
+    for: db.hartland.okres.name
+    forms: ["Rokycany", "Rokycan", "Rokycanech"]
+}
+
+def term okres_cz0327_cs {
+    description: "Tachov (CZ0327)"
+    for: db.hartland.okres.name
+    forms: ["Tachov", "Tachova", "Tachově"]
+}
+
+def term okres_cz0411_cs {
+    description: "Cheb (CZ0411)"
+    for: db.hartland.okres.name
+    forms: ["Cheb", "Chebu"]
+}
+
+def term okres_cz0412_cs {
+    description: "Karlovy Vary (CZ0412)"
+    for: db.hartland.okres.name
+    forms: ["Karlovy Vary", "Karlových Varů", "Karlových Varech"]
+}
+
+def term okres_cz0413_cs {
+    description: "Sokolov (CZ0413)"
+    for: db.hartland.okres.name
+    forms: ["Sokolov", "Sokolova", "Sokolově"]
+}
+
+def term okres_cz0421_cs {
+    description: "Děčín (CZ0421)"
+    for: db.hartland.okres.name
+    forms: ["Děčín", "Děčína", "Děčíně"]
+}
+
+def term okres_cz0422_cs {
+    description: "Chomutov (CZ0422)"
+    for: db.hartland.okres.name
+    forms: ["Chomutov", "Chomutova", "Chomutově"]
+}
+
+def term okres_cz0423_cs {
+    description: "Litoměřice (CZ0423)"
+    for: db.hartland.okres.name
+    forms: ["Litoměřice", "Litoměřic", "Litoměřicích"]
+}
+
+def term okres_cz0424_cs {
+    description: "Louny (CZ0424)"
+    for: db.hartland.okres.name
+    forms: ["Louny", "Loun", "Lounech"]
+}
+
+def term okres_cz0425_cs {
+    description: "Most (CZ0425)"
+    for: db.hartland.okres.name
+    forms: ["Most", "Mostu", "Mostě"]
+}
+
+def term okres_cz0426_cs {
+    description: "Teplice (CZ0426)"
+    for: db.hartland.okres.name
+    forms: ["Teplice", "Teplic", "Teplicích"]
+}
+
+def term okres_cz0427_cs {
+    description: "Ústí nad Labem (CZ0427)"
+    for: db.hartland.okres.name
+    forms: ["Ústí nad Labem"]
+}
+
+def term okres_cz0511_cs {
+    description: "Česká Lípa (CZ0511)"
+    for: db.hartland.okres.name
+    forms: ["Česká Lípa", "České Lípy", "České Lípě"]
+}
+
+def term okres_cz0512_cs {
+    description: "Jablonec nad Nisou (CZ0512)"
+    for: db.hartland.okres.name
+    forms: ["Jablonec nad Nisou", "Jablonce nad Nisou", "Jablonci nad Nisou"]
+}
+
+def term okres_cz0513_cs {
+    description: "Liberec (CZ0513)"
+    for: db.hartland.okres.name
+    forms: ["Liberec", "Liberce", "Liberci"]
+}
+
+def term okres_cz0514_cs {
+    description: "Semily (CZ0514)"
+    for: db.hartland.okres.name
+    forms: ["Semily", "Semil", "Semilech"]
+}
+
+def term okres_cz0521_cs {
+    description: "Hradec Králové (CZ0521)"
+    for: db.hartland.okres.name
+    forms: ["Hradec Králové", "Hradce Králové", "Hradci Králové"]
+}
+
+def term okres_cz0522_cs {
+    description: "Jičín (CZ0522)"
+    for: db.hartland.okres.name
+    forms: ["Jičín", "Jičína", "Jičíně"]
+}
+
+def term okres_cz0523_cs {
+    description: "Náchod (CZ0523)"
+    for: db.hartland.okres.name
+    forms: ["Náchod", "Náchoda", "Náchodě"]
+}
+
+def term okres_cz0524_cs {
+    description: "Rychnov nad Kněžnou (CZ0524)"
+    for: db.hartland.okres.name
+    forms: ["Rychnov nad Kněžnou", "Rychnova nad Kněžnou", "Rychnově nad Kněžnou"]
+}
+
+def term okres_cz0525_cs {
+    description: "Trutnov (CZ0525)"
+    for: db.hartland.okres.name
+    forms: ["Trutnov", "Trutnova", "Trutnově"]
+}
+
+def term okres_cz0531_cs {
+    description: "Chrudim (CZ0531)"
+    for: db.hartland.okres.name
+    forms: ["Chrudim", "Chrudimi"]
+}
+
+def term okres_cz0532_cs {
+    description: "Pardubice (CZ0532)"
+    for: db.hartland.okres.name
+    forms: ["Pardubice", "Pardubic", "Pardubicích"]
+}
+
+def term okres_cz0533_cs {
+    description: "Svitavy (CZ0533)"
+    for: db.hartland.okres.name
+    forms: ["Svitavy", "Svitav", "Svitavách"]
+}
+
+def term okres_cz0534_cs {
+    description: "Ústí nad Orlicí (CZ0534)"
+    for: db.hartland.okres.name
+    forms: ["Ústí nad Orlicí"]
+}
+
+def term okres_cz0631_cs {
+    description: "Havlíčkův Brod (CZ0631)"
+    for: db.hartland.okres.name
+    forms: ["Havlíčkův Brod", "Havlíčkova Brodu", "Havlíčkově Brodě"]
+}
+
+def term okres_cz0632_cs {
+    description: "Jihlava (CZ0632)"
+    for: db.hartland.okres.name
+    forms: ["Jihlava", "Jihlavy", "Jihlavě"]
+}
+
+def term okres_cz0633_cs {
+    description: "Pelhřimov (CZ0633)"
+    for: db.hartland.okres.name
+    forms: ["Pelhřimov", "Pelhřimova", "Pelhřimově"]
+}
+
+def term okres_cz0634_cs {
+    description: "Třebíč (CZ0634)"
+    for: db.hartland.okres.name
+    forms: ["Třebíč", "Třebíče", "Třebíči"]
+}
+
+def term okres_cz0635_cs {
+    description: "Žďár nad Sázavou (CZ0635)"
+    for: db.hartland.okres.name
+    forms: ["Žďár nad Sázavou", "Žďáru nad Sázavou"]
+}
+
+def term okres_cz0641_cs {
+    description: "Blansko (CZ0641)"
+    for: db.hartland.okres.name
+    forms: ["Blansko", "Blanska", "Blansku"]
+}
+
+def term okres_cz0642_cs {
+    description: "Brno-město (CZ0642)"
+    for: db.hartland.okres.name
+    forms: ["Brno-město", "Brna-města", "Brně-městě"]
+}
+
+def term okres_cz0643_cs {
+    description: "Brno-venkov (CZ0643)"
+    for: db.hartland.okres.name
+    forms: ["Brno-venkov", "Brna-venkova", "Brně-venkově"]
+}
+
+def term okres_cz0644_cs {
+    description: "Břeclav (CZ0644)"
+    for: db.hartland.okres.name
+    forms: ["Břeclav", "Břeclavi"]
+}
+
+def term okres_cz0645_cs {
+    description: "Hodonín (CZ0645)"
+    for: db.hartland.okres.name
+    forms: ["Hodonín", "Hodonína", "Hodoníně"]
+}
+
+def term okres_cz0646_cs {
+    description: "Vyškov (CZ0646)"
+    for: db.hartland.okres.name
+    forms: ["Vyškov", "Vyškova", "Vyškově"]
+}
+
+def term okres_cz0647_cs {
+    description: "Znojmo (CZ0647)"
+    for: db.hartland.okres.name
+    forms: ["Znojmo", "Znojma", "Znojmě"]
+}
+
+def term okres_cz0711_cs {
+    description: "Jeseník (CZ0711)"
+    for: db.hartland.okres.name
+    forms: ["Jeseník", "Jeseníku"]
+}
+
+def term okres_cz0712_cs {
+    description: "Olomouc (CZ0712)"
+    for: db.hartland.okres.name
+    forms: ["Olomouc", "Olomouce", "Olomouci"]
+}
+
+def term okres_cz0713_cs {
+    description: "Prostějov (CZ0713)"
+    for: db.hartland.okres.name
+    forms: ["Prostějov", "Prostějova", "Prostějově"]
+}
+
+def term okres_cz0714_cs {
+    description: "Přerov (CZ0714)"
+    for: db.hartland.okres.name
+    forms: ["Přerov", "Přerova", "Přerově"]
+}
+
+def term okres_cz0715_cs {
+    description: "Šumperk (CZ0715)"
+    for: db.hartland.okres.name
+    forms: ["Šumperk", "Šumperka", "Šumperku"]
+}
+
+def term okres_cz0721_cs {
+    description: "Kroměříž (CZ0721)"
+    for: db.hartland.okres.name
+    forms: ["Kroměříž", "Kroměříže", "Kroměříži"]
+}
+
+def term okres_cz0722_cs {
+    description: "Uherské Hradiště (CZ0722)"
+    for: db.hartland.okres.name
+    forms: ["Uherské Hradiště", "Uherského Hradiště", "Uherském Hradišti"]
+}
+
+def term okres_cz0723_cs {
+    description: "Vsetín (CZ0723)"
+    for: db.hartland.okres.name
+    forms: ["Vsetín", "Vsetína", "Vsetíně"]
+}
+
+def term okres_cz0724_cs {
+    description: "Zlín (CZ0724)"
+    for: db.hartland.okres.name
+    forms: ["Zlín", "Zlína", "Zlíně"]
+}
+
+def term okres_cz0801_cs {
+    description: "Bruntál (CZ0801)"
+    for: db.hartland.okres.name
+    forms: ["Bruntál", "Bruntálu", "Bruntále"]
+}
+
+def term okres_cz0802_cs {
+    description: "Frýdek-Místek (CZ0802)"
+    for: db.hartland.okres.name
+    forms: ["Frýdek-Místek", "Frýdku-Místku"]
+}
+
+def term okres_cz0803_cs {
+    description: "Karviná (CZ0803)"
+    for: db.hartland.okres.name
+    forms: ["Karviná", "Karviné"]
+}
+
+def term okres_cz0804_cs {
+    description: "Nový Jičín (CZ0804)"
+    for: db.hartland.okres.name
+    forms: ["Nový Jičín", "Nového Jičína", "Novém Jičíně"]
+}
+
+def term okres_cz0805_cs {
+    description: "Opava (CZ0805)"
+    for: db.hartland.okres.name
+    forms: ["Opava", "Opavy", "Opavě"]
+}
+
+def term okres_cz0806_cs {
+    description: "Ostrava-město (CZ0806)"
+    for: db.hartland.okres.name
+    forms: ["Ostrava-město", "Ostravy-města", "Ostravě-městě"]
+}
+
+def term okres_cz0100_01_cs {
+    description: "Praha 1 (CZ0100-01)"
+    for: db.hartland.okres.name
+    forms: ["Praha 1", "Prahy 1", "Praze 1"]
+}
+
+def term okres_cz0100_02_cs {
+    description: "Praha 2 (CZ0100-02)"
+    for: db.hartland.okres.name
+    forms: ["Praha 2", "Prahy 2", "Praze 2"]
+}
+
+def term okres_cz0100_03_cs {
+    description: "Praha 3 (CZ0100-03)"
+    for: db.hartland.okres.name
+    forms: ["Praha 3", "Prahy 3", "Praze 3"]
+}
+
+def term okres_cz0100_04_cs {
+    description: "Praha 4 (CZ0100-04)"
+    for: db.hartland.okres.name
+    forms: ["Praha 4", "Prahy 4", "Praze 4"]
+}
+
+def term okres_cz0100_05_cs {
+    description: "Praha 5 (CZ0100-05)"
+    for: db.hartland.okres.name
+    forms: ["Praha 5", "Prahy 5", "Praze 5"]
+}
+
+def term okres_cz0100_06_cs {
+    description: "Praha 6 (CZ0100-06)"
+    for: db.hartland.okres.name
+    forms: ["Praha 6", "Prahy 6", "Praze 6"]
+}
+
+def term okres_cz0100_07_cs {
+    description: "Praha 7 (CZ0100-07)"
+    for: db.hartland.okres.name
+    forms: ["Praha 7", "Prahy 7", "Praze 7"]
+}
+
+def term okres_cz0100_08_cs {
+    description: "Praha 8 (CZ0100-08)"
+    for: db.hartland.okres.name
+    forms: ["Praha 8", "Prahy 8", "Praze 8"]
+}
+
+def term okres_cz0100_09_cs {
+    description: "Praha 9 (CZ0100-09)"
+    for: db.hartland.okres.name
+    forms: ["Praha 9", "Prahy 9", "Praze 9"]
+}
+
+def term okres_cz0100_10_cs {
+    description: "Praha 10 (CZ0100-10)"
+    for: db.hartland.okres.name
+    forms: ["Praha 10", "Prahy 10", "Praze 10"]
+}
+
+def term okres_cz0100_11_cs {
+    description: "Praha 11 (CZ0100-11)"
+    for: db.hartland.okres.name
+    forms: ["Praha 11", "Prahy 11", "Praze 11"]
+}
+
+def term okres_cz0100_12_cs {
+    description: "Praha 12 (CZ0100-12)"
+    for: db.hartland.okres.name
+    forms: ["Praha 12", "Prahy 12", "Praze 12"]
+}
+
+def term okres_cz0100_13_cs {
+    description: "Praha 13 (CZ0100-13)"
+    for: db.hartland.okres.name
+    forms: ["Praha 13", "Prahy 13", "Praze 13"]
+}
+
+def term okres_cz0100_14_cs {
+    description: "Praha 14 (CZ0100-14)"
+    for: db.hartland.okres.name
+    forms: ["Praha 14", "Prahy 14", "Praze 14"]
+}
+
+def term okres_cz0100_15_cs {
+    description: "Praha 15 (CZ0100-15)"
+    for: db.hartland.okres.name
+    forms: ["Praha 15", "Prahy 15", "Praze 15"]
+}
+
+def term okres_cz0100_16_cs {
+    description: "Praha 16 (CZ0100-16)"
+    for: db.hartland.okres.name
+    forms: ["Praha 16", "Prahy 16", "Praze 16"]
+}
+
+def term okres_cz0100_17_cs {
+    description: "Praha 17 (CZ0100-17)"
+    for: db.hartland.okres.name
+    forms: ["Praha 17", "Prahy 17", "Praze 17"]
+}
+
+def term okres_cz0100_18_cs {
+    description: "Praha 18 (CZ0100-18)"
+    for: db.hartland.okres.name
+    forms: ["Praha 18", "Prahy 18", "Praze 18"]
+}
+
+def term okres_cz0100_19_cs {
+    description: "Praha 19 (CZ0100-19)"
+    for: db.hartland.okres.name
+    forms: ["Praha 19", "Prahy 19", "Praze 19"]
+}
+
+def term okres_cz0100_20_cs {
+    description: "Praha 20 (CZ0100-20)"
+    for: db.hartland.okres.name
+    forms: ["Praha 20", "Prahy 20", "Praze 20"]
+}
+
+def term okres_cz0100_21_cs {
+    description: "Praha 21 (CZ0100-21)"
+    for: db.hartland.okres.name
+    forms: ["Praha 21", "Prahy 21", "Praze 21"]
+}
+
+def term okres_cz0100_22_cs {
+    description: "Praha 22 (CZ0100-22)"
+    for: db.hartland.okres.name
+    forms: ["Praha 22", "Prahy 22", "Praze 22"]
+}

@@ -45,6 +45,7 @@ the 22 add up to it exactly.
 | `weather_normals.csv` | monthly temperature and precipitation per region, shaped like the Czech climate (not ČHMÚ figures) |
 | `severe_days.csv` | the planted A-5 days, which include a flood on 13–16 September 2024 in Moravia and Silesia, as happened, plus a seeded background of snow, ice, storm and wind days per region and year |
 | `names_first.csv`, `names_last.csv` | common Czech names, declined by hand; every person in the world is synthetic |
+| `declension.csv` | the kraje and okresy (the 22 Prague districts among them) in the nominative — their names in `kraj.csv` / `okres.csv` — the genitive and the locative, declined by hand for the member word lists (M0 S0.1 T5); a compound district name declines its town, and `-město` / `-venkov` with it (`Brně-venkově`), not `-jih` / `-sever` / `-východ` / `-západ` |
 | `legal_entity.csv` | the four companies of the group; their IČO are fictional, checksum-valid, and assigned to no one in ARES on 2026-10-31 |
 | `site.csv` | the group's 18 sites in real towns, at approximate town coordinates; the shops and the addresses are invented |
 | `brand.csv`, `product_line.csv`, `product.csv`, `catalogue.csv` | the portfolio of `01` §3: two brands, 11 lines, the products and their SKUs (117 in the range on 2026-10-31, 12 of them launched and 6 others delisted during the history). Prices and costs are invented, shaped like the Czech market of 2024; `sku_code` is an EAN-13 in GS1's 29x prefix, which is for restricted circulation, so no real product carries one |

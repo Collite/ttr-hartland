@@ -13,8 +13,8 @@ def table carrier {
     primaryKey: [carrier_id]
     columns: [
         def column carrier_id    { type: bigint, isKey: true },
-        def column code          { type: text },
-        def column name          { type: text },
+        def column code          { type: text, search { searchable method: EXACT } },
+        def column name          { type: text, search { searchable method: TYPOS(1) } },
         def column dc_site_id    { type: bigint, optional: true },
         def column rate_base     { type: { type: decimal, length: 14, precision: 2 } },
         def column rate_per_km   { type: { type: decimal, length: 14, precision: 2 } },

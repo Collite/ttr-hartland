@@ -1,0 +1,115 @@
+package hartland
+
+model lexicon locale cs
+
+// The site word list — seeded by scripts/seed_members.py from data/reference/site.csv (name; a DC's town) (M0 S0.1
+// T5). Do not edit: edit the sources and re-seed. One term per member, its words in `forms`; `for:` is the member
+// vocabulary's column until M3 S3.1 T5 re-targets each term to its member (README.md).
+
+def term site_hq_praha_cs {
+    description: "Centrála Praha (HQ-PRAHA)"
+    for: db.hartland.site.name
+    forms: ["Centrála Praha"]
+}
+
+def term site_fa_kolin_cs {
+    description: "Závod Kolín (FA-KOLIN)"
+    for: db.hartland.site.name
+    forms: ["Závod Kolín"]
+}
+
+def term site_fa_hodonin_cs {
+    description: "Závod Hodonín (FA-HODONIN)"
+    for: db.hartland.site.name
+    forms: ["Závod Hodonín"]
+}
+
+def term site_fa_chrudim_cs {
+    description: "Závod Chrudim (FA-CHRUDIM)"
+    for: db.hartland.site.name
+    forms: ["Závod Chrudim"]
+}
+
+def term site_dc_jirny_cs {
+    description: "Distribuční centrum Jirny (DC-JIRNY)"
+    for: db.hartland.site.name
+    forms: ["Distribuční centrum Jirny", "Jirny"]
+}
+
+def term site_dc_modrice_cs {
+    description: "Distribuční centrum Modřice (DC-MODRICE)"
+    for: db.hartland.site.name
+    forms: ["Distribuční centrum Modřice", "Modřice"]
+}
+
+def term site_sh_praha_1_cs {
+    description: "Harcafé Praha Staré Město (SH-PRAHA-1)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Praha Staré Město"]
+}
+
+def term site_sh_praha_2_cs {
+    description: "Harcafé Praha Vinohrady (SH-PRAHA-2)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Praha Vinohrady"]
+}
+
+def term site_sh_praha_7_cs {
+    description: "Harcafé Praha Holešovice (SH-PRAHA-7)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Praha Holešovice"]
+}
+
+def term site_sh_brno_1_cs {
+    description: "Harcafé Brno náměstí Svobody (SH-BRNO-1)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Brno náměstí Svobody"]
+}
+
+def term site_sh_brno_2_cs {
+    description: "Harcafé Brno Královo Pole (SH-BRNO-2)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Brno Královo Pole"]
+}
+
+def term site_sh_ostrava_cs {
+    description: "Harcafé Ostrava (SH-OSTRAVA)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Ostrava"]
+}
+
+def term site_sh_plzen_cs {
+    description: "Harcafé Plzeň (SH-PLZEN)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Plzeň"]
+}
+
+def term site_sh_olomouc_cs {
+    description: "Harcafé Olomouc (SH-OLOMOUC)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Olomouc"]
+}
+
+def term site_sh_liberec_cs {
+    description: "Harcafé Liberec (SH-LIBEREC)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Liberec"]
+}
+
+def term site_sh_hradec_cs {
+    description: "Harcafé Hradec Králové (SH-HRADEC)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Hradec Králové"]
+}
+
+def term site_sh_budejovice_cs {
+    description: "Harcafé České Budějovice (SH-BUDEJOVICE)"
+    for: db.hartland.site.name
+    forms: ["Harcafé České Budějovice"]
+}
+
+def term site_sh_zlin_cs {
+    description: "Harcafé Zlín (SH-ZLIN)"
+    for: db.hartland.site.name
+    forms: ["Harcafé Zlín"]
+}

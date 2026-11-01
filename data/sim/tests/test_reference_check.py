@@ -25,6 +25,7 @@ COMMITTED = (
     "competitor",
     "competitor_product",
     "cost_centre",
+    "declension",
     "gl_account",
     "kraj",
     "legal_entity",

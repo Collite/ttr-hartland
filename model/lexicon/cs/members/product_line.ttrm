@@ -1,0 +1,73 @@
+package hartland
+
+model lexicon locale cs
+
+// The product_line word list — seeded by scripts/seed_members.py from data/reference/product_line.csv (name_cs) (M0
+// S0.1 T5). Do not edit: edit the sources and re-seed. One term per member, its words in `forms`; `for:` is the
+// member vocabulary's column until M3 S3.1 T5 re-targets each term to its member (README.md).
+
+def term product_line_classic_cs {
+    description: "Harcafé Classic (CLASSIC)"
+    for: db.hartland.product_line.name
+    forms: ["Classic"]
+}
+
+def term product_line_gold_cs {
+    description: "Harcafé Gold (GOLD)"
+    for: db.hartland.product_line.name
+    forms: ["Gold"]
+}
+
+def term product_line_espresso_cs {
+    description: "Harcafé Espresso (ESPRESSO)"
+    for: db.hartland.product_line.name
+    forms: ["Espresso"]
+}
+
+def term product_line_smesi_cs {
+    description: "Harcafé Kávové směsi (SMESI)"
+    for: db.hartland.product_line.name
+    forms: ["Kávové směsi"]
+}
+
+def term product_line_bezkofein_cs {
+    description: "Harcafé Bez kofeinu (BEZKOFEIN)"
+    for: db.hartland.product_line.name
+    forms: ["Bez kofeinu"]
+}
+
+def term product_line_profikava_cs {
+    description: "Harcafé Profi káva (PROFIKAVA)"
+    for: db.hartland.product_line.name
+    forms: ["Profi káva"]
+}
+
+def term product_line_polevky_cs {
+    description: "Harsoup Sáčkové polévky (POLEVKY)"
+    for: db.hartland.product_line.name
+    forms: ["Sáčkové polévky"]
+}
+
+def term product_line_kelimky_cs {
+    description: "Harsoup Polévky v kelímku (KELIMKY)"
+    for: db.hartland.product_line.name
+    forms: ["Polévky v kelímku"]
+}
+
+def term product_line_nudle_cs {
+    description: "Harsoup Instantní nudle (NUDLE)"
+    for: db.hartland.product_line.name
+    forms: ["Instantní nudle"]
+}
+
+def term product_line_premium_cs {
+    description: "Harsoup Prémiové polévky (PREMIUM)"
+    for: db.hartland.product_line.name
+    forms: ["Prémiové polévky"]
+}
+
+def term product_line_profigastro_cs {
+    description: "Harsoup Profi gastro (PROFIGASTRO)"
+    for: db.hartland.product_line.name
+    forms: ["Profi gastro"]
+}

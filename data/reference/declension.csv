@@ -1,0 +1,114 @@
+code,nominative,genitive,locative
+CZ010,Hlavní město Praha,Hlavního města Prahy,Hlavním městě Praze
+CZ020,Středočeský kraj,Středočeského kraje,Středočeském kraji
+CZ031,Jihočeský kraj,Jihočeského kraje,Jihočeském kraji
+CZ032,Plzeňský kraj,Plzeňského kraje,Plzeňském kraji
+CZ041,Karlovarský kraj,Karlovarského kraje,Karlovarském kraji
+CZ042,Ústecký kraj,Ústeckého kraje,Ústeckém kraji
+CZ051,Liberecký kraj,Libereckého kraje,Libereckém kraji
+CZ052,Královéhradecký kraj,Královéhradeckého kraje,Královéhradeckém kraji
+CZ053,Pardubický kraj,Pardubického kraje,Pardubickém kraji
+CZ063,Kraj Vysočina,Kraje Vysočina,Kraji Vysočina
+CZ064,Jihomoravský kraj,Jihomoravského kraje,Jihomoravském kraji
+CZ071,Olomoucký kraj,Olomouckého kraje,Olomouckém kraji
+CZ072,Zlínský kraj,Zlínského kraje,Zlínském kraji
+CZ080,Moravskoslezský kraj,Moravskoslezského kraje,Moravskoslezském kraji
+CZ0100,Praha,Prahy,Praze
+CZ0201,Benešov,Benešova,Benešově
+CZ0202,Beroun,Berouna,Berouně
+CZ0203,Kladno,Kladna,Kladně
+CZ0204,Kolín,Kolína,Kolíně
+CZ0205,Kutná Hora,Kutné Hory,Kutné Hoře
+CZ0206,Mělník,Mělníka,Mělníku
+CZ0207,Mladá Boleslav,Mladé Boleslavi,Mladé Boleslavi
+CZ0208,Nymburk,Nymburka,Nymburce
+CZ0209,Praha-východ,Prahy-východ,Praze-východ
+CZ020A,Praha-západ,Prahy-západ,Praze-západ
+CZ020B,Příbram,Příbrami,Příbrami
+CZ020C,Rakovník,Rakovníka,Rakovníku
+CZ0311,České Budějovice,Českých Budějovic,Českých Budějovicích
+CZ0312,Český Krumlov,Českého Krumlova,Českém Krumlově
+CZ0313,Jindřichův Hradec,Jindřichova Hradce,Jindřichově Hradci
+CZ0314,Písek,Písku,Písku
+CZ0315,Prachatice,Prachatic,Prachaticích
+CZ0316,Strakonice,Strakonic,Strakonicích
+CZ0317,Tábor,Tábora,Táboře
+CZ0321,Domažlice,Domažlic,Domažlicích
+CZ0322,Klatovy,Klatov,Klatovech
+CZ0323,Plzeň-město,Plzně-města,Plzni-městě
+CZ0324,Plzeň-jih,Plzně-jih,Plzni-jih
+CZ0325,Plzeň-sever,Plzně-sever,Plzni-sever
+CZ0326,Rokycany,Rokycan,Rokycanech
+CZ0327,Tachov,Tachova,Tachově
+CZ0411,Cheb,Chebu,Chebu
+CZ0412,Karlovy Vary,Karlových Varů,Karlových Varech
+CZ0413,Sokolov,Sokolova,Sokolově
+CZ0421,Děčín,Děčína,Děčíně
+CZ0422,Chomutov,Chomutova,Chomutově
+CZ0423,Litoměřice,Litoměřic,Litoměřicích
+CZ0424,Louny,Loun,Lounech
+CZ0425,Most,Mostu,Mostě
+CZ0426,Teplice,Teplic,Teplicích
+CZ0427,Ústí nad Labem,Ústí nad Labem,Ústí nad Labem
+CZ0511,Česká Lípa,České Lípy,České Lípě
+CZ0512,Jablonec nad Nisou,Jablonce nad Nisou,Jablonci nad Nisou
+CZ0513,Liberec,Liberce,Liberci
+CZ0514,Semily,Semil,Semilech
+CZ0521,Hradec Králové,Hradce Králové,Hradci Králové
+CZ0522,Jičín,Jičína,Jičíně
+CZ0523,Náchod,Náchoda,Náchodě
+CZ0524,Rychnov nad Kněžnou,Rychnova nad Kněžnou,Rychnově nad Kněžnou
+CZ0525,Trutnov,Trutnova,Trutnově
+CZ0531,Chrudim,Chrudimi,Chrudimi
+CZ0532,Pardubice,Pardubic,Pardubicích
+CZ0533,Svitavy,Svitav,Svitavách
+CZ0534,Ústí nad Orlicí,Ústí nad Orlicí,Ústí nad Orlicí
+CZ0631,Havlíčkův Brod,Havlíčkova Brodu,Havlíčkově Brodě
+CZ0632,Jihlava,Jihlavy,Jihlavě
+CZ0633,Pelhřimov,Pelhřimova,Pelhřimově
+CZ0634,Třebíč,Třebíče,Třebíči
+CZ0635,Žďár nad Sázavou,Žďáru nad Sázavou,Žďáru nad Sázavou
+CZ0641,Blansko,Blanska,Blansku
+CZ0642,Brno-město,Brna-města,Brně-městě
+CZ0643,Brno-venkov,Brna-venkova,Brně-venkově
+CZ0644,Břeclav,Břeclavi,Břeclavi
+CZ0645,Hodonín,Hodonína,Hodoníně
+CZ0646,Vyškov,Vyškova,Vyškově
+CZ0647,Znojmo,Znojma,Znojmě
+CZ0711,Jeseník,Jeseníku,Jeseníku
+CZ0712,Olomouc,Olomouce,Olomouci
+CZ0713,Prostějov,Prostějova,Prostějově
+CZ0714,Přerov,Přerova,Přerově
+CZ0715,Šumperk,Šumperka,Šumperku
+CZ0721,Kroměříž,Kroměříže,Kroměříži
+CZ0722,Uherské Hradiště,Uherského Hradiště,Uherském Hradišti
+CZ0723,Vsetín,Vsetína,Vsetíně
+CZ0724,Zlín,Zlína,Zlíně
+CZ0801,Bruntál,Bruntálu,Bruntále
+CZ0802,Frýdek-Místek,Frýdku-Místku,Frýdku-Místku
+CZ0803,Karviná,Karviné,Karviné
+CZ0804,Nový Jičín,Nového Jičína,Novém Jičíně
+CZ0805,Opava,Opavy,Opavě
+CZ0806,Ostrava-město,Ostravy-města,Ostravě-městě
+CZ0100-01,Praha 1,Prahy 1,Praze 1
+CZ0100-02,Praha 2,Prahy 2,Praze 2
+CZ0100-03,Praha 3,Prahy 3,Praze 3
+CZ0100-04,Praha 4,Prahy 4,Praze 4
+CZ0100-05,Praha 5,Prahy 5,Praze 5
+CZ0100-06,Praha 6,Prahy 6,Praze 6
+CZ0100-07,Praha 7,Prahy 7,Praze 7
+CZ0100-08,Praha 8,Prahy 8,Praze 8
+CZ0100-09,Praha 9,Prahy 9,Praze 9
+CZ0100-10,Praha 10,Prahy 10,Praze 10
+CZ0100-11,Praha 11,Prahy 11,Praze 11
+CZ0100-12,Praha 12,Prahy 12,Praze 12
+CZ0100-13,Praha 13,Prahy 13,Praze 13
+CZ0100-14,Praha 14,Prahy 14,Praze 14
+CZ0100-15,Praha 15,Prahy 15,Praze 15
+CZ0100-16,Praha 16,Prahy 16,Praze 16
+CZ0100-17,Praha 17,Prahy 17,Praze 17
+CZ0100-18,Praha 18,Prahy 18,Praze 18
+CZ0100-19,Praha 19,Prahy 19,Praze 19
+CZ0100-20,Praha 20,Prahy 20,Praze 20
+CZ0100-21,Praha 21,Prahy 21,Praze 21
+CZ0100-22,Praha 22,Prahy 22,Praze 22

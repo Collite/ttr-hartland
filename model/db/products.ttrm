@@ -24,8 +24,8 @@ def table brand {
     columns: [
         def column brand_id    { type: bigint, isKey: true },
         def column business_id { type: bigint },
-        def column code        { type: text },
-        def column name        { type: text }
+        def column code        { type: text, search { searchable method: EXACT } },
+        def column name        { type: text, search { searchable method: TYPOS(1) } }
     ]
 }
 
@@ -35,8 +35,8 @@ def table product_line {
     columns: [
         def column product_line_id         { type: bigint, isKey: true },
         def column brand_id                { type: bigint },
-        def column code                    { type: text },
-        def column name                    { type: text },
+        def column code                    { type: text, search { searchable method: EXACT } },
+        def column name                    { type: text, search { searchable method: TYPOS(1) } },
         def column is_premium              { type: bool },
         def column is_professional         { type: bool },
         def column max_agreed_discount_pct { type: { type: decimal, length: 5, precision: 2 } }
@@ -49,8 +49,8 @@ def table product {
     columns: [
         def column product_id      { type: bigint, isKey: true },
         def column product_line_id { type: bigint },
-        def column code            { type: text },
-        def column name            { type: text }
+        def column code            { type: text, search { searchable method: EXACT } },
+        def column name            { type: text, search { searchable method: TOKENS } }
     ]
 }
 
@@ -59,9 +59,9 @@ def table sku {
     primaryKey: [sku_id]
     columns: [
         def column sku_id             { type: bigint, isKey: true },
-        def column sku_code           { type: text },
+        def column sku_code           { type: text, search { searchable method: EXACT } },
         def column product_id         { type: bigint },
-        def column name               { type: text },
+        def column name               { type: text, search { searchable method: TOKENS } },
         def column pack_format        { type: text },
         def column net_weight_g       { type: int },
         def column units_per_case     { type: int },

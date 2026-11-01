@@ -18,6 +18,9 @@ What the import could not say, added by hand:
   `route_current`, `receivable` as `def table` (⚑NH-P-10) and `return_request` as `def view` with its SQL.
   Nullability is the SELECT's: NOT NULL only where the SQL guarantees it.
 - **Grains** — each table's `grain` from the inventory as its leading comment.
+- **The member vocabularies** (MV, M0 S0.1 T5): `search { searchable method: … }` on the code and name of `sku`,
+  `product`, `product_line`, `brand`, `chain`, `kraj`, `okres`, `site`, `carrier` — codes `EXACT`, names `TYPOS(1)`
+  or `TOKENS` (multi-word). The words beyond the values are `../lexicon/cs/members/`.
 
 Known gaps (M0 S0.1 Found while doing): `document.language`, `competitor_sighting.description` and
 `delivery_event.description` are not declarable — `language` and `description` are TTR-M keywords, not identifiers,
