@@ -1,0 +1,106 @@
+package hartland
+
+model db schema hartland
+
+// pricing — the price lists, the customer conditions, the agreements, the discount budgets.
+// The inventory's group `pricing` (data/inventory.yaml; design 07 §1): standard_price_list, standard_price,
+// channel_price_list, channel_price, customer_condition, price_agreement, discount_budget.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a quarterly version of the standard price list
+def table standard_price_list {
+    primaryKey: [standard_price_list_id]
+    columns: [
+        def column standard_price_list_id { type: bigint, isKey: true },
+        def column code                   { type: text },
+        def column valid_from             { type: date },
+        def column valid_to               { type: date },
+        def column issued_by_employee_id  { type: bigint },
+        def column document_id            { type: bigint, optional: true }
+    ]
+}
+
+// a standard price list version × a SKU
+def table standard_price {
+    primaryKey: [standard_price_list_id, sku_id]
+    columns: [
+        def column standard_price_list_id { type: bigint, isKey: true },
+        def column sku_id                 { type: bigint, isKey: true },
+        def column price_case             { type: { type: decimal, length: 14, precision: 2 } },
+        def column price_piece            { type: { type: decimal, length: 14, precision: 2 } },
+        def column purchase_price_case    { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a monthly version of a channel's price list
+def table channel_price_list {
+    primaryKey: [channel_price_list_id]
+    columns: [
+        def column channel_price_list_id { type: bigint, isKey: true },
+        def column channel               { type: text },
+        def column valid_from            { type: date },
+        def column valid_to              { type: date },
+        def column factor                { type: { type: decimal, length: 5, precision: 3 } },
+        def column document_id           { type: bigint, optional: true }
+    ]
+}
+
+// a channel price list version × a SKU
+def table channel_price {
+    primaryKey: [channel_price_list_id, sku_id]
+    columns: [
+        def column channel_price_list_id { type: bigint, isKey: true },
+        def column sku_id                { type: bigint, isKey: true },
+        def column price_case            { type: { type: decimal, length: 14, precision: 2 } },
+        def column price_piece           { type: { type: decimal, length: 14, precision: 2 } },
+        def column is_override           { type: bool }
+    ]
+}
+
+// a retail customer × a month — the volume and cross-sell tiers computed from the month before
+def table customer_condition {
+    primaryKey: [customer_id, month]
+    columns: [
+        def column customer_id             { type: bigint, isKey: true },
+        def column month                   { type: date, isKey: true },
+        def column prev_month_net_revenue  { type: { type: decimal, length: 14, precision: 2 } },
+        def column volume_tier             { type: text, optional: true },
+        def column volume_pct              { type: { type: decimal, length: 5, precision: 2 } },
+        def column prev_month_lines_bought { type: int },
+        def column both_brands             { type: bool },
+        def column cross_sell_tier         { type: text, optional: true },
+        def column cross_sell_pct          { type: { type: decimal, length: 5, precision: 2 } }
+    ]
+}
+
+// an agreed discount or individual price for one customer (retail agreed discounts, the KAMs' individual prices,
+// retro bonus terms)
+def table price_agreement {
+    primaryKey: [price_agreement_id]
+    columns: [
+        def column price_agreement_id    { type: bigint, isKey: true },
+        def column code                  { type: text },
+        def column customer_id           { type: bigint },
+        def column sku_id                { type: bigint, optional: true },
+        def column product_line_id       { type: bigint, optional: true },
+        def column kind                  { type: text },
+        def column discount_pct          { type: { type: decimal, length: 5, precision: 2 }, optional: true },
+        def column price_case            { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column valid_from            { type: date },
+        def column valid_to              { type: date },
+        def column agreed_by_employee_id { type: bigint },
+        def column budget_charge         { type: { type: decimal, length: 14, precision: 2 }, optional: true }
+    ]
+}
+
+// a rep or KAM × a quarter (its first day)
+def table discount_budget {
+    primaryKey: [employee_id, quarter]
+    columns: [
+        def column employee_id   { type: bigint, isKey: true },
+        def column quarter       { type: date, isKey: true },
+        def column budget_amount { type: { type: decimal, length: 14, precision: 2 } },
+        def column used_amount   { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}

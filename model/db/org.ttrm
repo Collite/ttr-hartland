@@ -1,0 +1,65 @@
+package hartland
+
+model db schema hartland
+
+// org — the organisation: cost centres, units, employees, assignments.
+// The inventory's group `org` (data/inventory.yaml; design 07 §1): cost_centre, org_unit, employee, assignment.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a cost centre of the Center (one per unit and team, and per site)
+def table cost_centre {
+    primaryKey: [cost_centre_id]
+    columns: [
+        def column cost_centre_id { type: bigint, isKey: true },
+        def column code           { type: text },
+        def column name           { type: text },
+        def column unit           { type: text },
+        def column site_id        { type: bigint, optional: true }
+    ]
+}
+
+// a unit or team of the Center (its five units and their teams)
+def table org_unit {
+    primaryKey: [org_unit_id]
+    columns: [
+        def column org_unit_id        { type: bigint, isKey: true },
+        def column code               { type: text },
+        def column name               { type: text },
+        def column parent_org_unit_id { type: bigint, optional: true },
+        def column cost_centre_id     { type: bigint }
+    ]
+}
+
+// a person (reps, area managers, KAMs, product managers, dispatchers, staff), turnover included
+def table employee {
+    primaryKey: [employee_id]
+    columns: [
+        def column employee_id         { type: bigint, isKey: true },
+        def column code                { type: text },
+        def column first_name          { type: text },
+        def column last_name           { type: text },
+        def column org_unit_id         { type: bigint },
+        def column role                { type: text },
+        def column manager_employee_id { type: bigint, optional: true },
+        def column hired_on            { type: date },
+        def column left_on             { type: date, optional: true }
+    ]
+}
+
+// a person on a duty with validity — rep ↔ area, area manager ↔ region, KAM ↔ customer, PM ↔ line, dispatcher ↔ DC
+def table assignment {
+    primaryKey: [assignment_id]
+    columns: [
+        def column assignment_id   { type: bigint, isKey: true },
+        def column employee_id     { type: bigint },
+        def column kind            { type: text },
+        def column area_id         { type: bigint, optional: true },
+        def column region_id       { type: bigint, optional: true },
+        def column customer_id     { type: bigint, optional: true },
+        def column product_line_id { type: bigint, optional: true },
+        def column site_id         { type: bigint, optional: true },
+        def column valid_from      { type: date },
+        def column valid_to        { type: date }
+    ]
+}

@@ -1,0 +1,163 @@
+package hartland
+
+model db schema hartland
+
+// field — tourplans, visits, observations, sightings, PoS materials, loans, rep prompts.
+// The inventory's group `field` (data/inventory.yaml; design 07 §1): pos_material, pos_asset, tourplan, visit_plan,
+// visit, visit_observation, competitor_sighting, pos_loan, pos_handout, rep_prompt.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a point-of-sale item type — a give-away or an inventoried asset
+def table pos_material {
+    primaryKey: [pos_material_id]
+    columns: [
+        def column pos_material_id { type: bigint, isKey: true },
+        def column code            { type: text },
+        def column name            { type: text },
+        def column kind            { type: text },
+        def column unit_cost       { type: { type: decimal, length: 14, precision: 2 } },
+        def column product_line_id { type: bigint, optional: true }
+    ]
+}
+
+// an inventoried asset (floor display, counter display, fridge, vending branding)
+def table pos_asset {
+    primaryKey: [pos_asset_id]
+    columns: [
+        def column pos_asset_id    { type: bigint, isKey: true },
+        def column pos_material_id { type: bigint },
+        def column asset_no        { type: text },
+        def column acquired_on     { type: date },
+        def column cost            { type: { type: decimal, length: 14, precision: 2 } },
+        def column region_id       { type: bigint },
+        def column condition       { type: text },
+        def column written_off_on  { type: date, optional: true }
+    ]
+}
+
+// a rep × a store (a customer or a potential one; every station) × a cycle, with validity
+def table tourplan {
+    primaryKey: [tourplan_id]
+    columns: [
+        def column tourplan_id { type: bigint, isKey: true },
+        def column employee_id { type: bigint },
+        def column store_id    { type: bigint },
+        def column customer_id { type: bigint, optional: true },
+        def column cycle_weeks { type: int },
+        def column weekday     { type: int },
+        def column valid_from  { type: date },
+        def column valid_to    { type: date }
+    ]
+}
+
+// a planned visit, from the tourplan
+def table visit_plan {
+    primaryKey: [visit_plan_id]
+    columns: [
+        def column visit_plan_id { type: bigint, isKey: true },
+        def column tourplan_id   { type: bigint },
+        def column planned_day   { type: date },
+        def column employee_id   { type: bigint },
+        def column store_id      { type: bigint }
+    ]
+}
+
+// an actual visit (planned or ad hoc; the stations' merchandising visits included)
+def table visit {
+    primaryKey: [visit_id]
+    columns: [
+        def column visit_id      { type: bigint, isKey: true },
+        def column visit_plan_id { type: bigint, optional: true },
+        def column employee_id   { type: bigint },
+        def column store_id      { type: bigint },
+        def column customer_id   { type: bigint, optional: true },
+        def column day           { type: date },
+        def column time_in       { type: datetime, optional: true },
+        def column time_out      { type: datetime, optional: true },
+        def column kind          { type: text },
+        def column outcome       { type: text },
+        def column note          { type: text, optional: true },
+        def column recorded      { type: bool }
+    ]
+}
+
+// a visit × a product line — the perfect-store check
+def table visit_observation {
+    primaryKey: [visit_id, product_line_id]
+    columns: [
+        def column visit_id            { type: bigint, isKey: true },
+        def column product_line_id     { type: bigint, isKey: true },
+        def column facings             { type: int },
+        def column shelf_share_pct     { type: { type: decimal, length: 5, precision: 2 } },
+        def column out_of_stock        { type: bool },
+        def column secondary_placement { type: bool },
+        def column promo_compliant     { type: bool, optional: true },
+        def column competitor_facings  { type: int },
+        def column extra               { type: text, optional: true }   // jsonb
+    ]
+}
+
+// a competitor's activity seen at a visit
+def table competitor_sighting {
+    primaryKey: [competitor_sighting_id]
+    columns: [
+        def column competitor_sighting_id { type: bigint, isKey: true },
+        def column visit_id               { type: bigint },
+        def column competitor_id          { type: bigint },
+        def column competitor_product_id  { type: bigint, optional: true },
+        def column activity_kind          { type: text },
+        def column price_seen             { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        // `description` (text, nullable): undeclarable, a TTR-M keyword (ttr-core#353)
+        def column confirmed              { type: bool }
+    ]
+}
+
+// an asset lent to a customer, with its period
+def table pos_loan {
+    primaryKey: [pos_loan_id]
+    columns: [
+        def column pos_loan_id             { type: bigint, isKey: true },
+        def column pos_asset_id            { type: bigint },
+        def column customer_id             { type: bigint },
+        def column store_id                { type: bigint, optional: true },
+        def column lent_on                 { type: date },
+        def column returned_on             { type: date, optional: true },
+        def column placed_by_employee_id   { type: bigint },
+        def column approved_by_employee_id { type: bigint },
+        def column condition_on_return     { type: text, optional: true }
+    ]
+}
+
+// give-aways handed out at a visit
+def table pos_handout {
+    primaryKey: [pos_handout_id]
+    columns: [
+        def column pos_handout_id  { type: bigint, isKey: true },
+        def column visit_id        { type: bigint },
+        def column pos_material_id { type: bigint },
+        def column qty             { type: int },
+        def column cost            { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a prompt generated for a rep (by the rules, later by the agents), with its outcome
+def table rep_prompt {
+    primaryKey: [rep_prompt_id]
+    columns: [
+        def column rep_prompt_id  { type: bigint, isKey: true },
+        def column employee_id    { type: bigint },
+        def column customer_id    { type: bigint },
+        def column visit_id       { type: bigint, optional: true },
+        def column generated_on   { type: date },
+        def column kind           { type: text },
+        def column prompt_rule_id { type: bigint, optional: true },
+        def column priority       { type: int },
+        def column payload        { type: text },
+        def column explanation    { type: text },
+        def column outcome        { type: text },
+        def column outcome_reason { type: text, optional: true },
+        def column classified_on  { type: date, optional: true },
+        def column generated_by   { type: text }
+    ]
+}

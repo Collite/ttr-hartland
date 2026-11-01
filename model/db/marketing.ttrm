@@ -1,0 +1,117 @@
+package hartland
+
+model db schema hartland
+
+// marketing — campaigns, promotions, their eligibility, exclusions and results.
+// The inventory's group `marketing` (data/inventory.yaml; design 07 §1): campaign, promotion,
+// promotion_eligibility, promotion_exclusion, seasonal_exclusion, campaign_cost, promotion_result.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a marketing campaign (a line, a period, its media)
+def table campaign {
+    primaryKey: [campaign_id]
+    columns: [
+        def column campaign_id       { type: bigint, isKey: true },
+        def column code              { type: text },
+        def column name              { type: text },
+        def column product_line_id   { type: bigint },
+        def column valid_from        { type: date },
+        def column valid_to          { type: date },
+        def column has_tv            { type: bool },
+        def column has_outdoor       { type: bool },
+        def column has_digital       { type: bool },
+        def column has_instore       { type: bool },
+        def column budget            { type: { type: decimal, length: 14, precision: 2 } },
+        def column owner_employee_id { type: bigint },
+        def column document_id       { type: bigint, optional: true }
+    ]
+}
+
+// a promotion sheet — goal, target, budget, eligibility, period, mechanic
+def table promotion {
+    primaryKey: [promotion_id]
+    columns: [
+        def column promotion_id           { type: bigint, isKey: true },
+        def column code                   { type: text },
+        def column name                   { type: text },
+        def column campaign_id            { type: bigint, optional: true },
+        def column goal                   { type: text },
+        def column target_product_line_id { type: bigint },
+        def column target_sku_id          { type: bigint, optional: true },
+        def column target_uplift_pct      { type: { type: decimal, length: 6, precision: 2 } },
+        def column target_period_weeks    { type: int },
+        def column estimated_budget       { type: { type: decimal, length: 14, precision: 2 } },
+        def column valid_from             { type: date },
+        def column valid_to               { type: date },
+        def column mechanic               { type: text },
+        def column discount_pct           { type: { type: decimal, length: 5, precision: 2 }, optional: true },
+        def column condition_sku_id       { type: bigint, optional: true },
+        def column condition_qty          { type: { type: decimal, length: 12, precision: 3 }, optional: true },
+        def column reward_sku_id          { type: bigint, optional: true },
+        def column reward_qty             { type: { type: decimal, length: 12, precision: 3 }, optional: true },
+        def column is_mandatory           { type: bool },
+        def column is_pre_stocking        { type: bool },
+        def column owner_employee_id      { type: bigint },
+        def column status                 { type: text },
+        def column document_id            { type: bigint, optional: true }
+    ]
+}
+
+// a promotion × a scope rule (channel, chain, region, store class, lifecycle phase)
+def table promotion_eligibility {
+    primaryKey: [promotion_eligibility_id]
+    columns: [
+        def column promotion_eligibility_id { type: bigint, isKey: true },
+        def column promotion_id             { type: bigint },
+        def column scope_kind               { type: text },
+        def column scope_value              { type: text }
+    ]
+}
+
+// a pair of promotions that may not combine
+def table promotion_exclusion {
+    primaryKey: [promotion_id, excluded_promotion_id]
+    columns: [
+        def column promotion_id          { type: bigint, isKey: true },
+        def column excluded_promotion_id { type: bigint, isKey: true }
+    ]
+}
+
+// a product line × a month of the year in which its listing prompts are suppressed
+def table seasonal_exclusion {
+    primaryKey: [product_line_id, month_of_year]
+    columns: [
+        def column product_line_id { type: bigint, isKey: true },
+        def column month_of_year   { type: int, isKey: true }
+    ]
+}
+
+// a campaign × a month × a media line — the marketing cost postings
+def table campaign_cost {
+    primaryKey: [campaign_cost_id]
+    columns: [
+        def column campaign_cost_id { type: bigint, isKey: true },
+        def column campaign_id      { type: bigint },
+        def column month            { type: date },
+        def column media            { type: text },
+        def column amount           { type: { type: decimal, length: 14, precision: 2 } },
+        def column ap_invoice_id    { type: bigint, optional: true }
+    ]
+}
+
+// a promotion × a week (its Monday) — the realised uplift, cost and result against the target
+def table promotion_result {
+    primaryKey: [promotion_id, week]
+    columns: [
+        def column promotion_id                { type: bigint, isKey: true },
+        def column week                        { type: date, isKey: true },
+        def column baseline_cases              { type: { type: decimal, length: 12, precision: 3 } },
+        def column actual_cases                { type: { type: decimal, length: 12, precision: 3 } },
+        def column uplift_pct                  { type: { type: decimal, length: 7, precision: 2 } },
+        def column promotion_cost              { type: { type: decimal, length: 14, precision: 2 } },
+        def column free_goods_cost             { type: { type: decimal, length: 14, precision: 2 } },
+        def column incremental_net_revenue     { type: { type: decimal, length: 14, precision: 2 } },
+        def column incremental_customer_margin { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}

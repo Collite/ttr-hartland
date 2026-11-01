@@ -34,13 +34,27 @@ just test                   # ruff · mypy --strict · pytest (the unit tier)
 just test -m component      # the Postgres 16 tier (Docker for testcontainers, or HARTLAND_TEST_PG=<server DSN>)
 ```
 
+The model verbs borrow a built ttr-core checkout at `toolchain.lock`'s ref — `TTR_CORE` (default `../tatrman`) — and,
+for `load-model`, the metadata service's loader at `[veles].ttr-metadata` — `TTR_LOADER` (default `../ttr-loader`,
+`just build-loader`). They refuse a ttr-core checkout at any other commit (exit 2, naming it, its HEAD and the lock's
+ref): another toolchain's verdict is not the model's.
+
+```sh
+just verify-model           # the model suites (model/**/*.test.mjs)
+just ddl-drift              # data/ddl/schema.sql ⇄ model/db
+just check-model            # generated/ is current (`just regenerate` rebuilds it)
+just load-model             # the model as the metadata service loads it, strict
+```
+
 ## The map
 
 ```
 ttr-hartland/
 ├── LICENSE · LICENSE-DATA.md                MIT · the ODbL for the OSM extract and the generated world
-├── justfile · pyproject.toml · uv.lock      the verbs (data now, model from M0) · the generator package
-├── .github/workflows/data-gate.yml          lint · types · tests · reference-check · ddl drift (model-gate, regenerate: M0)
+├── justfile · pyproject.toml · uv.lock      the verbs (data · model) · the generator package
+├── modeler.toml · toolchain.lock            the model's manifest · the ttr-core and metadata pins
+├── .github/workflows/                       data-gate (lint · types · tests · reference-check · ddl) · model-gate ·
+│                                            regenerate (the model's, M0) · actions/toolchain (the ttr-core build)
 ├── data/
 │   ├── inventory.yaml                       every table: the one source of the DDL, the load order, the db layer
 │   ├── world.yaml                           every number of the company (sites, channels, salesforce, pricing, dials)
@@ -60,7 +74,7 @@ ttr-hartland/
 ├── agents/         hartland.yaml · the Golem's Shem                       (M5)
 ├── automation/ · dashboards/                                              (empty until their efforts re-base)
 ├── run-set/        h-l/ (the twelve questions) · one-number/ · docwh/      (G5, DOC, M5)
-└── scripts/
+└── scripts/        osm_extract_pbf.sh · toolchain-lock.py · regenerate-{local,push}.sh · ddl_drift.py (M0)
 ```
 
 The generator's skeleton, the reference data (`data/reference/`, the catalogue included), `world.yaml`, the inventory

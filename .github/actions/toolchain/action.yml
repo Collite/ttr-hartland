@@ -1,0 +1,130 @@
+# The ttr-core toolchain ttr-hartland's model workflows borrow — model-gate.yml and regenerate.yml (ttr-demo's
+# .github/actions/toolchain, trimmed for NH M0: no recipe CLI, no lexicon CLI or `ttr` until M3/M4 need them).
+#
+# Expects the ttr-hartland checkout at `ttr-hartland/` and checks Collite/ttr-core out beside it at `tatrman/`: the
+# side-by-side layout the justfile's `../tatrman` default assumes. The ref comes from ttr-hartland/toolchain.lock and
+# from nowhere else — model-gate.yml's comment block says why the pin is load-bearing. Exports the lock's pins to the
+# job (TTR_CORE_REF, VELES_IMAGE, VELES_TTR_METADATA, STRICT_LOAD) and TTR_CORE_SHA, TTR_LOADER_SHA.
+#
+# The build is cached per COMMIT, not per tag name: a re-cut tag then misses the cache and rebuilds instead of restoring
+# the old build over the new source. The key also carries this file's hash, so a change to WHAT is built builds afresh.
+# Each cache is saved right after its build, so a red suite later in the job still leaves it cached.
+#
+# `with-loader: 'true'` (the gate) also builds the Kotlin loader the metadata service serves with into `ttr-loader/`,
+# when the lock's [veles].strict-load is true.
+name: ttr-core toolchain
+description: Check out ttr-core at toolchain.lock's ref beside ttr-hartland and build (or restore) the CLIs the justfile borrows.
+
+inputs:
+  with-loader:
+    description: "'true' to also build ttr-metadata-cli at the metadata service's ttr-metadata version into ttr-loader/ (only when toolchain.lock's [veles].strict-load is true)"
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Read the toolchain pins (toolchain.lock)
+      shell: bash
+      run: |
+        pins="$(python3 ttr-hartland/scripts/toolchain-lock.py ttr-hartland/toolchain.lock)"
+        echo "$pins" >> "$GITHUB_ENV"
+        echo "$pins"
+
+    - name: The toolchain's cached paths
+      shell: bash
+      run: |
+        {
+          echo 'TOOLCHAIN_CACHE_PATHS<<EOF'
+          echo 'tatrman/node_modules'
+          echo 'tatrman/packages/*/node_modules'
+          echo 'tatrman/packages/*/dist'
+          echo 'EOF'
+        } >> "$GITHUB_ENV"
+
+    - uses: actions/checkout@v4
+      with:
+        repository: Collite/ttr-core
+        ref: ${{ env.TTR_CORE_REF }}
+        path: tatrman
+
+    - name: The toolchain's commit (the cache key)
+      shell: bash
+      run: echo "TTR_CORE_SHA=$(git -C tatrman rev-parse HEAD)" >> "$GITHUB_ENV"
+
+    - id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.TOOLCHAIN_CACHE_PATHS }}
+        key: ttr-toolchain-${{ runner.os }}-${{ env.TTR_CORE_REF }}-${{ env.TTR_CORE_SHA }}-${{ hashFiles('ttr-hartland/.github/actions/toolchain/action.yml') }}
+
+    - uses: extractions/setup-just@v2
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    # ── a toolchain cache miss: build ───────────────────────────────────────────────────────────────────────────────
+    - uses: pnpm/action-setup@v4
+      if: steps.restore.outputs.cache-hit != 'true'
+      with:
+        package_json_file: tatrman/package.json
+
+    # Node runs the TS CLIs and the suites either way; the pnpm store cache only matters when there is a build.
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: ${{ steps.restore.outputs.cache-hit != 'true' && 'pnpm' || '' }}
+        cache-dependency-path: tatrman/pnpm-lock.yaml
+
+    - name: Build the TS toolchain (parser, semantics, lint, resolve-packages)
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: tatrman
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm --filter "@tatrman/migrate..." --filter "@tatrman/lint..." --filter "@tatrman/semantics..." build
+
+    - uses: actions/cache/save@v4
+      if: steps.restore.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.TOOLCHAIN_CACHE_PATHS }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+
+    # ── the Kotlin loader the metadata service serves with ──────────────────────────────────────────────────────────
+    # Built from ttr-core at grammar/v<[veles].ttr-metadata> — ttr-metadata publishes on the grammar line, so that tag is
+    # the source the service's loader was built from — never from [ttr-core].ref: the two pins move independently.
+    # `-Pversion` stamps the version a release stamps, which the gate's `--expect-version` checks.
+    - uses: actions/checkout@v4
+      if: inputs.with-loader == 'true' && env.STRICT_LOAD == 'true'
+      with:
+        repository: Collite/ttr-core
+        ref: grammar/v${{ env.VELES_TTR_METADATA }}
+        path: ttr-loader
+
+    - name: The loader's commit (the cache key)
+      if: inputs.with-loader == 'true' && env.STRICT_LOAD == 'true'
+      shell: bash
+      run: echo "TTR_LOADER_SHA=$(git -C ttr-loader rev-parse HEAD)" >> "$GITHUB_ENV"
+
+    - id: loader-restore
+      if: inputs.with-loader == 'true' && env.STRICT_LOAD == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ttr-loader/packages/kotlin/ttr-metadata-cli/build/install
+        key: ttr-loader-${{ runner.os }}-${{ env.VELES_TTR_METADATA }}-${{ env.TTR_LOADER_SHA }}-${{ hashFiles('ttr-hartland/.github/actions/toolchain/action.yml') }}
+
+    - uses: gradle/actions/setup-gradle@v4
+      if: inputs.with-loader == 'true' && env.STRICT_LOAD == 'true' && steps.loader-restore.outputs.cache-hit != 'true'
+
+    - name: Build the Kotlin loader CLI (ttr-metadata-cli, at the service's ttr-metadata version)
+      if: inputs.with-loader == 'true' && env.STRICT_LOAD == 'true' && steps.loader-restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ttr-loader
+      run: ./gradlew --no-configuration-cache -Pversion="$VELES_TTR_METADATA" :packages:kotlin:ttr-metadata-cli:installDist
+
+    - uses: actions/cache/save@v4
+      if: inputs.with-loader == 'true' && env.STRICT_LOAD == 'true' && steps.loader-restore.outputs.cache-hit != 'true'
+      with:
+        path: ttr-loader/packages/kotlin/ttr-metadata-cli/build/install
+        key: ${{ steps.loader-restore.outputs.cache-primary-key }}

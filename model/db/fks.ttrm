@@ -1,0 +1,815 @@
+package hartland
+
+model db schema hartland
+
+// Every foreign key of data/ddl/schema.sql, by source table in the inventory's order (205; imported at M0 S0.1 T3).
+// In the database each is DEFERRABLE INITIALLY DEFERRED (contracts §1: the load copies in load_order, and a
+// document's references interleave the groups); TTR-M has no deferrable flag, so it is said here. The names
+// are the database's constraint names.
+
+// -- okres --
+def fk okres_kraj_id_fkey         { from: [db.hartland.okres.kraj_id], to: [db.hartland.kraj.kraj_id] }
+def fk okres_parent_okres_id_fkey { from: [db.hartland.okres.parent_okres_id], to: [db.hartland.okres.okres_id] }
+
+// -- site --
+def fk site_legal_entity_id_fkey {
+    from: [db.hartland.site.legal_entity_id],
+    to: [db.hartland.legal_entity.legal_entity_id]
+}
+def fk site_okres_id_fkey        { from: [db.hartland.site.okres_id], to: [db.hartland.okres.okres_id] }
+
+// -- cost_centre --
+def fk cost_centre_site_id_fkey { from: [db.hartland.cost_centre.site_id], to: [db.hartland.site.site_id] }
+
+// -- org_unit --
+def fk org_unit_cost_centre_id_fkey {
+    from: [db.hartland.org_unit.cost_centre_id],
+    to: [db.hartland.cost_centre.cost_centre_id]
+}
+def fk org_unit_parent_org_unit_id_fkey {
+    from: [db.hartland.org_unit.parent_org_unit_id],
+    to: [db.hartland.org_unit.org_unit_id]
+}
+
+// -- employee --
+def fk employee_manager_employee_id_fkey {
+    from: [db.hartland.employee.manager_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk employee_org_unit_id_fkey {
+    from: [db.hartland.employee.org_unit_id],
+    to: [db.hartland.org_unit.org_unit_id]
+}
+
+// -- region --
+def fk region_area_manager_employee_id_fkey {
+    from: [db.hartland.region.area_manager_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+
+// -- area --
+def fk area_region_id_fkey { from: [db.hartland.area.region_id], to: [db.hartland.region.region_id] }
+
+// -- area_okres --
+def fk area_okres_area_id_fkey  { from: [db.hartland.area_okres.area_id], to: [db.hartland.area.area_id] }
+def fk area_okres_okres_id_fkey { from: [db.hartland.area_okres.okres_id], to: [db.hartland.okres.okres_id] }
+
+// -- weather_daily --
+def fk weather_daily_day_fkey       { from: [db.hartland.weather_daily.day], to: [db.hartland.calendar.day] }
+def fk weather_daily_region_id_fkey { from: [db.hartland.weather_daily.region_id], to: [db.hartland.region.region_id] }
+
+// -- store --
+def fk store_area_id_fkey  { from: [db.hartland.store.area_id], to: [db.hartland.area.area_id] }
+def fk store_chain_id_fkey { from: [db.hartland.store.chain_id], to: [db.hartland.chain.chain_id] }
+def fk store_okres_id_fkey { from: [db.hartland.store.okres_id], to: [db.hartland.okres.okres_id] }
+
+// -- customer --
+def fk customer_chain_id_fkey { from: [db.hartland.customer.chain_id], to: [db.hartland.chain.chain_id] }
+def fk customer_okres_id_fkey { from: [db.hartland.customer.okres_id], to: [db.hartland.okres.okres_id] }
+def fk customer_store_id_fkey { from: [db.hartland.customer.store_id], to: [db.hartland.store.store_id] }
+
+// -- document --
+def fk document_sender_customer_id_fkey {
+    from: [db.hartland.document.sender_customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+
+// -- delivery_point --
+def fk delivery_point_customer_id_fkey {
+    from: [db.hartland.delivery_point.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk delivery_point_dc_site_id_fkey  { from: [db.hartland.delivery_point.dc_site_id], to: [db.hartland.site.site_id] }
+def fk delivery_point_okres_id_fkey    { from: [db.hartland.delivery_point.okres_id], to: [db.hartland.okres.okres_id] }
+def fk delivery_point_store_id_fkey    { from: [db.hartland.delivery_point.store_id], to: [db.hartland.store.store_id] }
+
+// -- lifecycle_phase --
+def fk lifecycle_phase_customer_id_fkey {
+    from: [db.hartland.lifecycle_phase.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+
+// -- brand --
+def fk brand_business_id_fkey { from: [db.hartland.brand.business_id], to: [db.hartland.business.business_id] }
+
+// -- product_line --
+def fk product_line_brand_id_fkey { from: [db.hartland.product_line.brand_id], to: [db.hartland.brand.brand_id] }
+
+// -- product --
+def fk product_product_line_id_fkey {
+    from: [db.hartland.product.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+
+// -- competitor_product --
+def fk competitor_product_competitor_id_fkey {
+    from: [db.hartland.competitor_product.competitor_id],
+    to: [db.hartland.competitor.competitor_id]
+}
+def fk competitor_product_equivalent_product_id_fkey {
+    from: [db.hartland.competitor_product.equivalent_product_id],
+    to: [db.hartland.product.product_id]
+}
+
+// -- sku --
+def fk sku_delist_document_id_fkey {
+    from: [db.hartland.sku.delist_document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk sku_launch_document_id_fkey {
+    from: [db.hartland.sku.launch_document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk sku_product_id_fkey         { from: [db.hartland.sku.product_id], to: [db.hartland.product.product_id] }
+
+// -- channel_listing --
+def fk channel_listing_chain_id_fkey { from: [db.hartland.channel_listing.chain_id], to: [db.hartland.chain.chain_id] }
+def fk channel_listing_sku_id_fkey   { from: [db.hartland.channel_listing.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- standard_price_list --
+def fk standard_price_list_document_id_fkey {
+    from: [db.hartland.standard_price_list.document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk standard_price_list_issued_by_employee_id_fkey {
+    from: [db.hartland.standard_price_list.issued_by_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+
+// -- standard_price --
+def fk standard_price_sku_id_fkey {
+    from: [db.hartland.standard_price.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+def fk standard_price_standard_price_list_id_fkey {
+    from: [db.hartland.standard_price.standard_price_list_id],
+    to: [db.hartland.standard_price_list.standard_price_list_id]
+}
+
+// -- channel_price_list --
+def fk channel_price_list_document_id_fkey {
+    from: [db.hartland.channel_price_list.document_id],
+    to: [db.hartland.document.document_id]
+}
+
+// -- channel_price --
+def fk channel_price_channel_price_list_id_fkey {
+    from: [db.hartland.channel_price.channel_price_list_id],
+    to: [db.hartland.channel_price_list.channel_price_list_id]
+}
+def fk channel_price_sku_id_fkey {
+    from: [db.hartland.channel_price.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- customer_condition --
+def fk customer_condition_customer_id_fkey {
+    from: [db.hartland.customer_condition.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+
+// -- price_agreement --
+def fk price_agreement_agreed_by_employee_id_fkey {
+    from: [db.hartland.price_agreement.agreed_by_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk price_agreement_customer_id_fkey {
+    from: [db.hartland.price_agreement.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk price_agreement_product_line_id_fkey {
+    from: [db.hartland.price_agreement.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+def fk price_agreement_sku_id_fkey {
+    from: [db.hartland.price_agreement.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- discount_budget --
+def fk discount_budget_employee_id_fkey {
+    from: [db.hartland.discount_budget.employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+
+// -- sales_plan --
+def fk sales_plan_area_id_fkey         { from: [db.hartland.sales_plan.area_id], to: [db.hartland.area.area_id] }
+def fk sales_plan_customer_id_fkey {
+    from: [db.hartland.sales_plan.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk sales_plan_product_line_id_fkey {
+    from: [db.hartland.sales_plan.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+
+// -- supply_plan --
+def fk supply_plan_dc_site_id_fkey { from: [db.hartland.supply_plan.dc_site_id], to: [db.hartland.site.site_id] }
+def fk supply_plan_sku_id_fkey     { from: [db.hartland.supply_plan.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- stock_policy --
+def fk stock_policy_dc_site_id_fkey { from: [db.hartland.stock_policy.dc_site_id], to: [db.hartland.site.site_id] }
+def fk stock_policy_sku_id_fkey     { from: [db.hartland.stock_policy.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- prompt_rule --
+def fk prompt_rule_document_id_fkey {
+    from: [db.hartland.prompt_rule.document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk prompt_rule_owner_employee_id_fkey {
+    from: [db.hartland.prompt_rule.owner_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+
+// -- lifecycle_rule --
+def fk lifecycle_rule_document_id_fkey {
+    from: [db.hartland.lifecycle_rule.document_id],
+    to: [db.hartland.document.document_id]
+}
+
+// -- assignment --
+def fk assignment_area_id_fkey         { from: [db.hartland.assignment.area_id], to: [db.hartland.area.area_id] }
+def fk assignment_customer_id_fkey {
+    from: [db.hartland.assignment.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk assignment_employee_id_fkey {
+    from: [db.hartland.assignment.employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk assignment_product_line_id_fkey {
+    from: [db.hartland.assignment.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+def fk assignment_region_id_fkey       { from: [db.hartland.assignment.region_id], to: [db.hartland.region.region_id] }
+def fk assignment_site_id_fkey         { from: [db.hartland.assignment.site_id], to: [db.hartland.site.site_id] }
+
+// -- campaign --
+def fk campaign_document_id_fkey {
+    from: [db.hartland.campaign.document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk campaign_owner_employee_id_fkey {
+    from: [db.hartland.campaign.owner_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk campaign_product_line_id_fkey {
+    from: [db.hartland.campaign.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+
+// -- promotion --
+def fk promotion_campaign_id_fkey {
+    from: [db.hartland.promotion.campaign_id],
+    to: [db.hartland.campaign.campaign_id]
+}
+def fk promotion_condition_sku_id_fkey {
+    from: [db.hartland.promotion.condition_sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+def fk promotion_document_id_fkey {
+    from: [db.hartland.promotion.document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk promotion_owner_employee_id_fkey {
+    from: [db.hartland.promotion.owner_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk promotion_reward_sku_id_fkey {
+    from: [db.hartland.promotion.reward_sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+def fk promotion_target_product_line_id_fkey {
+    from: [db.hartland.promotion.target_product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+def fk promotion_target_sku_id_fkey {
+    from: [db.hartland.promotion.target_sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- promotion_eligibility --
+def fk promotion_eligibility_promotion_id_fkey {
+    from: [db.hartland.promotion_eligibility.promotion_id],
+    to: [db.hartland.promotion.promotion_id]
+}
+
+// -- promotion_exclusion --
+def fk promotion_exclusion_excluded_promotion_id_fkey {
+    from: [db.hartland.promotion_exclusion.excluded_promotion_id],
+    to: [db.hartland.promotion.promotion_id]
+}
+def fk promotion_exclusion_promotion_id_fkey {
+    from: [db.hartland.promotion_exclusion.promotion_id],
+    to: [db.hartland.promotion.promotion_id]
+}
+
+// -- seasonal_exclusion --
+def fk seasonal_exclusion_product_line_id_fkey {
+    from: [db.hartland.seasonal_exclusion.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+
+// -- pos_material --
+def fk pos_material_product_line_id_fkey {
+    from: [db.hartland.pos_material.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+
+// -- pos_asset --
+def fk pos_asset_pos_material_id_fkey {
+    from: [db.hartland.pos_asset.pos_material_id],
+    to: [db.hartland.pos_material.pos_material_id]
+}
+def fk pos_asset_region_id_fkey       { from: [db.hartland.pos_asset.region_id], to: [db.hartland.region.region_id] }
+
+// -- tourplan --
+def fk tourplan_customer_id_fkey { from: [db.hartland.tourplan.customer_id], to: [db.hartland.customer.customer_id] }
+def fk tourplan_employee_id_fkey { from: [db.hartland.tourplan.employee_id], to: [db.hartland.employee.employee_id] }
+def fk tourplan_store_id_fkey    { from: [db.hartland.tourplan.store_id], to: [db.hartland.store.store_id] }
+
+// -- carrier --
+def fk carrier_dc_site_id_fkey { from: [db.hartland.carrier.dc_site_id], to: [db.hartland.site.site_id] }
+
+// -- vehicle --
+def fk vehicle_carrier_id_fkey { from: [db.hartland.vehicle.carrier_id], to: [db.hartland.carrier.carrier_id] }
+
+// -- supplier_terms --
+def fk supplier_terms_sku_id_fkey {
+    from: [db.hartland.supplier_terms.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+def fk supplier_terms_supplier_entity_id_fkey {
+    from: [db.hartland.supplier_terms.supplier_entity_id],
+    to: [db.hartland.legal_entity.legal_entity_id]
+}
+
+// -- supplier --
+def fk supplier_legal_entity_id_fkey {
+    from: [db.hartland.supplier.legal_entity_id],
+    to: [db.hartland.legal_entity.legal_entity_id]
+}
+
+// -- asset_register --
+def fk asset_register_cost_centre_id_fkey {
+    from: [db.hartland.asset_register.cost_centre_id],
+    to: [db.hartland.cost_centre.cost_centre_id]
+}
+
+// -- menu_item --
+def fk menu_item_consumes_sku_id_fkey { from: [db.hartland.menu_item.consumes_sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- visit_plan --
+def fk visit_plan_employee_id_fkey {
+    from: [db.hartland.visit_plan.employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk visit_plan_store_id_fkey    { from: [db.hartland.visit_plan.store_id], to: [db.hartland.store.store_id] }
+def fk visit_plan_tourplan_id_fkey {
+    from: [db.hartland.visit_plan.tourplan_id],
+    to: [db.hartland.tourplan.tourplan_id]
+}
+
+// -- visit --
+def fk visit_customer_id_fkey   { from: [db.hartland.visit.customer_id], to: [db.hartland.customer.customer_id] }
+def fk visit_employee_id_fkey   { from: [db.hartland.visit.employee_id], to: [db.hartland.employee.employee_id] }
+def fk visit_store_id_fkey      { from: [db.hartland.visit.store_id], to: [db.hartland.store.store_id] }
+def fk visit_visit_plan_id_fkey { from: [db.hartland.visit.visit_plan_id], to: [db.hartland.visit_plan.visit_plan_id] }
+
+// -- visit_observation --
+def fk visit_observation_product_line_id_fkey {
+    from: [db.hartland.visit_observation.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+def fk visit_observation_visit_id_fkey {
+    from: [db.hartland.visit_observation.visit_id],
+    to: [db.hartland.visit.visit_id]
+}
+
+// -- competitor_sighting --
+def fk competitor_sighting_competitor_id_fkey {
+    from: [db.hartland.competitor_sighting.competitor_id],
+    to: [db.hartland.competitor.competitor_id]
+}
+def fk competitor_sighting_competitor_product_id_fkey {
+    from: [db.hartland.competitor_sighting.competitor_product_id],
+    to: [db.hartland.competitor_product.competitor_product_id]
+}
+def fk competitor_sighting_visit_id_fkey {
+    from: [db.hartland.competitor_sighting.visit_id],
+    to: [db.hartland.visit.visit_id]
+}
+
+// -- pos_loan --
+def fk pos_loan_approved_by_employee_id_fkey {
+    from: [db.hartland.pos_loan.approved_by_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk pos_loan_customer_id_fkey {
+    from: [db.hartland.pos_loan.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk pos_loan_placed_by_employee_id_fkey {
+    from: [db.hartland.pos_loan.placed_by_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk pos_loan_pos_asset_id_fkey {
+    from: [db.hartland.pos_loan.pos_asset_id],
+    to: [db.hartland.pos_asset.pos_asset_id]
+}
+def fk pos_loan_store_id_fkey                { from: [db.hartland.pos_loan.store_id], to: [db.hartland.store.store_id] }
+
+// -- pos_handout --
+def fk pos_handout_pos_material_id_fkey {
+    from: [db.hartland.pos_handout.pos_material_id],
+    to: [db.hartland.pos_material.pos_material_id]
+}
+def fk pos_handout_visit_id_fkey        { from: [db.hartland.pos_handout.visit_id], to: [db.hartland.visit.visit_id] }
+
+// -- sales_order --
+def fk sales_order_customer_id_fkey {
+    from: [db.hartland.sales_order.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk sales_order_dc_site_id_fkey {
+    from: [db.hartland.sales_order.dc_site_id],
+    to: [db.hartland.site.site_id]
+}
+def fk sales_order_delivery_point_id_fkey {
+    from: [db.hartland.sales_order.delivery_point_id],
+    to: [db.hartland.delivery_point.delivery_point_id]
+}
+def fk sales_order_taken_by_employee_id_fkey {
+    from: [db.hartland.sales_order.taken_by_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk sales_order_visit_id_fkey {
+    from: [db.hartland.sales_order.visit_id],
+    to: [db.hartland.visit.visit_id]
+}
+
+// -- sales_order_line --
+def fk sales_order_line_sales_order_id_fkey {
+    from: [db.hartland.sales_order_line.sales_order_id],
+    to: [db.hartland.sales_order.sales_order_id]
+}
+def fk sales_order_line_sku_id_fkey {
+    from: [db.hartland.sales_order_line.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- sales_order_line_discount --
+def fk sales_order_line_discount_price_agreement_id_fkey {
+    from: [db.hartland.sales_order_line_discount.price_agreement_id],
+    to: [db.hartland.price_agreement.price_agreement_id]
+}
+def fk sales_order_line_discount_promotion_id_fkey {
+    from: [db.hartland.sales_order_line_discount.promotion_id],
+    to: [db.hartland.promotion.promotion_id]
+}
+def fk sales_order_line_discount_sales_order_line_id_fkey {
+    from: [db.hartland.sales_order_line_discount.sales_order_line_id],
+    to: [db.hartland.sales_order_line.sales_order_line_id]
+}
+
+// -- purchase_order --
+def fk purchase_order_dc_site_id_fkey {
+    from: [db.hartland.purchase_order.dc_site_id],
+    to: [db.hartland.site.site_id]
+}
+def fk purchase_order_supplier_entity_id_fkey {
+    from: [db.hartland.purchase_order.supplier_entity_id],
+    to: [db.hartland.legal_entity.legal_entity_id]
+}
+
+// -- purchase_order_line --
+def fk purchase_order_line_purchase_order_id_fkey {
+    from: [db.hartland.purchase_order_line.purchase_order_id],
+    to: [db.hartland.purchase_order.purchase_order_id]
+}
+def fk purchase_order_line_sku_id_fkey {
+    from: [db.hartland.purchase_order_line.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- inbound_transport --
+def fk inbound_transport_carrier_id_fkey {
+    from: [db.hartland.inbound_transport.carrier_id],
+    to: [db.hartland.carrier.carrier_id]
+}
+def fk inbound_transport_from_site_id_fkey {
+    from: [db.hartland.inbound_transport.from_site_id],
+    to: [db.hartland.site.site_id]
+}
+def fk inbound_transport_to_site_id_fkey {
+    from: [db.hartland.inbound_transport.to_site_id],
+    to: [db.hartland.site.site_id]
+}
+
+// -- goods_receipt --
+def fk goods_receipt_dc_site_id_fkey {
+    from: [db.hartland.goods_receipt.dc_site_id],
+    to: [db.hartland.site.site_id]
+}
+def fk goods_receipt_inbound_transport_id_fkey {
+    from: [db.hartland.goods_receipt.inbound_transport_id],
+    to: [db.hartland.inbound_transport.inbound_transport_id]
+}
+def fk goods_receipt_purchase_order_id_fkey {
+    from: [db.hartland.goods_receipt.purchase_order_id],
+    to: [db.hartland.purchase_order.purchase_order_id]
+}
+
+// -- goods_receipt_line --
+def fk goods_receipt_line_goods_receipt_id_fkey {
+    from: [db.hartland.goods_receipt_line.goods_receipt_id],
+    to: [db.hartland.goods_receipt.goods_receipt_id]
+}
+def fk goods_receipt_line_sku_id_fkey {
+    from: [db.hartland.goods_receipt_line.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- stock_day --
+def fk stock_day_dc_site_id_fkey { from: [db.hartland.stock_day.dc_site_id], to: [db.hartland.site.site_id] }
+def fk stock_day_sku_id_fkey     { from: [db.hartland.stock_day.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- stock_movement --
+def fk stock_movement_dc_site_id_fkey { from: [db.hartland.stock_movement.dc_site_id], to: [db.hartland.site.site_id] }
+def fk stock_movement_sku_id_fkey     { from: [db.hartland.stock_movement.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- stockout --
+def fk stockout_dc_site_id_fkey { from: [db.hartland.stockout.dc_site_id], to: [db.hartland.site.site_id] }
+def fk stockout_sku_id_fkey     { from: [db.hartland.stockout.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- shipment --
+def fk shipment_dc_site_id_fkey        { from: [db.hartland.shipment.dc_site_id], to: [db.hartland.site.site_id] }
+def fk shipment_delivery_point_id_fkey {
+    from: [db.hartland.shipment.delivery_point_id],
+    to: [db.hartland.delivery_point.delivery_point_id]
+}
+def fk shipment_sales_order_id_fkey {
+    from: [db.hartland.shipment.sales_order_id],
+    to: [db.hartland.sales_order.sales_order_id]
+}
+
+// -- route --
+def fk route_carrier_id_fkey             { from: [db.hartland.route.carrier_id], to: [db.hartland.carrier.carrier_id] }
+def fk route_dc_site_id_fkey             { from: [db.hartland.route.dc_site_id], to: [db.hartland.site.site_id] }
+def fk route_superseded_by_route_id_fkey {
+    from: [db.hartland.route.superseded_by_route_id],
+    to: [db.hartland.route.route_id]
+}
+def fk route_vehicle_id_fkey             { from: [db.hartland.route.vehicle_id], to: [db.hartland.vehicle.vehicle_id] }
+
+// -- route_stop --
+def fk route_stop_delivery_point_id_fkey {
+    from: [db.hartland.route_stop.delivery_point_id],
+    to: [db.hartland.delivery_point.delivery_point_id]
+}
+def fk route_stop_route_id_fkey          { from: [db.hartland.route_stop.route_id], to: [db.hartland.route.route_id] }
+def fk route_stop_shipment_id_fkey {
+    from: [db.hartland.route_stop.shipment_id],
+    to: [db.hartland.shipment.shipment_id]
+}
+
+// -- delivery_event --
+def fk delivery_event_route_id_fkey {
+    from: [db.hartland.delivery_event.route_id],
+    to: [db.hartland.route.route_id]
+}
+def fk delivery_event_route_stop_id_fkey {
+    from: [db.hartland.delivery_event.route_stop_id],
+    to: [db.hartland.route_stop.route_stop_id]
+}
+
+// -- dispatch_case --
+def fk dispatch_case_delivery_event_id_fkey {
+    from: [db.hartland.dispatch_case.delivery_event_id],
+    to: [db.hartland.delivery_event.delivery_event_id]
+}
+def fk dispatch_case_dispatcher_employee_id_fkey {
+    from: [db.hartland.dispatch_case.dispatcher_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+
+// -- dc_invoice --
+def fk dc_invoice_dc_site_id_fkey { from: [db.hartland.dc_invoice.dc_site_id], to: [db.hartland.site.site_id] }
+
+// -- invoice --
+def fk invoice_customer_id_fkey     { from: [db.hartland.invoice.customer_id], to: [db.hartland.customer.customer_id] }
+def fk invoice_legal_entity_id_fkey {
+    from: [db.hartland.invoice.legal_entity_id],
+    to: [db.hartland.legal_entity.legal_entity_id]
+}
+def fk invoice_sales_order_id_fkey {
+    from: [db.hartland.invoice.sales_order_id],
+    to: [db.hartland.sales_order.sales_order_id]
+}
+def fk invoice_shipment_id_fkey     { from: [db.hartland.invoice.shipment_id], to: [db.hartland.shipment.shipment_id] }
+
+// -- invoice_line --
+def fk invoice_line_invoice_id_fkey {
+    from: [db.hartland.invoice_line.invoice_id],
+    to: [db.hartland.invoice.invoice_id]
+}
+def fk invoice_line_sales_order_line_id_fkey {
+    from: [db.hartland.invoice_line.sales_order_line_id],
+    to: [db.hartland.sales_order_line.sales_order_line_id]
+}
+
+// -- payment --
+def fk payment_customer_id_fkey { from: [db.hartland.payment.customer_id], to: [db.hartland.customer.customer_id] }
+
+// -- payment_allocation --
+def fk payment_allocation_invoice_id_fkey {
+    from: [db.hartland.payment_allocation.invoice_id],
+    to: [db.hartland.invoice.invoice_id]
+}
+def fk payment_allocation_payment_id_fkey {
+    from: [db.hartland.payment_allocation.payment_id],
+    to: [db.hartland.payment.payment_id]
+}
+
+// -- dunning --
+def fk dunning_invoice_id_fkey { from: [db.hartland.dunning.invoice_id], to: [db.hartland.invoice.invoice_id] }
+
+// -- return --
+def fk return_credit_invoice_id_fkey {
+    from: [db.hartland.return.credit_invoice_id],
+    to: [db.hartland.invoice.invoice_id]
+}
+def fk return_customer_id_fkey {
+    from: [db.hartland.return.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk return_sales_order_line_id_fkey {
+    from: [db.hartland.return.sales_order_line_id],
+    to: [db.hartland.sales_order_line.sales_order_line_id]
+}
+
+// -- ap_invoice --
+def fk ap_invoice_supplier_id_fkey {
+    from: [db.hartland.ap_invoice.supplier_id],
+    to: [db.hartland.supplier.supplier_id]
+}
+
+// -- gl_journal --
+def fk gl_journal_cost_centre_id_fkey {
+    from: [db.hartland.gl_journal.cost_centre_id],
+    to: [db.hartland.cost_centre.cost_centre_id]
+}
+def fk gl_journal_gl_account_id_fkey {
+    from: [db.hartland.gl_journal.gl_account_id],
+    to: [db.hartland.gl_account.gl_account_id]
+}
+def fk gl_journal_product_line_id_fkey {
+    from: [db.hartland.gl_journal.product_line_id],
+    to: [db.hartland.product_line.product_line_id]
+}
+
+// -- campaign_cost --
+def fk campaign_cost_ap_invoice_id_fkey {
+    from: [db.hartland.campaign_cost.ap_invoice_id],
+    to: [db.hartland.ap_invoice.ap_invoice_id]
+}
+def fk campaign_cost_campaign_id_fkey {
+    from: [db.hartland.campaign_cost.campaign_id],
+    to: [db.hartland.campaign.campaign_id]
+}
+
+// -- promotion_result --
+def fk promotion_result_promotion_id_fkey {
+    from: [db.hartland.promotion_result.promotion_id],
+    to: [db.hartland.promotion.promotion_id]
+}
+
+// -- rep_prompt --
+def fk rep_prompt_customer_id_fkey {
+    from: [db.hartland.rep_prompt.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk rep_prompt_employee_id_fkey {
+    from: [db.hartland.rep_prompt.employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk rep_prompt_prompt_rule_id_fkey {
+    from: [db.hartland.rep_prompt.prompt_rule_id],
+    to: [db.hartland.prompt_rule.prompt_rule_id]
+}
+def fk rep_prompt_visit_id_fkey       { from: [db.hartland.rep_prompt.visit_id], to: [db.hartland.visit.visit_id] }
+
+// -- shop_receipt --
+def fk shop_receipt_site_id_fkey { from: [db.hartland.shop_receipt.site_id], to: [db.hartland.site.site_id] }
+
+// -- shop_receipt_line --
+def fk shop_receipt_line_menu_item_id_fkey {
+    from: [db.hartland.shop_receipt_line.menu_item_id],
+    to: [db.hartland.menu_item.menu_item_id]
+}
+def fk shop_receipt_line_shop_receipt_id_fkey {
+    from: [db.hartland.shop_receipt_line.shop_receipt_id],
+    to: [db.hartland.shop_receipt.shop_receipt_id]
+}
+def fk shop_receipt_line_sku_id_fkey {
+    from: [db.hartland.shop_receipt_line.sku_id],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- document_golden --
+def fk document_golden_document_id_fkey {
+    from: [db.hartland.document_golden.document_id],
+    to: [db.hartland.document.document_id]
+}
+
+// -- complaint --
+def fk complaint_customer_id_fkey {
+    from: [db.hartland.complaint.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk complaint_document_id_fkey {
+    from: [db.hartland.complaint.document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk complaint_invoice_id_fkey {
+    from: [db.hartland.complaint.invoice_id],
+    to: [db.hartland.invoice.invoice_id]
+}
+def fk complaint_owner_employee_id_fkey {
+    from: [db.hartland.complaint.owner_employee_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk complaint_sales_order_id_fkey {
+    from: [db.hartland.complaint.sales_order_id],
+    to: [db.hartland.sales_order.sales_order_id]
+}
+def fk complaint_shipment_id_fkey {
+    from: [db.hartland.complaint.shipment_id],
+    to: [db.hartland.shipment.shipment_id]
+}
+def fk complaint_sku_id_fkey            { from: [db.hartland.complaint.sku_id], to: [db.hartland.sku.sku_id] }
+
+// -- return_request_hdr --
+def fk return_request_hdr_document_id_fkey {
+    from: [db.hartland.return_request_hdr.document_id],
+    to: [db.hartland.document.document_id]
+}
+def fk return_request_hdr_rr_customer_sk_fkey {
+    from: [db.hartland.return_request_hdr.rr_customer_sk],
+    to: [db.hartland.customer.customer_id]
+}
+def fk return_request_hdr_rr_order_number_fkey {
+    from: [db.hartland.return_request_hdr.rr_order_number],
+    to: [db.hartland.sales_order.sales_order_id]
+}
+
+// -- return_request_line --
+def fk return_request_line_rl_customer_sk_fkey {
+    from: [db.hartland.return_request_line.rl_customer_sk],
+    to: [db.hartland.customer.customer_id]
+}
+def fk return_request_line_rl_item_sk_fkey {
+    from: [db.hartland.return_request_line.rl_item_sk],
+    to: [db.hartland.sku.sku_id]
+}
+def fk return_request_line_rl_request_number_fkey {
+    from: [db.hartland.return_request_line.rl_request_number],
+    to: [db.hartland.return_request_hdr.rr_request_number]
+}
+def fk return_request_line_rl_requested_variant_sk_fkey {
+    from: [db.hartland.return_request_line.rl_requested_variant_sk],
+    to: [db.hartland.sku.sku_id]
+}
+
+// -- return_receipt --
+def fk return_receipt_rc_item_sk_fkey { from: [db.hartland.return_receipt.rc_item_sk], to: [db.hartland.sku.sku_id] }
+def fk return_receipt_rc_line_id_fkey {
+    from: [db.hartland.return_receipt.rc_line_id],
+    to: [db.hartland.return_request_line.rl_line_id]
+}
+
+// -- credit_note --
+def fk credit_note_cn_customer_sk_fkey {
+    from: [db.hartland.credit_note.cn_customer_sk],
+    to: [db.hartland.customer.customer_id]
+}
+def fk credit_note_cn_line_id_fkey {
+    from: [db.hartland.credit_note.cn_line_id],
+    to: [db.hartland.return_request_line.rl_line_id]
+}
+
+// -- refund_payment --
+def fk refund_payment_rp_credit_note_id_fkey {
+    from: [db.hartland.refund_payment.rp_credit_note_id],
+    to: [db.hartland.credit_note.cn_credit_note_id]
+}
+
+// -- replacement_shipment --
+def fk replacement_shipment_rs_item_sk_fkey {
+    from: [db.hartland.replacement_shipment.rs_item_sk],
+    to: [db.hartland.sku.sku_id]
+}
+def fk replacement_shipment_rs_line_id_fkey {
+    from: [db.hartland.replacement_shipment.rs_line_id],
+    to: [db.hartland.return_request_line.rl_line_id]
+}

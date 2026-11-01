@@ -1,0 +1,150 @@
+package hartland
+
+model db schema hartland
+
+// views — the build's views (data/inventory.yaml `views`; design 07 §1, ⚑NH-P-10). The four materialized views are
+// relations to every reader, so they are `def table`s (import-schema sees relations; it does not list views); the
+// family's plain view `return_request` is a `def view` with its SQL. Written by hand at M0 S0.1 T3 from
+// data/ddl/views/*.sql and the column types Postgres 16 reports for them; `just ddl-drift` compares names + columns.
+//
+// Nullability is the SELECT's: a column is NOT NULL (TTR-M's default) only when the SQL guarantees it — a NOT NULL
+// column reached through inner joins, a COALESCE to a constant, a COUNT, arithmetic over such. Everything else is
+// `optional: true`: a NOT NULL claim the data breaks lets the translator simplify NULL handling away.
+// A computed money column is an unconstrained `numeric` in the database, so a bare `decimal` here.
+
+// materialized view — refreshed by load-world and prolong
+// an order line with its P/L, from gross revenue to the product margin (contracts §4)
+def table sales_pl {
+    columns: [
+        def column line_id             { type: bigint },
+        def column order_id            { type: bigint },
+        def column ordered_on          { type: date },
+        def column delivered_on        { type: date, optional: true },
+        def column channel             { type: text },
+        def column sub_channel         { type: text, optional: true },
+        def column customer_id         { type: bigint },
+        def column delivery_point_id   { type: bigint },
+        def column store_id            { type: bigint, optional: true },
+        def column sku_id              { type: bigint },
+        def column product_line_id     { type: bigint },
+        def column brand_id            { type: bigint },
+        def column rep_employee_id     { type: bigint, optional: true },
+        def column area_id             { type: bigint, optional: true },
+        def column okres_code          { type: text },
+        def column dc_site_id          { type: bigint },
+        def column cases               { type: { type: decimal, length: 12, precision: 3 } },
+        def column pieces              { type: { type: decimal, length: 12, precision: 3 } },
+        def column list_price_case     { type: { type: decimal, length: 14, precision: 2 } },
+        def column gross_revenue       { type: decimal },
+        def column discount_volume     { type: decimal },
+        def column discount_cross_sell { type: decimal },
+        def column discount_agreed     { type: decimal },
+        def column discount_individual { type: decimal },
+        def column discount_promotion  { type: decimal },
+        def column free_goods_value    { type: decimal },
+        def column net_revenue         { type: decimal },
+        def column delivery_cost       { type: decimal },
+        def column warehouse_cost      { type: decimal },
+        def column customer_margin     { type: decimal },
+        def column cogs                { type: decimal },
+        def column marketing_cost      { type: decimal },
+        def column product_margin      { type: decimal },
+        def column vat_rate            { type: { type: decimal, length: 5, precision: 2 } },
+        def column vat                 { type: decimal }
+    ]
+}
+
+// materialized view — refreshed by load-world and prolong
+// a month × a discount kind × a code (promotion, agreement or tier) — the trade spend by what caused it
+def table trade_spend {
+    columns: [
+        def column month              { type: date },
+        def column channel            { type: text },
+        def column kind               { type: text },
+        def column code               { type: text },
+        def column promotion_id       { type: bigint, optional: true },
+        def column price_agreement_id { type: bigint, optional: true },
+        def column budget             { type: text },
+        def column lines              { type: bigint },
+        def column cases              { type: decimal },
+        def column amount             { type: decimal }
+    ]
+}
+
+// materialized view — refreshed by load-world and prolong
+// the route version current at the end of its day (the last re-plan)
+def table route_current {
+    columns: [
+        def column route_id          { type: bigint },
+        def column dc_site_id        { type: bigint },
+        def column day               { type: date },
+        def column carrier_id        { type: bigint },
+        def column vehicle_id        { type: bigint, optional: true },
+        def column version           { type: int },
+        def column planned_departure { type: datetime },
+        def column planned_km        { type: { type: decimal, length: 8, precision: 1 } },
+        def column planned_stops     { type: int },
+        def column planned_cost      { type: { type: decimal, length: 14, precision: 2 } },
+        def column actual_km         { type: { type: decimal, length: 8, precision: 1 }, optional: true },
+        def column actual_cost       { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column planner           { type: text },
+        def column status            { type: text },
+        def column stops             { type: bigint },
+        def column stops_delivered   { type: bigint },
+        def column stops_late        { type: bigint },
+        def column stops_failed      { type: bigint },
+        def column stops_moved       { type: bigint }
+    ]
+}
+
+// materialized view — refreshed by load-world and prolong
+// an invoice with what is paid and what is open, its days overdue and ageing bucket as of the refresh
+def table receivable {
+    columns: [
+        def column invoice_id    { type: bigint },
+        def column invoice_no    { type: text },
+        def column kind          { type: text },
+        def column customer_id   { type: bigint, optional: true },
+        def column channel       { type: text, optional: true },
+        def column issued_on     { type: date },
+        def column due_on        { type: date },
+        def column gross_amount  { type: { type: decimal, length: 14, precision: 2 } },
+        def column paid_amount   { type: decimal },
+        def column open_amount   { type: decimal },
+        def column as_of         { type: date },
+        def column days_overdue  { type: int },
+        def column ageing_bucket { type: text }
+    ]
+}
+
+// a return request with its state derived from its lines (received · decided · closed) — the family's own view
+def view return_request {
+    columns: [
+        def column rr_request_number { type: bigint },
+        def column rr_customer_sk    { type: bigint },
+        def column rr_order_number   { type: bigint },
+        def column rr_channel        { type: text },
+        def column rr_requested_date { type: date },
+        def column rr_state          { type: text },
+        def column document_id       { type: bigint, optional: true },
+        def column source            { type: text }
+    ]
+    definitionSql: """
+        SELECT
+            h.rr_request_number,
+            h.rr_customer_sk,
+            h.rr_order_number,
+            h.rr_channel,
+            h.rr_requested_date,
+            CASE
+                WHEN COUNT(l.rl_line_id) = 0 OR BOOL_OR(l.rl_state = 'received') THEN 'received'
+                WHEN BOOL_AND(l.rl_state IN ('rejected', 'not_returned', 'closed')) THEN 'closed'
+                ELSE 'decided'
+            END::text AS rr_state,
+            h.document_id,
+            h.source
+        FROM return_request_hdr h
+        LEFT JOIN return_request_line l ON l.rl_request_number = h.rr_request_number
+        GROUP BY h.rr_request_number
+    """
+}

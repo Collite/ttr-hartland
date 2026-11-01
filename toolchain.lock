@@ -1,0 +1,21 @@
+# The toolchain the model is written for — set by Bora 2026-11-01 (NH M0 S0.1): ttr-core grammar/v0.21.1, the release
+# with cn's `variant` (CN-P8 S8.6, ttr-core#349), and the metadata release built on it, server-libs 0.11.35
+# (ttr-server#367). Started from ttr-demo's lock (grammar/v0.20.3, metadata 0.11.32). The readers are already on
+# 0.11.35: bp-dsk since olymp#258 and hartland since olymp#259 (both 2026-11-01), serving ttr-demo's model until M5's
+# staging and SW put this one there. Bump in the same change that rolls the readers; rebuild generated/ with the same
+# pins in the same commit. Read by model-gate.yml and regenerate.yml through scripts/toolchain-lock.py. Why the pin is
+# load-bearing: the ⛔ PINNED comment block in .github/workflows/model-gate.yml.
+#
+# A pin is frozen inside a phase and moves by a D-n. M4's cn layer needs no move: 0.21.1 reads `variant`.
+# Whoever moves a [veles] pin runs `just check-veles-pin`: olymp's metadata release on bp-dsk and hartland = image,
+# and ttr-server's server-libs/v<image> builds with ttr-metadata.
+# No [ttrp] / [automation-preview] tables: this model has no TTR-P recipes and no automation package.
+[ttr-core]
+ref = "grammar/v0.21.1"          # the gate's toolchain checkout (Bora, 2026-11-01)
+
+[veles]
+image = "0.11.35"                # the metadata image on grammar/metadata 0.21.1 (server-libs/v0.11.35, ttr-server#367)
+ttr-metadata = "0.21.1"          # `tatrman-ttr-metadata` in ttr-server's `gradle/libs.versions.toml` at `server-libs/v<image>`;
+                                 # the gate builds its Kotlin loader from ttr-core `grammar/v<this>`, stamped with it
+# true = the gate fails without the loader, false = the gate says it did not run it.
+strict-load = true

@@ -1,0 +1,25 @@
+package hartland
+
+model lexicon locale cs
+
+// The pack word list — seeded by scripts/seed_members.py from data/reference/catalogue.csv (nicknames_cs: the pack
+// words) (M0 S0.1 T5). Do not edit: edit the sources and re-seed. One term per member, its words in `forms`; `for:`
+// is the member vocabulary's column until M3 S3.1 T5 re-targets each term to its member (README.md).
+
+def term pack_mala_sklenice_cs {
+    description: "sklenice 50 g (pack_format jar)"
+    for: db.hartland.sku.pack_format
+    forms: ["malá sklenice"]
+}
+
+def term pack_velka_sklenice_cs {
+    description: "sklenice 200 g (pack_format jar)"
+    for: db.hartland.sku.pack_format
+    forms: ["velká sklenice"]
+}
+
+def term pack_doplnovacka_cs {
+    description: "doplňovací balení 150 g / 300 g (pack_format refill)"
+    for: db.hartland.sku.pack_format
+    forms: ["doplňovačka"]
+}

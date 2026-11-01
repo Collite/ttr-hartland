@@ -1,0 +1,31 @@
+# modeler.toml — the project manifest of the New Hartland model (NH M0 S0.1 T1; design 07 §7, contracts §6–§8).
+# The ttr-core manifest schema (v4.0 qname-redesign: named [schemas.<handle>] bindings), as ttr-demo's.
+
+[project]
+name = "hartland"
+version = "0.1.0"
+
+[language]
+preferred = "cs"   # Czech only (NH-D8): the one authored lexicon locale; the en locale is not authored
+
+[schemas]
+# The model kinds in use. `cn` joins at M4 (cn's `variant`, CN-P8 S8.6, is in the pinned grammar 0.21.1).
+declared = ["db", "er", "md", "binding", "lexicon"]
+
+[schemas.hartland]
+# One physical schema: Postgres DB `hartland`, schema `hartland` (contracts §8). The TTR handle is the schema's own
+# name, so a db ref reads db.hartland.<table>.<column>.
+database  = "hartland"
+db-schema = "hartland"
+dialect   = "postgres"
+
+[defaults]
+schema = "hartland"
+
+[packages]
+# The tree groups files by MODEL KIND (model/db, model/er, …), not by domain, so the directory-inferred package would
+# differ per folder and every cross-kind ref (er2db, md2db, a lexicon `for:`) would need an import. Every model/*.ttrm
+# declares `package hartland` instead — one flat package, as ttr-demo's. layout = "off" silences the resulting
+# directory/declaration mismatch; `ttr/package-prefix-divergence` still fires per file (a warning, which the model
+# suites accept by code) and changes no resolution.
+layout = "off"

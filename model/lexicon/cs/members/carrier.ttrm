@@ -1,0 +1,56 @@
+package hartland
+
+model lexicon locale cs
+
+// The carrier word list — seeded by scripts/seed_members.py from data/reference/carrier.csv (name; the name without
+// its legal form) (M0 S0.1 T5). Do not edit: edit the sources and re-seed. One term per member, its words in
+// `forms`; `for:` is the member vocabulary's column until M3 S3.1 T5 re-targets each term to its member
+// (README.md).
+
+def term carrier_dop_j1_cs {
+    description: "Autodoprava Mašek s.r.o. (DOP-J1)"
+    for: db.hartland.carrier.name
+    forms: ["Autodoprava Mašek s.r.o.", "Autodoprava Mašek"]
+}
+
+def term carrier_dop_j2_cs {
+    description: "Polabská spedice s.r.o. (DOP-J2)"
+    for: db.hartland.carrier.name
+    forms: ["Polabská spedice s.r.o.", "Polabská spedice"]
+}
+
+def term carrier_dop_j3_cs {
+    description: "Doprava Horák a syn s.r.o. (DOP-J3)"
+    for: db.hartland.carrier.name
+    forms: ["Doprava Horák a syn s.r.o.", "Doprava Horák a syn"]
+}
+
+def term carrier_dop_m1_cs {
+    description: "Moravská doprava Vlček s.r.o. (DOP-M1)"
+    for: db.hartland.carrier.name
+    forms: ["Moravská doprava Vlček s.r.o.", "Moravská doprava Vlček"]
+}
+
+def term carrier_dop_m2_cs {
+    description: "Autodoprava Kadlec s.r.o. (DOP-M2)"
+    for: db.hartland.carrier.name
+    forms: ["Autodoprava Kadlec s.r.o.", "Autodoprava Kadlec"]
+}
+
+def term carrier_dop_m3_cs {
+    description: "Hanácká spedice s.r.o. (DOP-M3)"
+    for: db.hartland.carrier.name
+    forms: ["Hanácká spedice s.r.o.", "Hanácká spedice"]
+}
+
+def term carrier_dop_bal_cs {
+    description: "Kurýrní služba Rychlík s.r.o. (DOP-BAL)"
+    for: db.hartland.carrier.name
+    forms: ["Kurýrní služba Rychlík s.r.o.", "Kurýrní služba Rychlík"]
+}
+
+def term carrier_dop_svoz_cs {
+    description: "Kamionová doprava Říha s.r.o. (DOP-SVOZ)"
+    for: db.hartland.carrier.name
+    forms: ["Kamionová doprava Říha s.r.o.", "Kamionová doprava Říha"]
+}

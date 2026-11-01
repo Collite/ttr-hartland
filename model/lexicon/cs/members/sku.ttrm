@@ -1,0 +1,745 @@
+package hartland
+
+model lexicon locale cs
+
+// The sku word list — seeded by scripts/seed_members.py from data/reference/catalogue.csv (name_cs) (M0 S0.1 T5).
+// Do not edit: edit the sources and re-seed. One term per member, its words in `forms`; `for:` is the member
+// vocabulary's column until M3 S3.1 T5 re-targets each term to its member (README.md).
+
+def term sku_2931000000012_cs {
+    description: "Harcafé Classic, sklenice 50 g (2931000000012)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic, sklenice 50 g"]
+}
+
+def term sku_2931000000029_cs {
+    description: "Harcafé Classic, sklenice 100 g (2931000000029)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic, sklenice 100 g"]
+}
+
+def term sku_2931000000036_cs {
+    description: "Harcafé Classic, sklenice 200 g (2931000000036)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic, sklenice 200 g"]
+}
+
+def term sku_2931000000043_cs {
+    description: "Harcafé Classic, doplňovací balení 150 g (2931000000043)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000050_cs {
+    description: "Harcafé Classic, 10 sáčků po 2 g (2931000000050)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic, 10 sáčků po 2 g"]
+}
+
+def term sku_2931000000067_cs {
+    description: "Harcafé Classic Profi, sáček 500 g (2931000000067)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Profi, sáček 500 g"]
+}
+
+def term sku_2931000000074_cs {
+    description: "Harcafé Classic, 25 sáčků po 2 g (2931000000074)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic, 25 sáčků po 2 g"]
+}
+
+def term sku_2931000000081_cs {
+    description: "Harcafé Classic Silná, sklenice 100 g (2931000000081)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Silná, sklenice 100 g"]
+}
+
+def term sku_2931000000098_cs {
+    description: "Harcafé Classic Silná, sklenice 200 g (2931000000098)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Silná, sklenice 200 g"]
+}
+
+def term sku_2931000000104_cs {
+    description: "Harcafé Classic Silná, doplňovací balení 150 g (2931000000104)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Silná, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000111_cs {
+    description: "Harcafé Classic Silná, 10 sáčků po 2 g (2931000000111)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Silná, 10 sáčků po 2 g"]
+}
+
+def term sku_2931000000128_cs {
+    description: "Harcafé Classic Jemná, sklenice 100 g (2931000000128)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Jemná, sklenice 100 g"]
+}
+
+def term sku_2931000000135_cs {
+    description: "Harcafé Classic Jemná, sklenice 200 g (2931000000135)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Jemná, sklenice 200 g"]
+}
+
+def term sku_2931000000142_cs {
+    description: "Harcafé Classic Jemná, doplňovací balení 150 g (2931000000142)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Jemná, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000159_cs {
+    description: "Harcafé Classic Jemná, 10 sáčků po 2 g (2931000000159)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic Jemná, 10 sáčků po 2 g"]
+}
+
+def term sku_2931000000166_cs {
+    description: "Harcafé Gold, sklenice 50 g (2931000000166)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold, sklenice 50 g"]
+}
+
+def term sku_2931000000173_cs {
+    description: "Harcafé Gold, sklenice 100 g (2931000000173)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold, sklenice 100 g"]
+}
+
+def term sku_2931000000180_cs {
+    description: "Harcafé Gold, sklenice 200 g (2931000000180)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold, sklenice 200 g"]
+}
+
+def term sku_2931000000197_cs {
+    description: "Harcafé Gold, doplňovací balení 150 g (2931000000197)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000203_cs {
+    description: "Harcafé Gold Profi, sáček 500 g (2931000000203)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Profi, sáček 500 g"]
+}
+
+def term sku_2931000000210_cs {
+    description: "Harcafé Gold, doplňovací balení 300 g (2931000000210)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold, doplňovací balení 300 g"]
+}
+
+def term sku_2931000000227_cs {
+    description: "Harcafé Gold Intenzivní, sklenice 50 g (2931000000227)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Intenzivní, sklenice 50 g"]
+}
+
+def term sku_2931000000234_cs {
+    description: "Harcafé Gold Intenzivní, sklenice 100 g (2931000000234)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Intenzivní, sklenice 100 g"]
+}
+
+def term sku_2931000000241_cs {
+    description: "Harcafé Gold Intenzivní, sklenice 200 g (2931000000241)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Intenzivní, sklenice 200 g"]
+}
+
+def term sku_2931000000258_cs {
+    description: "Harcafé Gold Intenzivní, doplňovací balení 150 g (2931000000258)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Intenzivní, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000265_cs {
+    description: "Harcafé Gold Crema, sklenice 100 g (2931000000265)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Crema, sklenice 100 g"]
+}
+
+def term sku_2931000000272_cs {
+    description: "Harcafé Gold Crema, sklenice 200 g (2931000000272)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Crema, sklenice 200 g"]
+}
+
+def term sku_2931000000289_cs {
+    description: "Harcafé Gold Crema, doplňovací balení 150 g (2931000000289)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold Crema, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000296_cs {
+    description: "Harcafé Espresso, sklenice 100 g (2931000000296)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Espresso, sklenice 100 g"]
+}
+
+def term sku_2931000000302_cs {
+    description: "Harcafé Espresso, 10 tyčinek po 1,8 g (2931000000302)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Espresso, 10 tyčinek po 1,8 g"]
+}
+
+def term sku_2931000000319_cs {
+    description: "Harcafé Espresso Profi, sáček 500 g (2931000000319)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Espresso Profi, sáček 500 g"]
+}
+
+def term sku_2931000000326_cs {
+    description: "Harcafé Espresso bez kofeinu, sklenice 100 g (2931000000326)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Espresso bez kofeinu, sklenice 100 g"]
+}
+
+def term sku_2931000000333_cs {
+    description: "Harcafé Espresso bez kofeinu, 10 tyčinek po 1,8 g (2931000000333)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Espresso bez kofeinu, 10 tyčinek po 1,8 g"]
+}
+
+def term sku_2931000000340_cs {
+    description: "Harcafé Espresso bez kofeinu Profi, sáček 500 g (2931000000340)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Espresso bez kofeinu Profi, sáček 500 g"]
+}
+
+def term sku_2931000000357_cs {
+    description: "Harcafé 3v1, 10 tyčinek (2931000000357)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé 3v1, 10 tyčinek"]
+}
+
+def term sku_2931000000364_cs {
+    description: "Harcafé 3v1, 20 tyčinek (2931000000364)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé 3v1, 20 tyčinek"]
+}
+
+def term sku_2931000000371_cs {
+    description: "Harcafé 3v1 Profi, 100 tyčinek (2931000000371)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé 3v1 Profi, 100 tyčinek"]
+}
+
+def term sku_2931000000388_cs {
+    description: "Harcafé 2v1, 10 tyčinek (2931000000388)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé 2v1, 10 tyčinek"]
+}
+
+def term sku_2931000000395_cs {
+    description: "Harcafé 2v1, 20 tyčinek (2931000000395)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé 2v1, 20 tyčinek"]
+}
+
+def term sku_2931000000401_cs {
+    description: "Harcafé 2v1 Profi, 100 tyčinek (2931000000401)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé 2v1 Profi, 100 tyčinek"]
+}
+
+def term sku_2931000000418_cs {
+    description: "Harcafé Cappuccino, 10 tyčinek (2931000000418)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Cappuccino, 10 tyčinek"]
+}
+
+def term sku_2931000000425_cs {
+    description: "Harcafé Cappuccino, 20 tyčinek (2931000000425)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Cappuccino, 20 tyčinek"]
+}
+
+def term sku_2931000000432_cs {
+    description: "Harcafé Cappuccino Profi, 100 tyčinek (2931000000432)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Cappuccino Profi, 100 tyčinek"]
+}
+
+def term sku_2931000000449_cs {
+    description: "Harcafé Cappuccino, 8 tyčinek (2931000000449)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Cappuccino, 8 tyčinek"]
+}
+
+def term sku_2931000000456_cs {
+    description: "Harcafé Latte, 10 tyčinek (2931000000456)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Latte, 10 tyčinek"]
+}
+
+def term sku_2931000000463_cs {
+    description: "Harcafé Latte, 20 tyčinek (2931000000463)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Latte, 20 tyčinek"]
+}
+
+def term sku_2931000000470_cs {
+    description: "Harcafé Latte Profi, 100 tyčinek (2931000000470)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Latte Profi, 100 tyčinek"]
+}
+
+def term sku_2931000000487_cs {
+    description: "Harcafé Classic bez kofeinu, sklenice 100 g (2931000000487)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic bez kofeinu, sklenice 100 g"]
+}
+
+def term sku_2931000000494_cs {
+    description: "Harcafé Classic bez kofeinu, doplňovací balení 150 g (2931000000494)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Classic bez kofeinu, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000500_cs {
+    description: "Harcafé Gold bez kofeinu, sklenice 100 g (2931000000500)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold bez kofeinu, sklenice 100 g"]
+}
+
+def term sku_2931000000517_cs {
+    description: "Harcafé Gold bez kofeinu, doplňovací balení 150 g (2931000000517)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Gold bez kofeinu, doplňovací balení 150 g"]
+}
+
+def term sku_2931000000524_cs {
+    description: "Harcafé Automatová směs, sáček 1 kg (2931000000524)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Automatová směs, sáček 1 kg"]
+}
+
+def term sku_2931000000531_cs {
+    description: "Harcafé Automatová směs, krabice 10 × 1 kg (2931000000531)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Automatová směs, krabice 10 × 1 kg"]
+}
+
+def term sku_2931000000548_cs {
+    description: "Harcafé Mléčná pěna do automatů, sáček 1 kg (2931000000548)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Mléčná pěna do automatů, sáček 1 kg"]
+}
+
+def term sku_2931000000555_cs {
+    description: "Harcafé Mléčná pěna do automatů, krabice 10 × 1 kg (2931000000555)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Mléčná pěna do automatů, krabice 10 × 1 kg"]
+}
+
+def term sku_2931000000562_cs {
+    description: "Harcafé Kavárenská směs, sáček 1 kg (2931000000562)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Kavárenská směs, sáček 1 kg"]
+}
+
+def term sku_2931000000579_cs {
+    description: "Harcafé Kavárenská směs, krabice 10 × 1 kg (2931000000579)"
+    for: db.hartland.sku.name
+    forms: ["Harcafé Kavárenská směs, krabice 10 × 1 kg"]
+}
+
+def term sku_2931000000586_cs {
+    description: "Harsoup Kuřecí s nudlemi, sáček 4 porce (2931000000586)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Kuřecí s nudlemi, sáček 4 porce"]
+}
+
+def term sku_2931000000593_cs {
+    description: "Harsoup Kuřecí s nudlemi, 2 sáčky (2931000000593)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Kuřecí s nudlemi, 2 sáčky"]
+}
+
+def term sku_2931000000609_cs {
+    description: "Harsoup Kuřecí s nudlemi Profi, 50 porcí (2931000000609)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Kuřecí s nudlemi Profi, 50 porcí"]
+}
+
+def term sku_2931000000616_cs {
+    description: "Harsoup Hovězí, sáček 4 porce (2931000000616)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Hovězí, sáček 4 porce"]
+}
+
+def term sku_2931000000623_cs {
+    description: "Harsoup Hovězí, 2 sáčky (2931000000623)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Hovězí, 2 sáčky"]
+}
+
+def term sku_2931000000630_cs {
+    description: "Harsoup Hovězí Profi, 50 porcí (2931000000630)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Hovězí Profi, 50 porcí"]
+}
+
+def term sku_2931000000647_cs {
+    description: "Harsoup Houbová, sáček 4 porce (2931000000647)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Houbová, sáček 4 porce"]
+}
+
+def term sku_2931000000654_cs {
+    description: "Harsoup Houbová, 2 sáčky (2931000000654)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Houbová, 2 sáčky"]
+}
+
+def term sku_2931000000661_cs {
+    description: "Harsoup Houbová Profi, 50 porcí (2931000000661)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Houbová Profi, 50 porcí"]
+}
+
+def term sku_2931000000678_cs {
+    description: "Harsoup Rajská, sáček 4 porce (2931000000678)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Rajská, sáček 4 porce"]
+}
+
+def term sku_2931000000685_cs {
+    description: "Harsoup Rajská, 2 sáčky (2931000000685)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Rajská, 2 sáčky"]
+}
+
+def term sku_2931000000692_cs {
+    description: "Harsoup Rajská Profi, 50 porcí (2931000000692)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Rajská Profi, 50 porcí"]
+}
+
+def term sku_2931000000708_cs {
+    description: "Harsoup Hrachová, sáček 4 porce (2931000000708)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Hrachová, sáček 4 porce"]
+}
+
+def term sku_2931000000715_cs {
+    description: "Harsoup Hrachová, 2 sáčky (2931000000715)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Hrachová, 2 sáčky"]
+}
+
+def term sku_2931000000722_cs {
+    description: "Harsoup Hrachová Profi, 50 porcí (2931000000722)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Hrachová Profi, 50 porcí"]
+}
+
+def term sku_2931000000739_cs {
+    description: "Harsoup Gulášová, sáček 4 porce (2931000000739)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Gulášová, sáček 4 porce"]
+}
+
+def term sku_2931000000746_cs {
+    description: "Harsoup Gulášová, 2 sáčky (2931000000746)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Gulášová, 2 sáčky"]
+}
+
+def term sku_2931000000753_cs {
+    description: "Harsoup Gulášová Profi, 50 porcí (2931000000753)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Gulášová Profi, 50 porcí"]
+}
+
+def term sku_2931000000760_cs {
+    description: "Harsoup Koprová, sáček 4 porce (2931000000760)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Koprová, sáček 4 porce"]
+}
+
+def term sku_2931000000777_cs {
+    description: "Harsoup Koprová, 2 sáčky (2931000000777)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Koprová, 2 sáčky"]
+}
+
+def term sku_2931000000784_cs {
+    description: "Harsoup Zelňačka, sáček 4 porce (2931000000784)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Zelňačka, sáček 4 porce"]
+}
+
+def term sku_2931000000791_cs {
+    description: "Harsoup Zelňačka, 2 sáčky (2931000000791)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Zelňačka, 2 sáčky"]
+}
+
+def term sku_2931000000807_cs {
+    description: "Harsoup Čočková, sáček 4 porce (2931000000807)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Čočková, sáček 4 porce"]
+}
+
+def term sku_2931000000814_cs {
+    description: "Harsoup Cibulová, sáček 4 porce (2931000000814)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Cibulová, sáček 4 porce"]
+}
+
+def term sku_2931000000821_cs {
+    description: "Harsoup Květáková, sáček 4 porce (2931000000821)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Květáková, sáček 4 porce"]
+}
+
+def term sku_2931000000838_cs {
+    description: "Harsoup Kuřecí v kelímku, kelímek (2931000000838)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Kuřecí v kelímku, kelímek"]
+}
+
+def term sku_2931000000845_cs {
+    description: "Harsoup Kuřecí v kelímku, 3 kelímky (2931000000845)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Kuřecí v kelímku, 3 kelímky"]
+}
+
+def term sku_2931000000852_cs {
+    description: "Harsoup Rajská v kelímku, kelímek (2931000000852)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Rajská v kelímku, kelímek"]
+}
+
+def term sku_2931000000869_cs {
+    description: "Harsoup Rajská v kelímku, 3 kelímky (2931000000869)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Rajská v kelímku, 3 kelímky"]
+}
+
+def term sku_2931000000876_cs {
+    description: "Harsoup Houbová v kelímku, kelímek (2931000000876)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Houbová v kelímku, kelímek"]
+}
+
+def term sku_2931000000883_cs {
+    description: "Harsoup Houbová v kelímku, 3 kelímky (2931000000883)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Houbová v kelímku, 3 kelímky"]
+}
+
+def term sku_2931000000890_cs {
+    description: "Harsoup Asijská s nudlemi v kelímku, kelímek (2931000000890)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Asijská s nudlemi v kelímku, kelímek"]
+}
+
+def term sku_2931000000906_cs {
+    description: "Harsoup Asijská s nudlemi v kelímku, 3 kelímky (2931000000906)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Asijská s nudlemi v kelímku, 3 kelímky"]
+}
+
+def term sku_2931000000913_cs {
+    description: "Harsoup Sýrová v kelímku, kelímek (2931000000913)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Sýrová v kelímku, kelímek"]
+}
+
+def term sku_2931000000920_cs {
+    description: "Harsoup Sýrová v kelímku, 3 kelímky (2931000000920)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Sýrová v kelímku, 3 kelímky"]
+}
+
+def term sku_2931000000937_cs {
+    description: "Harsoup Kari v kelímku, kelímek (2931000000937)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Kari v kelímku, kelímek"]
+}
+
+def term sku_2931000000944_cs {
+    description: "Harsoup Nudle kuřecí, sáček 65 g (2931000000944)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle kuřecí, sáček 65 g"]
+}
+
+def term sku_2931000000951_cs {
+    description: "Harsoup Nudle kuřecí, 5 sáčků po 65 g (2931000000951)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle kuřecí, 5 sáčků po 65 g"]
+}
+
+def term sku_2931000000968_cs {
+    description: "Harsoup Nudle kuřecí, kelímek 60 g (2931000000968)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle kuřecí, kelímek 60 g"]
+}
+
+def term sku_2931000000975_cs {
+    description: "Harsoup Nudle hovězí, sáček 65 g (2931000000975)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle hovězí, sáček 65 g"]
+}
+
+def term sku_2931000000982_cs {
+    description: "Harsoup Nudle hovězí, 5 sáčků po 65 g (2931000000982)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle hovězí, 5 sáčků po 65 g"]
+}
+
+def term sku_2931000000999_cs {
+    description: "Harsoup Nudle hovězí, kelímek 60 g (2931000000999)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle hovězí, kelímek 60 g"]
+}
+
+def term sku_2931000001002_cs {
+    description: "Harsoup Nudle kari, sáček 65 g (2931000001002)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle kari, sáček 65 g"]
+}
+
+def term sku_2931000001019_cs {
+    description: "Harsoup Nudle kari, 5 sáčků po 65 g (2931000001019)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle kari, 5 sáčků po 65 g"]
+}
+
+def term sku_2931000001026_cs {
+    description: "Harsoup Nudle pálivé s chilli, sáček 65 g (2931000001026)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle pálivé s chilli, sáček 65 g"]
+}
+
+def term sku_2931000001033_cs {
+    description: "Harsoup Nudle pálivé s chilli, 5 sáčků po 65 g (2931000001033)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle pálivé s chilli, 5 sáčků po 65 g"]
+}
+
+def term sku_2931000001040_cs {
+    description: "Harsoup Nudle zeleninové, sáček 65 g (2931000001040)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle zeleninové, sáček 65 g"]
+}
+
+def term sku_2931000001057_cs {
+    description: "Harsoup Nudle zeleninové, 5 sáčků po 65 g (2931000001057)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle zeleninové, 5 sáčků po 65 g"]
+}
+
+def term sku_2931000001064_cs {
+    description: "Harsoup Nudle zeleninové, kelímek 60 g (2931000001064)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle zeleninové, kelímek 60 g"]
+}
+
+def term sku_2931000001071_cs {
+    description: "Harsoup Nudle krevetové, sáček 65 g (2931000001071)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Nudle krevetové, sáček 65 g"]
+}
+
+def term sku_2931000001088_cs {
+    description: "Harsoup Dýňový krém, kapsička 2 porce (2931000001088)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Dýňový krém, kapsička 2 porce"]
+}
+
+def term sku_2931000001095_cs {
+    description: "Harsoup Dýňový krém Profi, 25 porcí (2931000001095)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Dýňový krém Profi, 25 porcí"]
+}
+
+def term sku_2931000001101_cs {
+    description: "Harsoup Humrová bisque, kapsička 2 porce (2931000001101)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Humrová bisque, kapsička 2 porce"]
+}
+
+def term sku_2931000001118_cs {
+    description: "Harsoup Humrová bisque Profi, 25 porcí (2931000001118)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Humrová bisque Profi, 25 porcí"]
+}
+
+def term sku_2931000001125_cs {
+    description: "Harsoup Krém z lesních hub, kapsička 2 porce (2931000001125)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Krém z lesních hub, kapsička 2 porce"]
+}
+
+def term sku_2931000001132_cs {
+    description: "Harsoup Krém z lesních hub Profi, 25 porcí (2931000001132)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Krém z lesních hub Profi, 25 porcí"]
+}
+
+def term sku_2931000001149_cs {
+    description: "Harsoup Francouzská cibulová, kapsička 2 porce (2931000001149)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Francouzská cibulová, kapsička 2 porce"]
+}
+
+def term sku_2931000001156_cs {
+    description: "Harsoup Francouzská cibulová Profi, 25 porcí (2931000001156)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Francouzská cibulová Profi, 25 porcí"]
+}
+
+def term sku_2931000001163_cs {
+    description: "Harsoup Profi kuřecí bujón, dóza 1 kg (2931000001163)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi kuřecí bujón, dóza 1 kg"]
+}
+
+def term sku_2931000001170_cs {
+    description: "Harsoup Profi kuřecí bujón, kbelík 5 kg (2931000001170)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi kuřecí bujón, kbelík 5 kg"]
+}
+
+def term sku_2931000001187_cs {
+    description: "Harsoup Profi hovězí bujón, dóza 1 kg (2931000001187)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi hovězí bujón, dóza 1 kg"]
+}
+
+def term sku_2931000001194_cs {
+    description: "Harsoup Profi hovězí bujón, kbelík 5 kg (2931000001194)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi hovězí bujón, kbelík 5 kg"]
+}
+
+def term sku_2931000001200_cs {
+    description: "Harsoup Profi zeleninový bujón, dóza 1 kg (2931000001200)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi zeleninový bujón, dóza 1 kg"]
+}
+
+def term sku_2931000001217_cs {
+    description: "Harsoup Profi zeleninový bujón, kbelík 5 kg (2931000001217)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi zeleninový bujón, kbelík 5 kg"]
+}
+
+def term sku_2931000001224_cs {
+    description: "Harsoup Profi základ na nudlovou polévku, dóza 1 kg (2931000001224)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi základ na nudlovou polévku, dóza 1 kg"]
+}
+
+def term sku_2931000001231_cs {
+    description: "Harsoup Profi základ na nudlovou polévku, kbelík 5 kg (2931000001231)"
+    for: db.hartland.sku.name
+    forms: ["Harsoup Profi základ na nudlovou polévku, kbelík 5 kg"]
+}

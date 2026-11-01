@@ -1,0 +1,124 @@
+# The model gate (contracts §7), on every pull request and every push to master — ttr-demo's model-gate.yml, trimmed
+# for NH M0 to the model's own checks.
+#
+# ttr-hartland vendors no toolchain, so this job checks out the public Collite/ttr-core repository beside it and builds
+# the parser, semantics, lint and resolve-packages CLI the justfile borrows from `../tatrman` — exactly as a local
+# checkout side by side does. The checkout and the build are the toolchain action's (.github/actions/toolchain), at the
+# ref toolchain.lock pins, cached per commit.
+#
+# What it runs:
+#   actionlint            the workflows and the toolchain action (rhysd/actionlint, with shellcheck)
+#   just verify-model     every model suite (model/**/*.test.mjs): the db layer's roster, the manifests, the member
+#                         word lists, the whole project resolving clean
+#   just check-model      generated/resolved-packages.json is not stale
+#   check-lexicon         SKIPPED until M3 S3.1 builds the Czech lexicon (a notice says so)
+#   just ddl-drift        data/ddl/schema.sql ⇄ model/db — the inventory is the contract (contracts §1) — and its
+#                         specs, the end-to-end one included
+#   just load-model       the model as the metadata service loads it: the Kotlin loader, strict, built from ttr-core at
+#                         the service's ttr-metadata version (grammar/v<[veles].ttr-metadata>, stamped with it). The
+#                         service drops a file it cannot parse and only WARNs about a reconcile error; the TS suites
+#                         above see neither. Runs when toolchain.lock's [veles].strict-load is true.
+name: model-gate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push supersedes a PR's run. Every other run gets a group of its own (GitHub keeps one pending run per group
+# and cancels the rest), so each master commit keeps its own gate record.
+concurrency:
+  group: model-gate-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  model-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ttr-hartland
+
+      - name: The workflows lint (actionlint + shellcheck)
+        working-directory: ttr-hartland
+        run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12 -no-color
+
+      # ⛔ PINNED, and the pin is load-bearing — do not drop it to "latest" (carried over from ttr-demo's model-gate).
+      #
+      # `check-model` (and, from M3, `check-lexicon`) compares the COMMITTED generated/ against what this toolchain
+      # builds, so an unpinned toolchain makes the gate report the toolchain rather than the model: ttr-demo's master
+      # went red on 2026-09-24 twenty minutes after a compiler change landed in ttr-core, on a merge that touched
+      # neither the model nor the archive.
+      #
+      # And the obvious "fix" for that red is the wrong one. Committing whatever the newest toolchain builds ships an
+      # artifact the serving readers were not built for: an older lexicon reader decodes an archive with a new enum
+      # member to an EMPTY vocabulary on a WARNING. Readers before producers.
+      #
+      # So this tag tracks the toolchain THE SERVING IMAGES WERE BUILT AGAINST. Bump it in the same change that rolls
+      # the readers, never before, and rebuild generated/ with the same tag in the same commit.
+      #
+      # grammar/v0.21.1 (Bora, NH M0, 2026-11-01): the release with cn's `variant` (CN-P8 S8.6), read by metadata
+      # 0.11.35 (ttr-metadata 0.21.1, [veles] in the lock). bp-dsk and hartland run 0.11.35 since 2026-11-01
+      # (olymp#258, #259), for ttr-demo's model, so the readers are already at this pin. M4 needs no move.
+      #
+      # The pin lives in toolchain.lock ([ttr-core].ref), beside the metadata image and the ttr-metadata version it was
+      # built with ([veles].image, [veles].ttr-metadata) — one file read by this gate and regenerate.yml.
+      - uses: ./ttr-hartland/.github/actions/toolchain
+        with:
+          with-loader: 'true'
+
+      # ddl-drift parses schema.sql with sqlglot (the dev group of the uv lock).
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: ttr-hartland/uv.lock
+
+      - name: uv sync (Python 3.13, the lock)
+        working-directory: ttr-hartland
+        run: uv sync --locked
+
+      - name: Model suites
+        working-directory: ttr-hartland
+        run: just verify-model
+
+      - name: resolved-packages.json is not stale
+        working-directory: ttr-hartland
+        run: just check-model
+
+      # ⚑ From M3 a stale archive is not a warning: the vocabulary a question is matched against IS that file.
+      - name: lexicon.tar.zst is not stale (from M3)
+        run: echo "::notice title=check-lexicon skipped::the Czech lexicon lands at M3 S3.1 — generated/ has no lexicon archive yet"
+
+      - name: schema.sql ⇄ the db layer (ddl-drift)
+        working-directory: ttr-hartland
+        run: just ddl-drift
+
+      # Its own specs, here where the toolchain is: the end-to-end case (an inventory column without its .ttrm edit
+      # fails, named) needs ttr-core's parser, which the data-gate does not build — there it is skipped.
+      - name: ddl-drift's specs (with the toolchain)
+        working-directory: ttr-hartland
+        run: uv run pytest data/sim/tests/test_ddl_drift.py
+
+      # The files as the metadata service loads them, with the loader built from ttr-core at the service's ttr-metadata
+      # version and stamped with it (the toolchain action). `--strict` fails on a dropped file or a reconcile error;
+      # `--expect-version` on a CLI that is not that version. The JSON on stdout is uploaded for people.
+      - name: load with the Kotlin loader
+        if: env.STRICT_LOAD == 'true'
+        working-directory: ttr-hartland
+        shell: bash
+        run: just load-model | tee gate-diagnostics.json
+
+      - name: The strict load is off
+        if: env.STRICT_LOAD != 'true'
+        run: echo "::notice title=strict load off::toolchain.lock [veles].strict-load = false — the Kotlin loader did not run"
+
+      - name: Upload the loader's diagnostics
+        if: ${{ !cancelled() && hashFiles('ttr-hartland/gate-diagnostics.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-diagnostics
+          path: ttr-hartland/gate-diagnostics.json

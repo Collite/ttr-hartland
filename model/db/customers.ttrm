@@ -1,0 +1,132 @@
+package hartland
+
+model db schema hartland
+
+// customers — chains, stores, customers, delivery points, lifecycle phases, competitors.
+// The inventory's group `customers` (data/inventory.yaml; design 07 §1): chain, store, customer, delivery_point,
+// lifecycle_phase, competitor, competitor_product.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a retail or station chain, or a franchise network
+def table chain {
+    primaryKey: [chain_id]
+    columns: [
+        def column chain_id       { type: bigint, isKey: true },
+        def column code           { type: text, search { searchable method: EXACT } },
+        def column name           { type: text, search { searchable method: TYPOS(1) } },
+        def column kind           { type: text },
+        def column is_key_account { type: bool }
+    ]
+}
+
+// a physical store from OpenStreetMap — chain stores, independents, station shops, cafés; the market
+def table store {
+    primaryKey: [store_id]
+    columns: [
+        def column store_id     { type: bigint, isKey: true },
+        def column osm_id       { type: text },
+        def column name         { type: text },
+        def column brand        { type: text, optional: true },
+        def column chain_id     { type: bigint, optional: true },
+        def column store_class  { type: text },
+        def column size_class   { type: text },
+        def column street_type  { type: text },
+        def column weekly_hours { type: { type: decimal, length: 5, precision: 1 } },
+        def column sunday_open  { type: bool },
+        def column lat          { type: { type: decimal, length: 9, precision: 6 } },
+        def column lon          { type: { type: decimal, length: 9, precision: 6 } },
+        def column street       { type: text, optional: true },
+        def column town         { type: text, optional: true },
+        def column postcode     { type: text, optional: true },
+        def column okres_id     { type: bigint },
+        def column area_id      { type: bigint },
+        def column opened_on    { type: date, optional: true },
+        def column closed_on    { type: date, optional: true }
+    ]
+}
+
+// a trading partner the Center invoices (a chain, a store, an operator, a restaurant, a wholesaler, an own shop, a
+// web consumer), potential ones included
+def table customer {
+    primaryKey: [customer_id]
+    columns: [
+        def column customer_id        { type: bigint, isKey: true },
+        def column code               { type: text },
+        def column name               { type: text },
+        def column channel            { type: text },
+        def column sub_channel        { type: text, optional: true },
+        def column chain_id           { type: bigint, optional: true },
+        def column store_id           { type: bigint, optional: true },
+        def column okres_id           { type: bigint, optional: true },
+        def column legal_form         { type: text, optional: true },
+        def column vat_id             { type: text, optional: true },
+        def column payment_terms_days { type: int },
+        def column credit_limit       { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column price_list_channel { type: text },
+        def column since              { type: date, optional: true },
+        def column until              { type: date, optional: true },
+        def column status             { type: text }
+    ]
+}
+
+// a place goods go to (a chain's store or station, a customer's own store, a HoReCa address, an operator's depot,
+// an own shop, a web consumer's town)
+def table delivery_point {
+    primaryKey: [delivery_point_id]
+    columns: [
+        def column delivery_point_id { type: bigint, isKey: true },
+        def column customer_id       { type: bigint },
+        def column store_id          { type: bigint, optional: true },
+        def column name              { type: text },
+        def column street            { type: text, optional: true },
+        def column town              { type: text },
+        def column postcode          { type: text, optional: true },
+        def column okres_id          { type: bigint },
+        def column lat               { type: { type: decimal, length: 9, precision: 6 }, optional: true },
+        def column lon               { type: { type: decimal, length: 9, precision: 6 }, optional: true },
+        def column dc_site_id        { type: bigint },
+        def column time_window_from  { type: time, optional: true },
+        def column time_window_to    { type: time, optional: true },
+        def column unloading_minutes { type: int }
+    ]
+}
+
+// a customer × a phase episode (potential · occasional · regular · VIP), with validity
+def table lifecycle_phase {
+    primaryKey: [lifecycle_phase_id]
+    columns: [
+        def column lifecycle_phase_id { type: bigint, isKey: true },
+        def column customer_id        { type: bigint },
+        def column phase              { type: text },
+        def column valid_from         { type: date },
+        def column valid_to           { type: date },
+        def column reason             { type: text, optional: true }
+    ]
+}
+
+// a fictional competitor brand
+def table competitor {
+    primaryKey: [competitor_id]
+    columns: [
+        def column competitor_id { type: bigint, isKey: true },
+        def column code          { type: text },
+        def column name          { type: text },
+        def column business      { type: text }
+    ]
+}
+
+// a competitor's product, with the Hartland equivalent and the knowledge-base notes
+def table competitor_product {
+    primaryKey: [competitor_product_id]
+    columns: [
+        def column competitor_product_id { type: bigint, isKey: true },
+        def column competitor_id         { type: bigint },
+        def column code                  { type: text },
+        def column name                  { type: text },
+        def column equivalent_product_id { type: bigint },
+        def column strengths             { type: text },
+        def column weaknesses            { type: text },
+        def column typical_price         { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}

@@ -1,0 +1,144 @@
+package hartland
+
+model db schema hartland
+
+// documents — the document registry, the golden extractions, complaints, the return-request family.
+// The inventory's group `documents` (data/inventory.yaml; design 07 §1): document, document_golden, complaint,
+// return_request_hdr, return_request_line, return_receipt, credit_note, refund_payment, replacement_shipment.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a document in the registry — the DocWH's pointer to its file (06 §3; loaded before the facts that cite it)
+def table document {
+    primaryKey: [document_id]
+    columns: [
+        def column document_id        { type: bigint, isKey: true },
+        def column code               { type: text },
+        def column family             { type: text },
+        def column received_at        { type: datetime },
+        def column channel            { type: text },
+        def column sender_name        { type: text, optional: true },
+        def column sender_email       { type: text, optional: true },
+        def column sender_customer_id { type: bigint, optional: true },
+        def column format             { type: text },
+        def column path               { type: text },
+        def column sha256             { type: text }
+        // `language` (text): undeclarable, a TTR-M keyword (ttr-core#353)
+    ]
+}
+
+// the expected extraction of a generated document (the DocWH's answer key)
+def table document_golden {
+    primaryKey: [document_id]
+    columns: [
+        def column document_id { type: bigint, isKey: true },
+        def column schema      { type: text },
+        def column payload     { type: text },   // jsonb
+        def column mentions    { type: text }   // jsonb
+    ]
+}
+
+// a complaint as the company records it
+def table complaint {
+    primaryKey: [complaint_id]
+    columns: [
+        def column complaint_id      { type: bigint, isKey: true },
+        def column code              { type: text },
+        def column customer_id       { type: bigint },
+        def column document_id       { type: bigint, optional: true },
+        def column received_on       { type: date },
+        def column kind              { type: text },
+        def column sku_id            { type: bigint, optional: true },
+        def column sales_order_id    { type: bigint, optional: true },
+        def column invoice_id        { type: bigint, optional: true },
+        def column shipment_id       { type: bigint, optional: true },
+        def column severity          { type: text },
+        def column status            { type: text },
+        def column resolution        { type: text, optional: true },
+        def column resolved_on       { type: date, optional: true },
+        def column owner_employee_id { type: bigint, optional: true },
+        def column source            { type: text }
+    ]
+}
+
+// a customer's return request (the header; its state is derived from its lines by the view return_request)
+def table return_request_hdr {
+    primaryKey: [rr_request_number]
+    columns: [
+        def column rr_request_number { type: bigint, isKey: true },
+        def column rr_customer_sk    { type: bigint },
+        def column rr_order_number   { type: bigint },
+        def column rr_channel        { type: text },
+        def column rr_requested_date { type: date },
+        def column document_id       { type: bigint, optional: true },
+        def column source            { type: text }
+    ]
+}
+
+// a line of a return request — the key of the return flow
+def table return_request_line {
+    primaryKey: [rl_line_id]
+    columns: [
+        def column rl_line_id              { type: bigint, isKey: true },
+        def column rl_request_number       { type: bigint },
+        def column rl_line_no              { type: int },
+        def column rl_item_sk              { type: bigint },
+        def column rl_quantity             { type: int },
+        def column rl_unit_price           { type: { type: decimal, length: 12, precision: 2 } },
+        def column rl_reason               { type: text },
+        def column rl_requested_resolution { type: text },
+        def column rl_requested_variant_sk { type: bigint, optional: true },
+        def column rl_state                { type: text },
+        def column rl_way                  { type: text, optional: true },
+        def column rl_customer_sk          { type: bigint }
+    ]
+}
+
+// goods received back against a return line
+def table return_receipt {
+    primaryKey: [rc_receipt_id]
+    columns: [
+        def column rc_receipt_id    { type: bigint, isKey: true },
+        def column rc_line_id       { type: bigint },
+        def column rc_received_date { type: date },
+        def column rc_item_sk       { type: bigint },
+        def column rc_quantity      { type: int },
+        def column rc_condition     { type: text }
+    ]
+}
+
+// a credit note settling a return line
+def table credit_note {
+    primaryKey: [cn_credit_note_id]
+    columns: [
+        def column cn_credit_note_id { type: bigint, isKey: true },
+        def column cn_line_id        { type: bigint },
+        def column cn_customer_sk    { type: bigint },
+        def column cn_issued_date    { type: date },
+        def column cn_amount         { type: { type: decimal, length: 12, precision: 2 } },
+        def column cn_status         { type: text }
+    ]
+}
+
+// the payment of a credit note
+def table refund_payment {
+    primaryKey: [rp_payment_id]
+    columns: [
+        def column rp_payment_id     { type: bigint, isKey: true },
+        def column rp_credit_note_id { type: bigint },
+        def column rp_paid_date      { type: date },
+        def column rp_amount         { type: { type: decimal, length: 12, precision: 2 } }
+    ]
+}
+
+// a replacement sent for a return line
+def table replacement_shipment {
+    primaryKey: [rs_shipment_id]
+    columns: [
+        def column rs_shipment_id  { type: bigint, isKey: true },
+        def column rs_line_id      { type: bigint },
+        def column rs_item_sk      { type: bigint },
+        def column rs_quantity     { type: int },
+        def column rs_shipped_date { type: date }
+    ]
+}

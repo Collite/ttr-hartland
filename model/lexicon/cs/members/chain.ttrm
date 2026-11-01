@@ -1,0 +1,140 @@
+package hartland
+
+model lexicon locale cs
+
+// The chain word list — seeded by scripts/seed_members.py from the store classifier's chains
+// (hartland_sim.setup.classifier.chains) and their sub-brands (M0 S0.1 T5). Do not edit: edit the sources and re-
+// seed. One term per member, its words in `forms`; `for:` is the member vocabulary's column until M3 S3.1 T5 re-
+// targets each term to its member (README.md).
+
+def term chain_tesco_cs {
+    description: "Tesco (TESCO)"
+    for: db.hartland.chain.name
+    forms: ["Tesco"]
+}
+
+def term chain_albert_cs {
+    description: "Albert (ALBERT)"
+    for: db.hartland.chain.name
+    forms: ["Albert"]
+}
+
+def term chain_lidl_cs {
+    description: "Lidl (LIDL)"
+    for: db.hartland.chain.name
+    forms: ["Lidl"]
+}
+
+def term chain_kaufland_cs {
+    description: "Kaufland (KAUFLAND)"
+    for: db.hartland.chain.name
+    forms: ["Kaufland"]
+}
+
+def term chain_penny_cs {
+    description: "Penny (PENNY)"
+    for: db.hartland.chain.name
+    forms: ["Penny", "Penny Market"]
+}
+
+def term chain_billa_cs {
+    description: "Billa (BILLA)"
+    for: db.hartland.chain.name
+    forms: ["Billa"]
+}
+
+def term chain_globus_cs {
+    description: "Globus (GLOBUS)"
+    for: db.hartland.chain.name
+    forms: ["Globus"]
+}
+
+def term chain_coop_cs {
+    description: "COOP (COOP)"
+    for: db.hartland.chain.name
+    forms: ["COOP", "Jednota", "Konzum", "Terno", "TUTY"]
+}
+
+def term chain_makro_cs {
+    description: "Makro (MAKRO)"
+    for: db.hartland.chain.name
+    forms: ["Makro"]
+}
+
+def term chain_omv_cs {
+    description: "OMV (OMV)"
+    for: db.hartland.chain.name
+    forms: ["OMV", "Viva"]
+}
+
+def term chain_shell_cs {
+    description: "Shell (SHELL)"
+    for: db.hartland.chain.name
+    forms: ["Shell", "Shell Select"]
+}
+
+def term chain_orlen_cs {
+    description: "Orlen (ORLEN)"
+    for: db.hartland.chain.name
+    forms: ["Orlen", "Benzina", "Stop Cafe"]
+}
+
+def term chain_mol_cs {
+    description: "MOL (MOL)"
+    for: db.hartland.chain.name
+    forms: ["MOL", "Fresh Corner", "Slovnaft"]
+}
+
+def term chain_eurooil_cs {
+    description: "EuroOil (EUROOIL)"
+    for: db.hartland.chain.name
+    forms: ["EuroOil"]
+}
+
+def term chain_tankono_cs {
+    description: "Tank ONO (TANKONO)"
+    for: db.hartland.chain.name
+    forms: ["Tank ONO"]
+}
+
+def term chain_zabka_cs {
+    description: "Žabka (ZABKA)"
+    for: db.hartland.chain.name
+    forms: ["Žabka"]
+}
+
+def term chain_hruska_cs {
+    description: "Hruška (HRUSKA)"
+    for: db.hartland.chain.name
+    forms: ["Hruška"]
+}
+
+def term chain_mujobchod_cs {
+    description: "Můj obchod (MUJOBCHOD)"
+    for: db.hartland.chain.name
+    forms: ["Můj obchod"]
+}
+
+def term chain_enapo_cs {
+    description: "Enapo (ENAPO)"
+    for: db.hartland.chain.name
+    forms: ["Enapo"]
+}
+
+def term chain_cba_cs {
+    description: "CBA (CBA)"
+    for: db.hartland.chain.name
+    forms: ["CBA"]
+}
+
+def term chain_brnenka_cs {
+    description: "Brněnka (BRNENKA)"
+    for: db.hartland.chain.name
+    forms: ["Brněnka"]
+}
+
+def term chain_norma_cs {
+    description: "Norma (NORMA)"
+    for: db.hartland.chain.name
+    forms: ["Norma"]
+}

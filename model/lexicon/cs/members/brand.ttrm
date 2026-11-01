@@ -1,0 +1,19 @@
+package hartland
+
+model lexicon locale cs
+
+// The brand word list — seeded by scripts/seed_members.py from data/reference/brand.csv (name) (M0 S0.1 T5). Do not
+// edit: edit the sources and re-seed. One term per member, its words in `forms`; `for:` is the member vocabulary's
+// column until M3 S3.1 T5 re-targets each term to its member (README.md).
+
+def term brand_harcafe_cs {
+    description: "Harcafé (HARCAFE)"
+    for: db.hartland.brand.name
+    forms: ["Harcafé"]
+}
+
+def term brand_harsoup_cs {
+    description: "Harsoup (HARSOUP)"
+    for: db.hartland.brand.name
+    forms: ["Harsoup"]
+}

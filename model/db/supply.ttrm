@@ -1,0 +1,133 @@
+package hartland
+
+model db schema hartland
+
+// supply — purchase orders, receipts, inbound transport, stock.
+// The inventory's group `supply` (data/inventory.yaml; design 07 §1): supplier_terms, purchase_order,
+// purchase_order_line, inbound_transport, goods_receipt, goods_receipt_line, stock_day, stock_movement, stockout.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a factory × a SKU — lead time, reliability, sourcing share, with validity
+def table supplier_terms {
+    primaryKey: [supplier_entity_id, sku_id, valid_from]
+    columns: [
+        def column supplier_entity_id { type: bigint, isKey: true },
+        def column sku_id             { type: bigint, isKey: true },
+        def column valid_from         { type: date, isKey: true },
+        def column valid_to           { type: date },
+        def column lead_time_days     { type: int },
+        def column min_lot_cases      { type: int },
+        def column reliability_pct    { type: { type: decimal, length: 5, precision: 2 } },
+        def column sourcing_share     { type: { type: decimal, length: 4, precision: 3 } }
+    ]
+}
+
+// a purchase order from the Center to a factory
+def table purchase_order {
+    primaryKey: [purchase_order_id]
+    columns: [
+        def column purchase_order_id  { type: bigint, isKey: true },
+        def column po_no              { type: text },
+        def column supplier_entity_id { type: bigint },
+        def column dc_site_id         { type: bigint },
+        def column ordered_on         { type: date },
+        def column requested_on       { type: date },
+        def column status             { type: text },
+        def column raised_by          { type: text }
+    ]
+}
+
+// a purchase order × a SKU
+def table purchase_order_line {
+    primaryKey: [purchase_order_line_id]
+    columns: [
+        def column purchase_order_line_id { type: bigint, isKey: true },
+        def column purchase_order_id      { type: bigint },
+        def column sku_id                 { type: bigint },
+        def column qty_cases              { type: { type: decimal, length: 12, precision: 3 } },
+        def column purchase_price_case    { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a factory → DC trip by the contracted carrier
+def table inbound_transport {
+    primaryKey: [inbound_transport_id]
+    columns: [
+        def column inbound_transport_id { type: bigint, isKey: true },
+        def column carrier_id           { type: bigint },
+        def column from_site_id         { type: bigint },
+        def column to_site_id           { type: bigint },
+        def column day                  { type: date },
+        def column cost                 { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a receipt at a DC
+def table goods_receipt {
+    primaryKey: [goods_receipt_id]
+    columns: [
+        def column goods_receipt_id     { type: bigint, isKey: true },
+        def column purchase_order_id    { type: bigint },
+        def column dc_site_id           { type: bigint },
+        def column received_on          { type: date },
+        def column inbound_transport_id { type: bigint, optional: true }
+    ]
+}
+
+// a receipt × a SKU, with its batch
+def table goods_receipt_line {
+    primaryKey: [goods_receipt_line_id]
+    columns: [
+        def column goods_receipt_line_id { type: bigint, isKey: true },
+        def column goods_receipt_id      { type: bigint },
+        def column sku_id                { type: bigint },
+        def column qty_cases             { type: { type: decimal, length: 12, precision: 3 } },
+        def column batch                 { type: text },
+        def column best_before           { type: date }
+    ]
+}
+
+// a SKU × a DC × a day — the ledger's daily snapshot
+def table stock_day {
+    primaryKey: [sku_id, dc_site_id, day]
+    columns: [
+        def column sku_id           { type: bigint, isKey: true },
+        def column dc_site_id       { type: bigint, isKey: true },
+        def column day              { type: date, isKey: true },
+        def column on_hand_cases    { type: { type: decimal, length: 12, precision: 3 } },
+        def column reserved_cases   { type: { type: decimal, length: 12, precision: 3 } },
+        def column in_transit_cases { type: { type: decimal, length: 12, precision: 3 } },
+        def column days_cover       { type: { type: decimal, length: 7, precision: 1 }, optional: true },
+        def column below_min        { type: bool },
+        def column above_max        { type: bool }
+    ]
+}
+
+// a stock movement (receipt, pick, transfer, write-off, return)
+def table stock_movement {
+    primaryKey: [stock_movement_id]
+    columns: [
+        def column stock_movement_id { type: bigint, isKey: true },
+        def column sku_id            { type: bigint },
+        def column dc_site_id        { type: bigint },
+        def column day               { type: date },
+        def column kind              { type: text },
+        def column qty_cases         { type: { type: decimal, length: 12, precision: 3 } },
+        def column ref_table         { type: text, optional: true },
+        def column ref_id            { type: bigint, optional: true }
+    ]
+}
+
+// a SKU × a DC × an episode without stock
+def table stockout {
+    primaryKey: [stockout_id]
+    columns: [
+        def column stockout_id      { type: bigint, isKey: true },
+        def column sku_id           { type: bigint },
+        def column dc_site_id       { type: bigint },
+        def column from_day         { type: date },
+        def column to_day           { type: date, optional: true },
+        def column lost_order_lines { type: int }
+    ]
+}

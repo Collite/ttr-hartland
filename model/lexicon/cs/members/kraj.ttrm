@@ -1,0 +1,92 @@
+package hartland
+
+model lexicon locale cs
+
+// The kraj word list — seeded by scripts/seed_members.py from data/reference/kraj.csv + declension.csv (nominative,
+// genitive, locative) (M0 S0.1 T5). Do not edit: edit the sources and re-seed. One term per member, its words in
+// `forms`; `for:` is the member vocabulary's column until M3 S3.1 T5 re-targets each term to its member
+// (README.md).
+
+def term kraj_cz010_cs {
+    description: "Hlavní město Praha (CZ010)"
+    for: db.hartland.kraj.name
+    forms: ["Hlavní město Praha", "Hlavního města Prahy", "Hlavním městě Praze"]
+}
+
+def term kraj_cz020_cs {
+    description: "Středočeský kraj (CZ020)"
+    for: db.hartland.kraj.name
+    forms: ["Středočeský kraj", "Středočeského kraje", "Středočeském kraji"]
+}
+
+def term kraj_cz031_cs {
+    description: "Jihočeský kraj (CZ031)"
+    for: db.hartland.kraj.name
+    forms: ["Jihočeský kraj", "Jihočeského kraje", "Jihočeském kraji"]
+}
+
+def term kraj_cz032_cs {
+    description: "Plzeňský kraj (CZ032)"
+    for: db.hartland.kraj.name
+    forms: ["Plzeňský kraj", "Plzeňského kraje", "Plzeňském kraji"]
+}
+
+def term kraj_cz041_cs {
+    description: "Karlovarský kraj (CZ041)"
+    for: db.hartland.kraj.name
+    forms: ["Karlovarský kraj", "Karlovarského kraje", "Karlovarském kraji"]
+}
+
+def term kraj_cz042_cs {
+    description: "Ústecký kraj (CZ042)"
+    for: db.hartland.kraj.name
+    forms: ["Ústecký kraj", "Ústeckého kraje", "Ústeckém kraji"]
+}
+
+def term kraj_cz051_cs {
+    description: "Liberecký kraj (CZ051)"
+    for: db.hartland.kraj.name
+    forms: ["Liberecký kraj", "Libereckého kraje", "Libereckém kraji"]
+}
+
+def term kraj_cz052_cs {
+    description: "Královéhradecký kraj (CZ052)"
+    for: db.hartland.kraj.name
+    forms: ["Královéhradecký kraj", "Královéhradeckého kraje", "Královéhradeckém kraji"]
+}
+
+def term kraj_cz053_cs {
+    description: "Pardubický kraj (CZ053)"
+    for: db.hartland.kraj.name
+    forms: ["Pardubický kraj", "Pardubického kraje", "Pardubickém kraji"]
+}
+
+def term kraj_cz063_cs {
+    description: "Kraj Vysočina (CZ063)"
+    for: db.hartland.kraj.name
+    forms: ["Kraj Vysočina", "Kraje Vysočina", "Kraji Vysočina"]
+}
+
+def term kraj_cz064_cs {
+    description: "Jihomoravský kraj (CZ064)"
+    for: db.hartland.kraj.name
+    forms: ["Jihomoravský kraj", "Jihomoravského kraje", "Jihomoravském kraji"]
+}
+
+def term kraj_cz071_cs {
+    description: "Olomoucký kraj (CZ071)"
+    for: db.hartland.kraj.name
+    forms: ["Olomoucký kraj", "Olomouckého kraje", "Olomouckém kraji"]
+}
+
+def term kraj_cz072_cs {
+    description: "Zlínský kraj (CZ072)"
+    for: db.hartland.kraj.name
+    forms: ["Zlínský kraj", "Zlínského kraje", "Zlínském kraji"]
+}
+
+def term kraj_cz080_cs {
+    description: "Moravskoslezský kraj (CZ080)"
+    for: db.hartland.kraj.name
+    forms: ["Moravskoslezský kraj", "Moravskoslezského kraje", "Moravskoslezském kraji"]
+}

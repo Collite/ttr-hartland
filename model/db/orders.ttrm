@@ -1,0 +1,84 @@
+package hartland
+
+model db schema hartland
+
+// orders — sales orders, their lines and discount lists, returns.
+// The inventory's group `orders` (data/inventory.yaml; design 07 §1): sales_order, sales_order_line,
+// sales_order_line_discount, return.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// an order, any channel
+def table sales_order {
+    primaryKey: [sales_order_id]
+    columns: [
+        def column sales_order_id       { type: bigint, isKey: true },
+        def column order_no             { type: text },
+        def column customer_id          { type: bigint },
+        def column delivery_point_id    { type: bigint },
+        def column channel              { type: text },
+        def column ordered_on           { type: date },
+        def column requested_on         { type: date },
+        def column source               { type: text },
+        def column taken_by_employee_id { type: bigint, optional: true },
+        def column visit_id             { type: bigint, optional: true },
+        def column status               { type: text },
+        def column hold_reason          { type: text, optional: true },
+        def column dc_site_id           { type: bigint }
+    ]
+}
+
+// an order × a SKU (free-goods lines included)
+def table sales_order_line {
+    primaryKey: [sales_order_line_id]
+    columns: [
+        def column sales_order_line_id { type: bigint, isKey: true },
+        def column sales_order_id      { type: bigint },
+        def column line_no             { type: int },
+        def column sku_id              { type: bigint },
+        def column qty_cases           { type: { type: decimal, length: 12, precision: 3 } },
+        def column qty_pieces          { type: { type: decimal, length: 12, precision: 3 } },
+        def column list_price_case     { type: { type: decimal, length: 14, precision: 2 } },
+        def column discount_total_case { type: { type: decimal, length: 14, precision: 2 } },
+        def column discount_total      { type: { type: decimal, length: 14, precision: 2 } },
+        def column invoice_price_case  { type: { type: decimal, length: 14, precision: 2 } },
+        def column is_free_goods       { type: bool },
+        def column purchase_price_case { type: { type: decimal, length: 14, precision: 2 } },
+        def column inbound_cost_case   { type: { type: decimal, length: 14, precision: 2 } },
+        def column warehouse_cost_case { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column delivery_cost_case  { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column marketing_cost_case { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column vat_rate            { type: { type: decimal, length: 5, precision: 2 } }
+    ]
+}
+
+// an order line × an applied discount, in the order applied (NH-D6)
+def table sales_order_line_discount {
+    primaryKey: [sales_order_line_id, seq]
+    columns: [
+        def column sales_order_line_id { type: bigint, isKey: true },
+        def column seq                 { type: int, isKey: true },
+        def column kind                { type: text },
+        def column code                { type: text },
+        def column promotion_id        { type: bigint, optional: true },
+        def column price_agreement_id  { type: bigint, optional: true },
+        def column pct                 { type: { type: decimal, length: 5, precision: 2 }, optional: true },
+        def column amount_case         { type: { type: decimal, length: 14, precision: 2 } },
+        def column amount_line         { type: { type: decimal, length: 14, precision: 2 } },
+        def column budget              { type: text }
+    ]
+}
+
+// goods returned (damaged, expired, wrong) — the goods movement; the customer's request is `return_request_hdr`
+def table return {
+    primaryKey: [return_id]
+    columns: [
+        def column return_id           { type: bigint, isKey: true },
+        def column customer_id         { type: bigint },
+        def column sales_order_line_id { type: bigint },
+        def column returned_on         { type: date },
+        def column qty_cases           { type: { type: decimal, length: 12, precision: 3 } },
+        def column reason              { type: text },
+        def column credit_invoice_id   { type: bigint, optional: true }
+    ]
+}
