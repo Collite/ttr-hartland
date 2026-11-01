@@ -29,7 +29,10 @@ clean_day AS (
     )
 ),
 span AS (
-    SELECT promotion_id, COUNT(*) FILTER (WHERE during) AS during_days, COUNT(*) FILTER (WHERE NOT during) AS before_days
+    SELECT
+        promotion_id,
+        COUNT(*) FILTER (WHERE during) AS during_days,
+        COUNT(*) FILTER (WHERE NOT during) AS before_days
     FROM clean_day
     GROUP BY promotion_id
 ),
