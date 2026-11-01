@@ -32,6 +32,12 @@ and writes `build/<run>/stories.md`. Until then the SQL is written from the inve
 component tests run every file on the empty schema, and G5 S5.2 tunes the parameters (never the thresholds) on the
 first full build.
 
+A threshold comes from the mechanics, never from a build: S2-affluence's 1.35 lies between the ≈ 1.68 that `s2.yaml`'s
+mechanics give over the real affluence quarters and the null world's 1.0. One is still to be set that way: S5's
+spread (`s5_best_worst.sql`), whose 3 is `04`'s, set for the return rather than for gain ÷ cost. G2 S2.3 T1 builds
+`display_uplift`'s street × size grid, derives the spread that grid gives over the market, and sets the threshold
+between it and 1.0, before the first build.
+
 ## The pins
 
 Where a detector compares actors, it names the pinned ones: the reps by the area they hold on the warm-up's first day,
