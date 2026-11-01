@@ -38,6 +38,7 @@ dev = [
     "pandas-stubs",
     "types-PyYAML",
     "types-jsonschema",
+    "sqlglot>=27",
 ]
 
 [tool.pytest.ini_options]
@@ -59,7 +60,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 python_version = "3.13"
-files = ["data/sim/hartland_sim", "data/sim/tests"]
+files = ["data/sim/hartland_sim", "data/sim/tests", "scripts"]
 mypy_path = "data/sim"
 
 [[tool.mypy.overrides]]

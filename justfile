@@ -108,7 +108,7 @@ check-model:
 # differences, exit 1 on any (contracts §1). It parses the .ttrm files themselves, so no regenerate is needed first.
 # data/ddl/schema.sql ⇄ model/db — the model-gate fails on any difference.
 ddl-drift *ARGS:
-    uv run python scripts/ddl_drift.py "$@"
+    TATRMAN_PACKAGES="{{tatrman}}/packages" uv run python scripts/ddl_drift.py "$@"
 
 # The lexicon archive generated/lexicon.tar.zst (M3 S3.1).
 build-lexicon:

@@ -12,7 +12,8 @@
 #                         word lists, the whole project resolving clean
 #   just check-model      generated/resolved-packages.json is not stale
 #   check-lexicon         SKIPPED until M3 S3.1 builds the Czech lexicon (a notice says so)
-#   just ddl-drift        data/ddl/schema.sql ⇄ model/db — the inventory is the contract (contracts §1)
+#   just ddl-drift        data/ddl/schema.sql ⇄ model/db — the inventory is the contract (contracts §1) — and its
+#                         specs, the end-to-end one included
 #   just load-model       the model as the metadata service loads it: the Kotlin loader, strict, built from ttr-core at
 #                         the service's ttr-metadata version (grammar/v<[veles].ttr-metadata>, stamped with it). The
 #                         service drops a file it cannot parse and only WARNs about a reconcile error; the TS suites
@@ -96,6 +97,12 @@ jobs:
       - name: schema.sql ⇄ the db layer (ddl-drift)
         working-directory: ttr-hartland
         run: just ddl-drift
+
+      # Its own specs, here where the toolchain is: the end-to-end case (an inventory column without its .ttrm edit
+      # fails, named) needs ttr-core's parser, which the data-gate does not build — there it is skipped.
+      - name: ddl-drift's specs (with the toolchain)
+        working-directory: ttr-hartland
+        run: uv run pytest data/sim/tests/test_ddl_drift.py
 
       # The files as the metadata service loads them, with the loader built from ttr-core at the service's ttr-metadata
       # version and stamped with it (the toolchain action). `--strict` fails on a dropped file or a reconcile error;
