@@ -1,0 +1,92 @@
+package hartland
+
+model db schema hartland
+
+// products — businesses, brands, product lines, products, SKUs, channel listings.
+// The inventory's group `products` (data/inventory.yaml; design 07 §1): business, brand, product_line, product,
+// sku, channel_listing.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a business (Coffee, Culinary)
+def table business {
+    primaryKey: [business_id]
+    columns: [
+        def column business_id { type: bigint, isKey: true },
+        def column code        { type: text },
+        def column name        { type: text }
+    ]
+}
+
+// a brand (Harcafé, Harsoup)
+def table brand {
+    primaryKey: [brand_id]
+    columns: [
+        def column brand_id    { type: bigint, isKey: true },
+        def column business_id { type: bigint },
+        def column code        { type: text },
+        def column name        { type: text }
+    ]
+}
+
+// a product line (11), the P/L owner and the promotions' target
+def table product_line {
+    primaryKey: [product_line_id]
+    columns: [
+        def column product_line_id         { type: bigint, isKey: true },
+        def column brand_id                { type: bigint },
+        def column code                    { type: text },
+        def column name                    { type: text },
+        def column is_premium              { type: bool },
+        def column is_professional         { type: bool },
+        def column max_agreed_discount_pct { type: { type: decimal, length: 5, precision: 2 } }
+    ]
+}
+
+// a product (a variant of a line)
+def table product {
+    primaryKey: [product_id]
+    columns: [
+        def column product_id      { type: bigint, isKey: true },
+        def column product_line_id { type: bigint },
+        def column code            { type: text },
+        def column name            { type: text }
+    ]
+}
+
+// a sellable item (launches and delistings included)
+def table sku {
+    primaryKey: [sku_id]
+    columns: [
+        def column sku_id             { type: bigint, isKey: true },
+        def column sku_code           { type: text },
+        def column product_id         { type: bigint },
+        def column name               { type: text },
+        def column pack_format        { type: text },
+        def column net_weight_g       { type: int },
+        def column units_per_case     { type: int },
+        def column case_weight_kg     { type: { type: decimal, length: 8, precision: 3 } },
+        def column shelf_life_days    { type: int },
+        def column vat_rate           { type: { type: decimal, length: 5, precision: 2 } },
+        def column importance         { type: int },
+        def column is_professional    { type: bool },
+        def column launched_on        { type: date },
+        def column delisted_on        { type: date, optional: true },
+        def column launch_document_id { type: bigint, optional: true },
+        def column delist_document_id { type: bigint, optional: true }
+    ]
+}
+
+// a channel (or one chain of it) × a SKU it may buy, with validity
+def table channel_listing {
+    primaryKey: [channel_listing_id]
+    columns: [
+        def column channel_listing_id { type: bigint, isKey: true },
+        def column channel            { type: text },
+        def column chain_id           { type: bigint, optional: true },
+        def column sku_id             { type: bigint },
+        def column valid_from         { type: date },
+        def column valid_to           { type: date },
+        def column listing_sequence   { type: int }
+    ]
+}

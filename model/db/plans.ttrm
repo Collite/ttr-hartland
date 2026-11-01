@@ -1,0 +1,82 @@
+package hartland
+
+model db schema hartland
+
+// plans — the sales and supply plans, the stock policies, the prompt and lifecycle rules.
+// The inventory's group `plans` (data/inventory.yaml; design 07 §1): sales_plan, supply_plan, stock_policy,
+// prompt_rule, lifecycle_rule.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a month × a channel × a product line × (a key account or a rep area) — the split plan
+def table sales_plan {
+    primaryKey: [sales_plan_id]
+    columns: [
+        def column sales_plan_id       { type: bigint, isKey: true },
+        def column month               { type: date },
+        def column channel             { type: text },
+        def column product_line_id     { type: bigint },
+        def column customer_id         { type: bigint, optional: true },
+        def column area_id             { type: bigint, optional: true },
+        def column planned_cases       { type: { type: decimal, length: 12, precision: 3 } },
+        def column planned_net_revenue { type: { type: decimal, length: 14, precision: 2 } },
+        def column version             { type: int }
+    ]
+}
+
+// a month × a SKU × a DC
+def table supply_plan {
+    primaryKey: [month, sku_id, dc_site_id]
+    columns: [
+        def column month         { type: date, isKey: true },
+        def column sku_id        { type: bigint, isKey: true },
+        def column dc_site_id    { type: bigint, isKey: true },
+        def column planned_cases { type: { type: decimal, length: 12, precision: 3 } }
+    ]
+}
+
+// a SKU × a DC — min and max days of cover, with validity
+def table stock_policy {
+    primaryKey: [stock_policy_id]
+    columns: [
+        def column stock_policy_id { type: bigint, isKey: true },
+        def column sku_id          { type: bigint },
+        def column dc_site_id      { type: bigint },
+        def column min_days_cover  { type: { type: decimal, length: 5, precision: 1 } },
+        def column max_days_cover  { type: { type: decimal, length: 5, precision: 1 } },
+        def column valid_from      { type: date },
+        def column valid_to        { type: date }
+    ]
+}
+
+// a rep-prompt rule (kind, parameters, priority), with validity
+def table prompt_rule {
+    primaryKey: [prompt_rule_id]
+    columns: [
+        def column prompt_rule_id    { type: bigint, isKey: true },
+        def column code              { type: text },
+        def column kind              { type: text },
+        def column parameters        { type: text },
+        def column priority          { type: int },
+        def column is_mandatory      { type: bool },
+        def column is_adaptable      { type: bool },
+        def column valid_from        { type: date },
+        def column valid_to          { type: date },
+        def column owner_employee_id { type: bigint },
+        def column document_id       { type: bigint, optional: true }
+    ]
+}
+
+// a lifecycle phase × a rule (contact frequency, allowed concessions, listing sequence), with validity
+def table lifecycle_rule {
+    primaryKey: [lifecycle_rule_id]
+    columns: [
+        def column lifecycle_rule_id { type: bigint, isKey: true },
+        def column phase             { type: text },
+        def column rule_kind         { type: text },
+        def column parameters        { type: text },
+        def column valid_from        { type: date },
+        def column valid_to          { type: date },
+        def column document_id       { type: bigint, optional: true }
+    ]
+}

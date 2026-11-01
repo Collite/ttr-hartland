@@ -29,10 +29,19 @@ const { lintDocument, lintProject, recommendedConfig } = lintMod;
 
 // Diagnostics the project sweep accepts — each with the reason. A new entry needs its stage and why.
 export const ACCEPTED_RESIDUAL_CODES = new Set([
-  // M0 T1: one flat `package hartland` in a kind-directory tree (modeler.toml [packages]). Info-level and
-  // non-suppressible by design; resolution is unaffected.
+  // M0 T1: one flat `package hartland` in a kind-directory tree (modeler.toml [packages]). Non-suppressible by design;
+  // resolution is unaffected.
   'ttr/package-prefix-divergence',
 ]);
+
+// Narrower: one code, only where the message matches. M0 T3: the editor's resolver reads `area` in a qualified
+// reference as the kind keyword (`def area`), so `db.hartland.area.<column>` does not resolve in the TS semantics —
+// the metadata service's loader (just load-model, strict) resolves it. A ttr-core issue (M0 S0.1 Found while doing);
+// remove the entry when the toolchain moves past the fix.
+export const ACCEPTED_RESIDUALS = [{ code: 'ttr/unresolved-reference', message: /'db\.hartland\.area\.\w+'/ }];
+
+const accepted = (d) =>
+  ACCEPTED_RESIDUAL_CODES.has(d.code) || ACCEPTED_RESIDUALS.some((r) => r.code === d.code && r.message.test(d.message));
 
 export { parseString };
 
@@ -113,7 +122,7 @@ export function blocking(diagnostics) {
   const out = [];
   for (const [file, list] of diagnostics) {
     for (const d of list) {
-      if ((d.severity === 'error' || d.severity === 'warning') && !ACCEPTED_RESIDUAL_CODES.has(d.code)) {
+      if ((d.severity === 'error' || d.severity === 'warning') && !accepted(d)) {
         out.push(`${file}:${d.line ?? '?'} ${d.severity} ${d.code} — ${d.message}`);
       }
     }

@@ -1,0 +1,147 @@
+package hartland
+
+model db schema hartland
+
+// finance — invoices, payments, dunning, suppliers' invoices, the GL.
+// The inventory's group `finance` (data/inventory.yaml; design 07 §1): supplier, gl_account, asset_register,
+// invoice, invoice_line, payment, payment_allocation, dunning, ap_invoice, gl_journal.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// an A/P partner (the three factories, carriers, DC operators, agencies, admin suppliers)
+def table supplier {
+    primaryKey: [supplier_id]
+    columns: [
+        def column supplier_id     { type: bigint, isKey: true },
+        def column code            { type: text },
+        def column name            { type: text },
+        def column kind            { type: text },
+        def column legal_entity_id { type: bigint, optional: true }
+    ]
+}
+
+// an account of the chart, with the P/L line it rolls to
+def table gl_account {
+    primaryKey: [gl_account_id]
+    columns: [
+        def column gl_account_id { type: bigint, isKey: true },
+        def column code          { type: text },
+        def column name          { type: text },
+        def column kind          { type: text },
+        def column pl_line       { type: text, optional: true },
+        def column vat_rate      { type: { type: decimal, length: 5, precision: 2 }, optional: true }
+    ]
+}
+
+// an own depreciable asset (shop fit-outs, IT, the PoS assets in aggregate)
+def table asset_register {
+    primaryKey: [asset_register_id]
+    columns: [
+        def column asset_register_id  { type: bigint, isKey: true },
+        def column code               { type: text },
+        def column name               { type: text },
+        def column cost_centre_id     { type: bigint },
+        def column acquired_on        { type: date },
+        def column cost               { type: { type: decimal, length: 14, precision: 2 } },
+        def column useful_life_months { type: int }
+    ]
+}
+
+// an invoice or credit note
+def table invoice {
+    primaryKey: [invoice_id]
+    columns: [
+        def column invoice_id      { type: bigint, isKey: true },
+        def column invoice_no      { type: text },
+        def column kind            { type: text },
+        def column customer_id     { type: bigint, optional: true },
+        def column legal_entity_id { type: bigint },
+        def column issued_on       { type: date },
+        def column due_on          { type: date },
+        def column net_amount      { type: { type: decimal, length: 14, precision: 2 } },
+        def column vat_amount      { type: { type: decimal, length: 14, precision: 2 } },
+        def column gross_amount    { type: { type: decimal, length: 14, precision: 2 } },
+        def column shipment_id     { type: bigint, optional: true },
+        def column sales_order_id  { type: bigint, optional: true },
+        def column status          { type: text }
+    ]
+}
+
+// an invoice × an order line (or a credit reason)
+def table invoice_line {
+    primaryKey: [invoice_line_id]
+    columns: [
+        def column invoice_line_id     { type: bigint, isKey: true },
+        def column invoice_id          { type: bigint },
+        def column sales_order_line_id { type: bigint, optional: true },
+        def column qty_cases           { type: { type: decimal, length: 12, precision: 3 } },
+        def column net_amount          { type: { type: decimal, length: 14, precision: 2 } },
+        def column vat_rate            { type: { type: decimal, length: 5, precision: 2 } },
+        def column vat_amount          { type: { type: decimal, length: 14, precision: 2 } },
+        def column credit_reason       { type: text, optional: true }
+    ]
+}
+
+// an incoming payment
+def table payment {
+    primaryKey: [payment_id]
+    columns: [
+        def column payment_id  { type: bigint, isKey: true },
+        def column customer_id { type: bigint },
+        def column received_on { type: date },
+        def column amount      { type: { type: decimal, length: 14, precision: 2 } },
+        def column method      { type: text }
+    ]
+}
+
+// a payment ↔ an invoice
+def table payment_allocation {
+    primaryKey: [payment_id, invoice_id]
+    columns: [
+        def column payment_id { type: bigint, isKey: true },
+        def column invoice_id { type: bigint, isKey: true },
+        def column amount     { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a reminder sent
+def table dunning {
+    primaryKey: [dunning_id]
+    columns: [
+        def column dunning_id { type: bigint, isKey: true },
+        def column invoice_id { type: bigint },
+        def column level      { type: int },
+        def column sent_on    { type: date }
+    ]
+}
+
+// a supplier invoice (intercompany for the purchase orders; carriers; DC operators; media; admin)
+def table ap_invoice {
+    primaryKey: [ap_invoice_id]
+    columns: [
+        def column ap_invoice_id { type: bigint, isKey: true },
+        def column supplier_id   { type: bigint },
+        def column issued_on     { type: date },
+        def column due_on        { type: date },
+        def column net_amount    { type: { type: decimal, length: 14, precision: 2 } },
+        def column vat_amount    { type: { type: decimal, length: 14, precision: 2 } },
+        def column ref_kind      { type: text },
+        def column ref_id        { type: bigint, optional: true },
+        def column paid_on       { type: date, optional: true }
+    ]
+}
+
+// a month × an account × a cost centre (× a product line and channel where allocable)
+def table gl_journal {
+    primaryKey: [gl_journal_id]
+    columns: [
+        def column gl_journal_id   { type: bigint, isKey: true },
+        def column month           { type: date },
+        def column gl_account_id   { type: bigint },
+        def column cost_centre_id  { type: bigint, optional: true },
+        def column product_line_id { type: bigint, optional: true },
+        def column channel         { type: text, optional: true },
+        def column amount          { type: { type: decimal, length: 14, precision: 2 } },
+        def column source          { type: text }
+    ]
+}

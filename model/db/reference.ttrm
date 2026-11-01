@@ -1,0 +1,123 @@
+package hartland
+
+model db schema hartland
+
+// reference — the calendar, the geography, the regions and areas, the weather, the sites, the legal entities.
+// The inventory's group `reference` (data/inventory.yaml; design 07 §1): legal_entity, kraj, okres, site, calendar,
+// region, area, area_okres, weather_daily.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a company of the group (the Center and three factories)
+def table legal_entity {
+    primaryKey: [legal_entity_id]
+    columns: [
+        def column legal_entity_id { type: bigint, isKey: true },
+        def column code            { type: text },
+        def column name            { type: text },
+        def column ico             { type: text },
+        def column role            { type: text }
+    ]
+}
+
+// a Czech region (CZ-NUTS 3)
+def table kraj {
+    primaryKey: [kraj_id]
+    columns: [
+        def column kraj_id { type: bigint, isKey: true },
+        def column code    { type: text },
+        def column name    { type: text }
+    ]
+}
+
+// a Czech district (LAU 1) or one of Prague's 22 administrative districts
+def table okres {
+    primaryKey: [okres_id]
+    columns: [
+        def column okres_id        { type: bigint, isKey: true },
+        def column code            { type: text },
+        def column name            { type: text },
+        def column kraj_id         { type: bigint },
+        def column parent_okres_id { type: bigint, optional: true },
+        def column affluence_index { type: { type: decimal, length: 4, precision: 3 } },
+        def column population      { type: int }
+    ]
+}
+
+// a physical site of the group (the Center, 3 factories, 2 DCs, 12 own shops)
+def table site {
+    primaryKey: [site_id]
+    columns: [
+        def column site_id         { type: bigint, isKey: true },
+        def column code            { type: text },
+        def column kind            { type: text },
+        def column legal_entity_id { type: bigint },
+        def column name            { type: text },
+        def column town            { type: text },
+        def column okres_id        { type: bigint },
+        def column lat             { type: { type: decimal, length: 9, precision: 6 } },
+        def column lon             { type: { type: decimal, length: 9, precision: 6 } }
+    ]
+}
+
+// a day, 2023-01-01 → 2027-12-31
+def table calendar {
+    primaryKey: [day]
+    columns: [
+        def column day            { type: date, isKey: true },
+        def column year           { type: int },
+        def column quarter        { type: int },
+        def column month          { type: int },
+        def column week           { type: int },
+        def column iso_year       { type: int },
+        def column weekday        { type: int },
+        def column weekday_cs     { type: text },
+        def column is_working_day { type: bool },
+        def column holiday_cs     { type: text, optional: true },
+        def column season         { type: text }
+    ]
+}
+
+// a sales region (6), each under an area manager
+def table region {
+    primaryKey: [region_id]
+    columns: [
+        def column region_id                { type: bigint, isKey: true },
+        def column code                     { type: text },
+        def column name                     { type: text },
+        def column area_manager_employee_id { type: bigint }
+    ]
+}
+
+// a rep's territory (≈ 2 okresy; 10 in Praha)
+def table area {
+    primaryKey: [area_id]
+    columns: [
+        def column area_id   { type: bigint, isKey: true },
+        def column code      { type: text },
+        def column name      { type: text },
+        def column region_id { type: bigint }
+    ]
+}
+
+// an okres in an area (each okres in exactly one)
+def table area_okres {
+    primaryKey: [area_id, okres_id]
+    columns: [
+        def column area_id  { type: bigint, isKey: true },
+        def column okres_id { type: bigint, isKey: true }
+    ]
+}
+
+// a sales region × a day
+def table weather_daily {
+    primaryKey: [region_id, day]
+    columns: [
+        def column region_id   { type: bigint, isKey: true },
+        def column day         { type: date, isKey: true },
+        def column temp_mean_c { type: { type: decimal, length: 4, precision: 1 } },
+        def column precip_mm   { type: { type: decimal, length: 5, precision: 1 } },
+        def column snow        { type: bool },
+        def column severe      { type: bool }
+    ]
+}

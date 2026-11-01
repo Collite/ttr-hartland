@@ -1,0 +1,49 @@
+package hartland
+
+model db schema hartland
+
+// shops — the own shops: receipts, their lines, the menu.
+// The inventory's group `shops` (data/inventory.yaml; design 07 §1): menu_item, shop_receipt, shop_receipt_line.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// an item the own shops' cafés serve, with the SKU it consumes
+def table menu_item {
+    primaryKey: [menu_item_id]
+    columns: [
+        def column menu_item_id    { type: bigint, isKey: true },
+        def column code            { type: text },
+        def column name            { type: text },
+        def column price_gross     { type: { type: decimal, length: 14, precision: 2 } },
+        def column vat_rate        { type: { type: decimal, length: 5, precision: 2 } },
+        def column consumes_sku_id { type: bigint, optional: true },
+        def column consumes_qty_g  { type: { type: decimal, length: 8, precision: 1 }, optional: true }
+    ]
+}
+
+// a till receipt in an own shop
+def table shop_receipt {
+    primaryKey: [shop_receipt_id]
+    columns: [
+        def column shop_receipt_id { type: bigint, isKey: true },
+        def column site_id         { type: bigint },
+        def column at              { type: datetime },
+        def column register_no     { type: int },
+        def column gross_amount    { type: { type: decimal, length: 14, precision: 2 } },
+        def column payment_method  { type: text }
+    ]
+}
+
+// a receipt × an item (a SKU sold retail at 12 %, or a served drink at 21 %)
+def table shop_receipt_line {
+    primaryKey: [shop_receipt_line_id]
+    columns: [
+        def column shop_receipt_line_id { type: bigint, isKey: true },
+        def column shop_receipt_id      { type: bigint },
+        def column sku_id               { type: bigint, optional: true },
+        def column menu_item_id         { type: bigint, optional: true },
+        def column qty                  { type: { type: decimal, length: 12, precision: 3 } },
+        def column unit_price_gross     { type: { type: decimal, length: 14, precision: 2 } },
+        def column vat_rate             { type: { type: decimal, length: 5, precision: 2 } }
+    ]
+}

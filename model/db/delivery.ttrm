@@ -1,0 +1,138 @@
+package hartland
+
+model db schema hartland
+
+// delivery — carriers, vehicles, shipments, routes, delivery events, dispatch.
+// The inventory's group `delivery` (data/inventory.yaml; design 07 §1): carrier, vehicle, shipment, route,
+// route_stop, delivery_event, dispatch_case, dc_invoice.
+// Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
+// their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
+
+// a contracted carrier (3 per DC, a parcel carrier, an inbound carrier)
+def table carrier {
+    primaryKey: [carrier_id]
+    columns: [
+        def column carrier_id    { type: bigint, isKey: true },
+        def column code          { type: text },
+        def column name          { type: text },
+        def column dc_site_id    { type: bigint, optional: true },
+        def column rate_base     { type: { type: decimal, length: 14, precision: 2 } },
+        def column rate_per_km   { type: { type: decimal, length: 14, precision: 2 } },
+        def column rate_per_stop { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a carrier's vehicle
+def table vehicle {
+    primaryKey: [vehicle_id]
+    columns: [
+        def column vehicle_id     { type: bigint, isKey: true },
+        def column carrier_id     { type: bigint },
+        def column plate          { type: text },
+        def column vehicle_class  { type: text },
+        def column capacity_cases { type: int },
+        def column capacity_kg    { type: int }
+    ]
+}
+
+// an order (or part of one) → one delivery; web parcels aggregated per day × town
+def table shipment {
+    primaryKey: [shipment_id]
+    columns: [
+        def column shipment_id       { type: bigint, isKey: true },
+        def column sales_order_id    { type: bigint },
+        def column dc_site_id        { type: bigint },
+        def column delivery_point_id { type: bigint },
+        def column planned_day       { type: date },
+        def column cases             { type: { type: decimal, length: 12, precision: 3 } },
+        def column weight_kg         { type: { type: decimal, length: 10, precision: 1 } },
+        def column status            { type: text },
+        def column delivered_at      { type: datetime, optional: true },
+        def column otif              { type: bool, optional: true }
+    ]
+}
+
+// a DC × a day × a vehicle run — the plan, and each re-plan as a new version
+def table route {
+    primaryKey: [route_id]
+    columns: [
+        def column route_id               { type: bigint, isKey: true },
+        def column dc_site_id             { type: bigint },
+        def column day                    { type: date },
+        def column carrier_id             { type: bigint },
+        def column vehicle_id             { type: bigint, optional: true },
+        def column version                { type: int },
+        def column superseded_by_route_id { type: bigint, optional: true },
+        def column planned_departure      { type: datetime },
+        def column planned_km             { type: { type: decimal, length: 8, precision: 1 } },
+        def column planned_stops          { type: int },
+        def column planned_cost           { type: { type: decimal, length: 14, precision: 2 } },
+        def column actual_km              { type: { type: decimal, length: 8, precision: 1 }, optional: true },
+        def column actual_cost            { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column planner                { type: text },
+        def column status                 { type: text }
+    ]
+}
+
+// a route × a stop
+def table route_stop {
+    primaryKey: [route_stop_id]
+    columns: [
+        def column route_stop_id     { type: bigint, isKey: true },
+        def column route_id          { type: bigint },
+        def column seq               { type: int },
+        def column shipment_id       { type: bigint },
+        def column delivery_point_id { type: bigint },
+        def column planned_arrival   { type: datetime },
+        def column window_from       { type: time, optional: true },
+        def column window_to         { type: time, optional: true },
+        def column actual_arrival    { type: datetime, optional: true },
+        def column status            { type: text }
+    ]
+}
+
+// a real-time obstacle on a route
+def table delivery_event {
+    primaryKey: [delivery_event_id]
+    columns: [
+        def column delivery_event_id { type: bigint, isKey: true },
+        def column route_id          { type: bigint },
+        def column route_stop_id     { type: bigint, optional: true },
+        def column occurred_at       { type: datetime },
+        def column kind              { type: text },
+        def column severity          { type: text },
+        // `description` (text): undeclarable, a TTR-M keyword (M0 S0.1 Found while doing)
+        def column reported_by       { type: text }
+    ]
+}
+
+// the handling of a delivery event — the decision, the re-plan, its cost
+def table dispatch_case {
+    primaryKey: [dispatch_case_id]
+    columns: [
+        def column dispatch_case_id       { type: bigint, isKey: true },
+        def column delivery_event_id      { type: bigint },
+        def column opened_at              { type: datetime },
+        def column closed_at              { type: datetime, optional: true },
+        def column dispatcher_employee_id { type: bigint },
+        def column resolution             { type: text },
+        def column extra_cost             { type: { type: decimal, length: 14, precision: 2 } },
+        def column stops_moved            { type: int },
+        def column stops_slipped          { type: int },
+        def column note                   { type: text, optional: true }
+    ]
+}
+
+// a DC operator's monthly invoice (fixed + per case) — the warehouse cost
+def table dc_invoice {
+    primaryKey: [dc_invoice_id]
+    columns: [
+        def column dc_invoice_id { type: bigint, isKey: true },
+        def column dc_site_id    { type: bigint },
+        def column month         { type: date },
+        def column fixed_amount  { type: { type: decimal, length: 14, precision: 2 } },
+        def column cases_handled { type: { type: decimal, length: 12, precision: 3 } },
+        def column rate_per_case { type: { type: decimal, length: 14, precision: 2 } },
+        def column amount        { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
