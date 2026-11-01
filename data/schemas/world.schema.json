@@ -737,7 +737,13 @@
                 "type": "number",
                 "minimum": 0
               },
-              "minProperties": 1,
+              "required": [
+                "big_retail",
+                "small_retail",
+                "gas_ka",
+                "vending",
+                "horeca"
+              ],
               "propertyNames": {
                 "enum": [
                   "big_retail",

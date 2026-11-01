@@ -321,11 +321,11 @@ class Meta:
         )
 
 
-def digest(paths: Iterable[Path], *extra: str) -> str:
-    """The sha256 of the files at `paths` (each with its name), then of `extra`, in the order given."""
+def digest(root: Path, paths: Iterable[Path], *extra: str) -> str:
+    """The sha256 of the files at `paths` (each with its path below `root`), then of `extra`, in the order given."""
     out = hashlib.sha256()
     for path in paths:
-        out.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
+        out.update(path.relative_to(root).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
     for text in extra:
         out.update(text.encode() + b"\0")
     return out.hexdigest()

@@ -1,12 +1,16 @@
 """Setup step 7 (`05` §2): the opening balances, and writing the opening to a run folder.
 
 **Stock.** Each SKU on sale on the warm-up's first day opens at both DCs at its policy's midpoint, `(min + max) / 2`
-days of cover, and nothing is reserved or in transit; there are no open orders, shipments or invoices. A day of cover
-needs a rate, and the demand model is S1.2's: the opening rate is the opening plan's — the same
+days of cover at the opening rate, rounded up to whole cases, and nothing is reserved or in transit; there are no open
+orders, shipments or invoices. `days_cover` is the measure, `on_hand ÷ rate`, not the target. A day of cover needs a
+rate, and the demand model is S1.2's: the opening rate is the opening plan's — the same
 `pricing.budgets.opening_quarter_gross` the opening discount budgets read — for every customer active on that day,
 its quarter's gross spread over its delivery points' DCs, then over the SKUs its channel lists (by importance + 1),
-in cases at the SKU's list price for the channel. The warm-up year's reorder runs (G3) bring the stock to the plan's
-own rate before the first written day. The opening `stock_day` rows are dated the day before the warm-up.
+in cases at the SKU's list price for the channel. The channel is the one `channel_listing` keys: a station shop
+reads small retail's listing, as its rows do, until the listing has a sub-channel. The opening plan covers the
+channels that hold a budget, a rep's or a KAM's: the web consumers and the own shops add nothing to the opening rate.
+The warm-up year's reorder runs (G3) bring the stock to the plan's own rate, theirs included, before the first written
+day. The opening `stock_day` rows are dated the day before the warm-up.
 
 **The state tables** (`STATE_TABLES`, ⚑R201-A): `employee`, `assignment`, `customer`, `lifecycle_phase` and
 `discount_budget` hold state the loop changes — a churned customer's `until`, a closed phase episode or duty, a
@@ -15,20 +19,23 @@ prolong renders them from the checkpoint alone. The opening is a build of zero d
 
 **Writing** (`write`): setup's other tables and the state tables, through the CSV writer in `load_order`,
 `_sim_meta` (the inputs' hashes, the day before the warm-up as `last_day_done`) and the opening checkpoint. A run
-folder is written once.
+folder is written once. The inputs are the committed files a build reads (`inputs`): `world.yaml`, the inventory, the
+stories and the reference files git tracks, each named by its path in the repo, so an untracked `.DS_Store` never
+changes a `build_id`.
 """
 
 from __future__ import annotations
 
 import hashlib
 import math
+import subprocess
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import date, timedelta
 from pathlib import Path
 
 import hartland_sim
-from hartland_sim.config import INVENTORY_FILE, STORIES_DIR, WORLD_FILE, StoriesConfig, WorldConfig
+from hartland_sim.config import DATA_DIR, INVENTORY_FILE, STORIES_DIR, WORLD_FILE, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import REFERENCE_DIR
@@ -40,6 +47,7 @@ from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, row, tables
 from hartland_sim.world import Checkpoint, Meta, Stock, World, digest
 
+REPO_DIR = DATA_DIR.parent
 STATE_TABLES = ("employee", "assignment", "customer", "lifecycle_phase", "discount_budget")
 
 
@@ -49,14 +57,15 @@ def rates(
     """Cases a day per (sku_id, dc_site_id) at the opening (module docstring)."""
     gross = world.pricing.budgets.opening_quarter_gross
     quarter_days = (_next_quarter(day) - day).days
-    by_key: dict[tuple[str, str], float] = defaultdict(float)  # (listing key, DC) → gross a day
+    by_key: dict[tuple[str, str], float] = defaultdict(float)  # (channel, DC) → gross a day
     for customer in made.customers:
         if customer.channel not in gross or not customer.active_on(day):
             continue
-        key = "special_retail" if customer.sub_channel == "special_retail" else customer.channel
         places = made.places[customer.code]
         for place in places:
-            by_key[key, geography.dc_for(place.okres)] += gross[customer.channel] / quarter_days / len(places)
+            by_key[customer.channel, geography.dc_for(place.okres)] += (
+                gross[customer.channel] / quarter_days / len(places)
+            )
     live = [sku for sku in portfolio.skus if sku.launched_on <= day <= sku.last_day]
     factors = {str(channel): factor for channel, factor in world.pricing.channel_factor.items()}
     listings = {str(channel): listing for channel, listing in world.channels.listings.items()}
@@ -94,8 +103,7 @@ def stock(
         for dc in world.sites.dcs:
             key = (sku.sku_id, row_id("site", code=dc))
             low, high = covers[key]
-            days = (low + high) / 2
-            cases = float(math.ceil(rate.get(key, 0.0) * days))
+            cases = float(math.ceil(rate.get(key, 0.0) * (low + high) / 2))
             state[key] = Stock(cases)
             out["stock_day"].append(
                 row(
@@ -106,7 +114,7 @@ def stock(
                     on_hand_cases=cases,
                     reserved_cases=0.0,
                     in_transit_cases=0.0,
-                    days_cover=days if cases else None,
+                    days_cover=cases / rate[key] if cases else None,
                     below_min=False,
                     above_max=False,
                 )
@@ -114,20 +122,35 @@ def stock(
     return state
 
 
+def inputs() -> list[Path]:
+    """The committed files a build reads (module docstring)."""
+    return [WORLD_FILE, INVENTORY_FILE, *sorted(STORIES_DIR.glob("*.yaml")), *tracked(REFERENCE_DIR)]
+
+
+def tracked(folder: Path) -> list[Path]:
+    """The files under `folder` that git tracks, in path order; outside a checkout, every file but dotfiles and
+    caches."""
+    try:
+        listed = subprocess.run(["git", "ls-files", "-z", "--", "."], cwd=folder, capture_output=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return sorted(
+            path
+            for path in folder.rglob("*")
+            if path.is_file()
+            and not any(part.startswith(".") or part == "__pycache__" for part in path.relative_to(folder).parts)
+        )
+    names = listed.stdout.decode().split("\0")
+    return sorted(folder / name for name in names if name and (folder / name).is_file())
+
+
 def meta(world: WorldConfig, stories: StoriesConfig, last_day_done: date) -> Meta:
     """`_sim_meta` for a build of the committed inputs (`world.Meta`)."""
-    inputs = [
-        WORLD_FILE,
-        INVENTORY_FILE,
-        *sorted(STORIES_DIR.glob("*.yaml")),
-        *sorted(path for path in REFERENCE_DIR.rglob("*") if path.is_file()),
-    ]
     return Meta(
         master_seed=world.master_seed,
         stories_sha256=stories.sha256,
         world_sha256=hashlib.sha256(WORLD_FILE.read_bytes()).hexdigest(),
         last_day_done=last_day_done,
-        build_id=digest(inputs, str(world.master_seed), hartland_sim.__version__)[:16],
+        build_id=digest(REPO_DIR, inputs(), str(world.master_seed), hartland_sim.__version__)[:16],
     )
 
 

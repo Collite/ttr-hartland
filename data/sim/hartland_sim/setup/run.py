@@ -13,17 +13,15 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import cached_property
-from pathlib import Path
 
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.io.reference import REFERENCE_DIR
 from hartland_sim.rng import using_master_seed
 from hartland_sim.setup import customers, opening, policies, portfolio, reference
 from hartland_sim.setup import org as org_setup
 from hartland_sim.setup.customers import Customers
 from hartland_sim.setup.market import Market
 from hartland_sim.setup.opening import STATE_TABLES, state_rows
-from hartland_sim.setup.org import SALES, Org
+from hartland_sim.setup.org import KAM_TEAM, SALES, Org
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Row, Tables, tables
@@ -51,40 +49,38 @@ class Setup:
         return self.state[table] if table in STATE_TABLES else self.tables.get(table, [])
 
 
-def run(
-    world: WorldConfig | None = None,
-    stories: StoriesConfig | None = None,
-    root: Path = REFERENCE_DIR,
-    market: Market | None = None,
-) -> Setup:
-    """The opening world and the setup tables' rows. `market` saves rebuilding the OSM market (`setup.market`)."""
+def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, market: Market | None = None) -> Setup:
+    """The opening world and the setup tables' rows, from the committed reference files (`REFERENCE_DIR`, which
+    `opening.meta` hashes). `market` saves rebuilding the OSM market (`setup.market`)."""
     world = world or WorldConfig.load()
     stories = stories or StoriesConfig.load()
     with using_master_seed(world.master_seed):
         out = tables()
-        geography = reference.build(out, world, root)
-        org = org_setup.build(out, world, stories, geography, root)
-        products = portfolio.build(out, world, stories, root)
+        geography = reference.build(out, world)
+        org = org_setup.build(out, world, stories, geography)
+        products = portfolio.build(out, world, stories)
         covers = policies.stock_policies(out, world, products)
         policies.rules(out, world, owner=org.actors[SALES].employee_id)
-        policies.pos(out, world, geography, root)
-        policies.fleet(out, world, root)
+        policies.pos(out, world, geography)
+        policies.fleet(out, world)
         made = customers.build(out, world, stories, geography, org, market)
         state = World(world.history.warm_up_from - timedelta(days=1))
         state.actors = {actor.employee_id: actor for actor in org.actors.values()}
         state.duties = list(org.duties)
         state.customers = {customer.customer_id: customer for customer in made.customers}
-        state.budgets = policies.budgets(world, planned(state, made))
+        state.budgets = policies.budgets(world, planned(state))
         state.stock = opening.stock(out, world, products, covers, made, geography)
     return Setup(state, out, geography, org, products, covers, made, world)
 
 
-def planned(state: World, made: Customers) -> list[tuple[int, str, int]]:
+def planned(state: World) -> list[tuple[int, str, int]]:
     """Each rep's and KAM's (employee_id, channel, customers active) on the opening quarter's first day — the
-    base of the opening discount budgets: a rep's area's small-retail customers, a KAM's accounts by channel."""
+    base of the opening discount budgets: a rep's area's small-retail customers, a KAM's accounts by channel. A KAM
+    with no active account gets its team's channel and 0, as a rep of an empty area does, so every one has a
+    budget."""
     first = state.day + timedelta(days=1)
-    by_code = {customer.code: customer for customer in made.customers}
-    in_area = Counter(c.area for c in made.customers if c.channel == "small_retail" and c.active_on(first))
+    by_code = {customer.code: customer for customer in state.customers.values()}
+    in_area = Counter(c.area for c in by_code.values() if c.channel == "small_retail" and c.active_on(first))
     out = []
     for duty in state.duties:
         if not duty.on(first):
@@ -93,4 +89,9 @@ def planned(state: World, made: Customers) -> list[tuple[int, str, int]]:
             out.append((duty.employee_id, "small_retail", in_area[duty.target]))
         elif duty.kind == "kam_customer" and by_code[duty.target].active_on(first):
             out.append((duty.employee_id, by_code[duty.target].channel, 1))
+    team = {unit: channel for channel, unit in KAM_TEAM.items()}
+    held = {employee for employee, _, _ in out}
+    for actor in state.actors.values():
+        if actor.role == "kam" and actor.employee_id not in held:
+            out.append((actor.employee_id, team[actor.org_unit], 0))
     return out

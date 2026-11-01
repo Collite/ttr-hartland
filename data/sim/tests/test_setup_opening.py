@@ -9,8 +9,10 @@ import math
 import os
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -18,7 +20,8 @@ import pytest
 from hartland_sim.config import InventoryConfig, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CellError, CsvWriter, cell
-from hartland_sim.setup.opening import STATE_TABLES, rates, state_rows, write
+from hartland_sim.setup.opening import STATE_TABLES, inputs, rates, state_rows, tracked, write
+from hartland_sim.setup.portfolio import listed
 from hartland_sim.setup.rows import tables
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import (
@@ -58,6 +61,8 @@ def written(opening: Setup, tmp_path_factory: pytest.TempPathFactory) -> Path:
         (-(2**63), "bigint", str(-(2**63))),
         (3, "integer", "3"),
         (0.1 + 0.2, "numeric(14,2)", "0.30"),
+        (999.99, "numeric(5,2)", "999.99"),
+        (-0.5, "numeric(2,2)", "-0.50"),
         (10, "numeric(5,1)", "10.0"),
         (50.0870123, "numeric(9,6)", "50.087012"),
         (True, "boolean", "true"),
@@ -77,7 +82,10 @@ def test_a_cell_is_its_value_in_its_type_s_one_spelling(value: Any, kind: str, t
 @pytest.mark.parametrize(
     ("value", "kind"),
     [(True, "integer"), (1.5, "bigint"), ("1", "numeric(14,2)"), (1, "boolean"), (datetime(2024, 1, 1), "date")]
-    + [(datetime(2024, 1, 1), "timestamptz"), ("6:00", "time"), ("", "text"), (3, "text")],
+    + [(datetime(2024, 1, 1), "timestamptz"), ("6:00", "time"), ("", "text"), (3, "text")]
+    + [(1e20, "numeric(5,2)"), (999.995, "numeric(5,2)"), (1, "numeric(2,2)"), (10**6, "numeric(7,1)")]
+    + [(math.nan, "numeric(14,2)"), (math.inf, "numeric(7,1)"), (-math.inf, "numeric(7,1)")]
+    + [({"x": math.nan}, "jsonb"), ({"x": date(2024, 1, 1)}, "jsonb")],
 )
 def test_a_value_its_type_cannot_hold_is_refused(value: Any, kind: str) -> None:
     with pytest.raises(CellError):
@@ -124,7 +132,7 @@ def test_the_opening_stock_sits_at_each_policy_s_midpoint(opening: Setup) -> Non
         low, high = opening.covers[key]
         assert item["day"] == OPENING_DAY
         assert item["on_hand_cases"] == math.ceil(rate[key] * (low + high) / 2) > 0
-        assert item["days_cover"] == (low + high) / 2
+        assert item["days_cover"] == item["on_hand_cases"] / rate[key] >= (low + high) / 2  # the measure
         assert (item["reserved_cases"], item["in_transit_cases"], item["below_min"], item["above_max"]) == (
             0,
             0,
@@ -144,6 +152,28 @@ def test_every_setup_table_is_written_with_the_inventory_s_header(opening: Setup
             assert next(reader) == [column.name for column in INVENTORY.table(name).columns]
             assert sum(1 for _ in reader) == len(rows), name
     assert {path.stem for path in written.glob("*.csv")} == set(every) | {"_sim_meta", "_sim_checkpoint"}
+
+
+def _rates_of(opening: Setup, keep: Callable[[Customer], bool]) -> dict[tuple[int, int], float]:
+    made = replace(opening.customers, customers=[c for c in opening.customers.customers if keep(c)])
+    return rates(WORLD, opening.portfolio, made, opening.geography, WORLD.history.warm_up_from)
+
+
+def test_a_station_shop_s_rate_reads_small_retail_s_listing(opening: Setup) -> None:
+    """As `channel_listing` does: the Professional packs, which small retail does not list, get no rate from the
+    station shops."""
+    full = _rates_of(opening, lambda c: True)
+    without = _rates_of(opening, lambda c: c.sub_channel != "special_retail")
+    small_retail = WORLD.channels.listings["small_retail"]
+    skus = {sku.sku_id: sku for sku in opening.portfolio.skus}
+    unlisted = [key for key in full if not listed(small_retail, skus[key[0]])]
+    assert unlisted and all(full[key] == pytest.approx(without.get(key, 0.0)) for key in unlisted)
+    assert any(full[key] > without.get(key, 0.0) * 1.001 for key in full if key not in unlisted)
+
+
+def test_the_web_and_the_own_shops_add_nothing_to_the_opening_rate(opening: Setup) -> None:
+    assert {"web", "own_shops"}.isdisjoint(WORLD.pricing.budgets.opening_quarter_gross)
+    assert _rates_of(opening, lambda c: c.channel not in ("web", "own_shops")) == _rates_of(opening, lambda c: True)
 
 
 # ── the state tables (⚑R201-A) ───────────────────────────────────────────────
@@ -205,6 +235,23 @@ def test_write_refuses_state_rows_from_setup(opening: Setup, tmp_path: Path) -> 
     with pytest.raises(ValueError, match="rendered from the World"):
         write(opening.world, rows, tmp_path / "run", WORLD, STORIES)
     assert not (tmp_path / "run").exists()
+
+
+def test_the_build_s_inputs_are_the_files_git_tracks(repo_root: Path) -> None:
+    listed = subprocess.run(
+        ["git", "ls-files", "data/reference"], cwd=repo_root, capture_output=True, text=True, check=True
+    ).stdout.split()
+    folder = repo_root / "data" / "reference"
+    reference = [path.relative_to(repo_root).as_posix() for path in inputs() if path.is_relative_to(folder)]
+    assert reference == sorted(listed, key=PurePosixPath)  # in path order, as `tracked` sorts
+    assert inputs()[:2] == [repo_root / "data" / "world.yaml", repo_root / "data" / "inventory.yaml"]
+
+
+def test_outside_a_checkout_the_inputs_skip_dotfiles_and_caches(tmp_path: Path) -> None:
+    for name in ("area.csv", ".DS_Store", "schemas/area.schema.json", "__pycache__/x.pyc", ".hidden/y.csv"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    assert tracked(tmp_path) == [tmp_path / "area.csv", tmp_path / "schemas" / "area.schema.json"]
 
 
 def test_the_meta_names_the_inputs(written: Path) -> None:

@@ -183,6 +183,12 @@ def test_a_missing_key_fails_with_its_path(tmp_path: Path) -> None:
         WorldConfig.load(path)
 
 
+def test_the_opening_plan_names_every_budget_channel(tmp_path: Path) -> None:
+    path = _broken(tmp_path, lambda data: data["pricing"]["budgets"]["opening_quarter_gross"].pop("vending"))
+    with pytest.raises(ConfigError, match=r"pricing\.budgets\.opening_quarter_gross\.vending: missing$"):
+        WorldConfig.load(path)
+
+
 def test_two_missing_keys_of_one_object_are_both_named(tmp_path: Path) -> None:
     def two(data: dict[str, Any]) -> None:
         data["salesforce"].pop("reps")

@@ -2,7 +2,8 @@
 in `data/inventory.yaml`, its cells the text `COPY … (FORMAT csv, HEADER)` reads back as the same values.
 
 Each cell is formatted by its column's type, so the same value always gives the same bytes: an integer as itself, a
-`numeric(p,s)` with exactly `s` decimals, a date as ISO, a `time` as `HH:MM`, a `timestamptz` as ISO with its offset,
+`numeric(p,s)` with exactly `s` decimals (a value that is not finite, or too large for `p` digits, is refused here
+rather than by COPY after the whole build), a date as ISO, a `time` as `HH:MM`, a `timestamptz` as ISO with its offset,
 a boolean as `true`/`false`, `jsonb` as compact JSON with sorted keys, text as is. `None` is an empty cell — COPY's
 NULL — so an empty text, which COPY would read as NULL too, is refused rather than written.
 
@@ -15,9 +16,11 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, time
+from decimal import Decimal
 from functools import cache
 from pathlib import Path
 from types import TracebackType
@@ -49,7 +52,13 @@ def cell(value: Any, kind: str) -> str | None:
     if numeric:
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise CellError(f"{value!r} is not a number")
-        return f"{value:.{int(numeric.group(2))}f}"
+        if not math.isfinite(value):
+            raise CellError(f"{value!r} is not a finite number")
+        precision, scale = int(numeric.group(1)), int(numeric.group(2))
+        text = f"{value:.{scale}f}"
+        if abs(Decimal(text)) >= 10 ** (precision - scale):
+            raise CellError(f"{value!r} does not fit {kind}")
+        return text
     if kind == "boolean":
         if not isinstance(value, bool):
             raise CellError(f"{value!r} is not a boolean")
@@ -69,7 +78,10 @@ def cell(value: Any, kind: str) -> str | None:
             return value
         raise CellError(f"{value!r} is not a time")
     if kind == "jsonb":
-        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        try:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise CellError(f"{value!r} is not JSON: {error}") from None
     if kind == "text":
         if not isinstance(value, str):
             raise CellError(f"{value!r} is not text")

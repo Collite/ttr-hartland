@@ -15,11 +15,12 @@ from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import read
+from hartland_sim.setup import policies
 from hartland_sim.setup.classifier import osm_order
 from hartland_sim.setup.customers import family_plural, first_episodes, small_retail_pool
 from hartland_sim.setup.market import Market
-from hartland_sim.setup.run import Setup, run
-from hartland_sim.world import OPEN
+from hartland_sim.setup.run import Setup, planned, run
+from hartland_sim.world import OPEN, Budget, Checkpoint
 
 WORLD = WorldConfig.load()
 STORIES = StoriesConfig.load()
@@ -316,6 +317,19 @@ def test_the_opening_budgets_cover_every_rep_and_kam(setup: Setup) -> None:
             area = slot.removeprefix("rep:")
             assert budgets[actor.employee_id]["budget_amount"] == round(0.02 * gross * active[area], 2)
     assert {(e, q) for e, q in setup.world.budgets} == {(e, date(2023, 1, 1)) for e in budgets}
+
+
+def test_a_kam_without_an_active_account_still_gets_a_budget(setup: Setup) -> None:
+    world = Checkpoint.of(setup.world).restore()
+    kam = setup.org.actors["kam:vending:1"]
+    held = [d.target for d in world.duties if d.kind == "kam_customer" and d.employee_id == kam.employee_id]
+    assert held
+    for customer in world.customers.values():
+        if customer.code in held:
+            customer.status, customer.since = "potential", None
+    budgets = policies.budgets(WORLD, planned(world))
+    assert budgets[kam.employee_id, START] == Budget(0.0)
+    assert len(budgets) == len(setup.world.budgets) == 66
 
 
 def test_the_world_holds_every_customer_with_its_traits(setup: Setup) -> None:
