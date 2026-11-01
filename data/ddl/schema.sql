@@ -1619,7 +1619,7 @@ WITH NO DATA;
 CREATE MATERIALIZED VIEW hartland.receivable AS
 -- receivable — an invoice with what is paid and what is open, as of the world's last day: the latest invoice or
 -- payment in the database (not the wall clock, so a rebuild gives the same rows). Days overdue and the ageing bucket
--- count from the due date; a credit note is a negative receivable.
+-- count from the due date; a credit note is a negative receivable, in the bucket `credit` until it is settled.
 WITH as_of AS (
     SELECT COALESCE(
         GREATEST((SELECT MAX(issued_on) FROM invoice), (SELECT MAX(received_on) FROM payment)),
@@ -1641,6 +1641,7 @@ SELECT
     CASE WHEN i.gross_amount - COALESCE(paid.amount, 0) > 0 THEN GREATEST(as_of.day - i.due_on, 0) ELSE 0 END
         AS days_overdue,
     CASE
+        WHEN i.kind = 'credit_note' AND i.gross_amount - COALESCE(paid.amount, 0) <> 0 THEN 'credit'
         WHEN i.gross_amount - COALESCE(paid.amount, 0) <= 0 THEN 'paid'
         WHEN as_of.day <= i.due_on THEN 'not_due'
         WHEN as_of.day - i.due_on <= 30 THEN '1_30'

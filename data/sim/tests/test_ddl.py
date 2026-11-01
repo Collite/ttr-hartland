@@ -127,7 +127,8 @@ def test_a_view_the_docwh_loader_reads_reads_no_answer(inventory: InventoryConfi
     for view in inventory.views:
         if view.docwh:
             lines = (DDL_DIR / view.sql_file).read_text(encoding="utf-8").splitlines()
-            words = {word for line in lines for word in re.findall(r"\w+", line.split("--")[0])}
+            code = [re.sub(r"'[^']*'", "", line.split("--")[0]) for line in lines]  # no comments, no literals
+            words = {word for line in code for word in re.findall(r"\w+", line)}
             assert not words & hidden, view.name
 
 

@@ -145,6 +145,21 @@ def test_sales_pl_credits_a_kam_channel_sale_to_the_kam(db: psycopg.Connection, 
     assert rows == [(10, 51), (11, 41), (12, 99)]
 
 
+def test_receivable_buckets_an_open_credit_note_apart(db: psycopg.Connection, put: Put) -> None:
+    """An unsettled credit note is `credit`, not `paid`; a settled one is `paid`; an invoice 40 days late `31_60`."""
+    with db.transaction(force_rollback=True):
+        put(db, "invoice", invoice_id=1, kind="credit_note", gross_amount=-5000, due_on=date(2026, 9, 1))
+        put(db, "invoice", invoice_id=2, kind="credit_note", gross_amount=-800, due_on=date(2026, 9, 1))
+        put(db, "invoice", invoice_id=3, kind="invoice", gross_amount=10000, due_on=date(2026, 9, 21))
+        put(db, "payment", payment_id=4, amount=-800, received_on=date(2026, 10, 31))
+        put(db, "payment_allocation", payment_id=4, invoice_id=2, amount=-800)
+        db.execute("REFRESH MATERIALIZED VIEW hartland.receivable")
+        rows = db.execute(
+            "SELECT invoice_id, open_amount, days_overdue, ageing_bucket FROM hartland.receivable ORDER BY invoice_id"
+        ).fetchall()
+    assert rows == [(1, -5000, 0, "credit"), (2, 0, 0, "paid"), (3, 10000, 40, "31_60")]
+
+
 def test_a_deferred_key_lets_a_load_copy_children_first(db: psycopg.Connection) -> None:
     """The foreign keys are checked at commit, so `load-world` may copy in any order inside one transaction."""
     with db.transaction(force_rollback=True):
