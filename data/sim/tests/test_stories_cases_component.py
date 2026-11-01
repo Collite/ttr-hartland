@@ -302,6 +302,20 @@ def test_s5_a_loan_outside_the_history_is_ignored(db: psycopg.Connection, put: P
     assert set(margin) == {1}
 
 
+def test_s5_counts_the_giveaways_from_the_loans_first_day(db: psycopg.Connection, put: Put) -> None:
+    """The loans count from 2024-02-26, so the give-aways do too: one handed out in January is not charged."""
+    with db.transaction(force_rollback=True):
+        _pos(db, put)
+        put(db, "area", area_id=1, region_id=1)
+        put(db, "store", store_id=1, area_id=1)
+        for k, day in enumerate((date(2024, 1, 15), date(2024, 3, 4))):
+            put(db, "visit", visit_id=k, store_id=1, day=day)
+            put(db, "pos_handout", pos_handout_id=k, visit_id=k, cost=100 * (k + 1))
+        _last_order_day(db, put, date(2025, 5, 31))
+        giveaway = _cte(db, "detectors/s5.sql", "giveaway")
+    assert float(giveaway["PHA"]["cost"]) == pytest.approx(200)
+
+
 # ── S6: a difference, not a ratio ────────────────────────────────────────────
 
 
