@@ -34,6 +34,17 @@ just test                   # ruff · mypy --strict · pytest (the unit tier)
 just test -m component      # the Postgres 16 tier (Docker for testcontainers, or HARTLAND_TEST_PG=<server DSN>)
 ```
 
+The model verbs borrow a built ttr-core checkout at `toolchain.lock`'s ref — `TTR_CORE` (default `../tatrman`) — and,
+for `load-model`, the metadata service's loader at `[veles].ttr-metadata` — `TTR_LOADER` (default `../ttr-loader`,
+`just build-loader`):
+
+```sh
+just verify-model           # the model suites (model/**/*.test.mjs)
+just ddl-drift              # data/ddl/schema.sql ⇄ model/db
+just check-model            # generated/ is current (`just regenerate` rebuilds it)
+just load-model             # the model as the metadata service loads it, strict
+```
+
 ## The map
 
 ```

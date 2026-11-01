@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "generatedFrom": "ttr-hartland",
+  "root": "",
+  "packages": [
+    {
+      "canonicalName": "hartland",
+      "declaredName": "hartland",
+      "nested": false,
+      "directory": "model/db"
+    }
+  ],
+  "entities": [],
+  "areas": []
+}
