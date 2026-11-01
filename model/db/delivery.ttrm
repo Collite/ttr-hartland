@@ -101,7 +101,7 @@ def table delivery_event {
         def column occurred_at       { type: datetime },
         def column kind              { type: text },
         def column severity          { type: text },
-        // `description` (text): undeclarable, a TTR-M keyword (M0 S0.1 Found while doing)
+        // `description` (text): undeclarable, a TTR-M keyword (ttr-core#353)
         def column reported_by       { type: text }
     ]
 }

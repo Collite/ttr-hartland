@@ -22,7 +22,8 @@ What the import could not say, added by hand:
   `product`, `product_line`, `brand`, `chain`, `kraj`, `okres`, `site`, `carrier` — codes `EXACT`, names `TYPOS(1)`
   or `TOKENS` (multi-word). The words beyond the values are `../lexicon/cs/members/`.
 
-Known gaps (M0 S0.1 Found while doing): `document.language`, `competitor_sighting.description` and
+Known gaps (M0 S0.1 Found while doing; ttr-core#353): `document.language`, `competitor_sighting.description` and
 `delivery_event.description` are not declarable — `language` and `description` are TTR-M keywords, not identifiers,
-and the grammar has no quoting. `ddl-drift` reports the three as a known gap. The editor (TS semantics) also misreads
-`db.hartland.area.<column>` (`area` is a kind keyword there); the metadata service's loader resolves it.
+and the grammar has no quoting. `ddl-drift` reports the three as a known gap. ttr-core's resolver (TS and Kotlin) also
+misreads `db.hartland.area.<column>` — `area` is a kind keyword there (ttr-core#352). The strict load passes it, but
+the load does not check FK references, so that is no evidence it resolves.

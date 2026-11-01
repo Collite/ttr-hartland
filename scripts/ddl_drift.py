@@ -18,9 +18,9 @@ The schema side is sqlglot over schema.sql (the materialized views' SELECTs pars
 `CREATE MATERIALIZED VIEW … WITH NO DATA`); the layer side is ttr-core's own parser (scripts/db-layer.mjs, through
 TATRMAN_PACKAGES — the justfile passes TTR_CORE's), or a JSON dump of it (`--layer-json`, the tests').
 
-KNOWN_GAPS lists the columns the layer cannot declare (M0 S0.1 Found while doing). They are printed, never failed —
-until the gap closes or changes: a known gap the layer now declares, or schema.sql no longer has, fails, so the entry
-is removed in the change that closes it.
+KNOWN_GAPS lists the columns the layer cannot declare (M0 S0.1 Found while doing; ttr-core#353). They are printed,
+never failed — until the gap closes or changes: a known gap the layer now declares, or schema.sql no longer has,
+fails, so the entry is removed in the change that closes it.
 """
 
 from __future__ import annotations

@@ -108,7 +108,7 @@ def table competitor_sighting {
         def column competitor_product_id  { type: bigint, optional: true },
         def column activity_kind          { type: text },
         def column price_seen             { type: { type: decimal, length: 14, precision: 2 }, optional: true },
-        // `description` (text, nullable): undeclarable, a TTR-M keyword (M0 S0.1 Found while doing)
+        // `description` (text, nullable): undeclarable, a TTR-M keyword (ttr-core#353)
         def column confirmed              { type: bool }
     ]
 }

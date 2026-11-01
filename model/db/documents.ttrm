@@ -23,7 +23,7 @@ def table document {
         def column format             { type: text },
         def column path               { type: text },
         def column sha256             { type: text }
-        // `language` (text): undeclarable, a TTR-M keyword (M0 S0.1 Found while doing)
+        // `language` (text): undeclarable, a TTR-M keyword (ttr-core#353)
     ]
 }
 

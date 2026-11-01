@@ -34,10 +34,10 @@ export const ACCEPTED_RESIDUAL_CODES = new Set([
   'ttr/package-prefix-divergence',
 ]);
 
-// Narrower: one code, only where the message matches. M0 T3: the editor's resolver reads `area` in a qualified
-// reference as the kind keyword (`def area`), so `db.hartland.area.<column>` does not resolve in the TS semantics —
-// the metadata service's loader (just load-model, strict) resolves it. A ttr-core issue (M0 S0.1 Found while doing);
-// remove the entry when the toolchain moves past the fix.
+// Narrower: one code, only where the message matches. M0 T3: ttr-core's resolver (TS here, and its Kotlin mirror)
+// reads `area` in a qualified reference as the kind keyword (`def area`), so `db.hartland.area.<column>` does not
+// resolve when the column name is shared with another table (ttr-core#352). `just load-model` passes it, but the
+// load does not check FK references at all. Remove the entry when the toolchain moves past the fix.
 export const ACCEPTED_RESIDUALS = [{ code: 'ttr/unresolved-reference', message: /'db\.hartland\.area\.\w+'/ }];
 
 const accepted = (d) =>
