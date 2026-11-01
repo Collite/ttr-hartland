@@ -15,8 +15,9 @@ from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.reference import REFERENCE_DIR
 from hartland_sim.rng import using_master_seed
 from hartland_sim.setup import org as org_setup
-from hartland_sim.setup import reference
-from hartland_sim.setup.org import Org
+from hartland_sim.setup import policies, portfolio, reference
+from hartland_sim.setup.org import SALES, Org
+from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, tables
 from hartland_sim.world import World
@@ -28,6 +29,8 @@ class Setup:
     tables: Tables
     geography: Geography
     org: Org
+    portfolio: Portfolio
+    covers: dict[tuple[int, int], tuple[float, float]]  # (sku_id, dc_site_id) → the policy's (min, max) days
 
 
 def run(
@@ -42,7 +45,12 @@ def run(
         out = tables()
         geography = reference.build(out, world, root)
         org = org_setup.build(out, world, stories, geography, root)
+        products = portfolio.build(out, world, stories, root)
+        covers = policies.stock_policies(out, world, products)
+        policies.rules(out, world, owner=org.actors[SALES].employee_id)
+        policies.pos(out, world, geography, root)
+        policies.fleet(out, world, root)
         state = World(world.history.warm_up_from - timedelta(days=1))
         state.actors = {actor.employee_id: actor for actor in org.actors.values()}
         state.duties = list(org.duties)
-    return Setup(state, out, geography, org)
+    return Setup(state, out, geography, org, products, covers)

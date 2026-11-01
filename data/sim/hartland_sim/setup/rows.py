@@ -15,8 +15,13 @@ Tables = defaultdict[str, list[Row]]
 
 
 @cache
+def _columns() -> dict[str, tuple[str, ...]]:
+    return {table.name: tuple(column.name for column in table.columns) for table in InventoryConfig.load().tables}
+
+
 def columns(table: str) -> tuple[str, ...]:
-    return tuple(column.name for column in InventoryConfig.load().table(table).columns)
+    """`table`'s columns, in the inventory's order (the inventory is read once)."""
+    return _columns()[table]
 
 
 def row(table: str, **values: Any) -> Row:

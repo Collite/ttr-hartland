@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Collite/ttr-hartland/data/reference/schemas/carrier.schema.json",
+  "title": "carrier.csv — the contracted carriers (01 §4.2): three per DC, a parcel carrier, an inbound carrier, each with its rates per route and its fleet",
+  "x-rows": [
+    5,
+    15
+  ],
+  "x-key": [
+    "code"
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "name",
+    "kind",
+    "dc",
+    "rate_base",
+    "rate_per_km",
+    "rate_per_stop",
+    "vans",
+    "trucks_7_5t",
+    "trucks_12t"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^DOP-[A-Z0-9]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "x-czech": true
+    },
+    "kind": {
+      "enum": [
+        "dc",
+        "parcel",
+        "inbound"
+      ]
+    },
+    "dc": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-ref": "site.code",
+      "description": "the DC a dc carrier serves; empty otherwise"
+    },
+    "rate_base": {
+      "type": "number",
+      "minimum": 0
+    },
+    "rate_per_km": {
+      "type": "number",
+      "minimum": 0
+    },
+    "rate_per_stop": {
+      "type": "number",
+      "minimum": 0
+    },
+    "vans": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trucks_7_5t": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trucks_12t": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

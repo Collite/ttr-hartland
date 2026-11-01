@@ -1,0 +1,25 @@
+code,name,kind,unit_cost,product_line,assets_per_region
+PLA-HARCAFE,Plakát Harcafé A2,giveaway,35.00,,0
+PLA-GOLD,Plakát Harcafé Gold A1,giveaway,45.00,GOLD,0
+PLA-POLEVKY,Plakát Harsoup Polévky A2,giveaway,35.00,POLEVKY,0
+WOB-GOLD,Wobler Harcafé Gold,giveaway,12.00,GOLD,0
+WOB-CLASSIC,Wobler Harcafé Classic,giveaway,12.00,CLASSIC,0
+WOB-SMESI,Wobler Harcafé Směsi,giveaway,12.00,SMESI,0
+WOB-NUDLE,Wobler Harsoup Nudle,giveaway,12.00,NUDLE,0
+LIS-HARCAFE,Regálový pás Harcafé,giveaway,28.00,,0
+LIS-HARSOUP,Regálový pás Harsoup,giveaway,28.00,,0
+CEN-HARCAFE,Cenovková lišta Harcafé,giveaway,22.00,,0
+SAM-DVERE,Samolepka na dveře „Prodáváme Harcafé“,giveaway,8.00,,0
+SAM-PODLAHA,Podlahová samolepka Harcafé,giveaway,120.00,,0
+LET-AKCE,Leták akční nabídky (balík 100 ks),giveaway,150.00,,0
+OCH-GOLD,Ochutnávková balení Harcafé Gold (karton 50 ks),giveaway,450.00,GOLD,0
+OCH-POLEVKY,Ochutnávková balení polévek Harsoup (karton 50 ks),giveaway,380.00,POLEVKY,0
+HRN-HARCAFE,Hrnek s logem Harcafé,giveaway,65.00,,0
+ROL-GOLD,Roll-up Harcafé Gold,giveaway,890.00,GOLD,0
+STO-HARCAFE,Podlahový stojan Harcafé,asset,4800.00,,150
+STO-HARSOUP,Podlahový stojan Harsoup,asset,4200.00,,100
+PUL-GOLD,Pultový stojánek Harcafé Gold,asset,950.00,GOLD,80
+PUL-SMESI,Pultový stojánek Harcafé Směsi,asset,850.00,SMESI,70
+CHL-HARCAFE,Chladnička s logem Harcafé pro kavárny,asset,14500.00,,30
+AUT-POLEP,Polep prodejního automatu Harcafé,asset,2200.00,PROFIKAVA,25
+REG-HARSOUP,Regálový modul Harsoup,asset,3600.00,,25

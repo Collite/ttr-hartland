@@ -200,6 +200,7 @@ class Suppliers:
     fallback: str
     lead_time_days: Mapping[str, int]
     reliability_pct: Mapping[str, float]
+    min_lot_cases: Mapping[str, int]
 
 
 @dataclass(frozen=True)
@@ -287,6 +288,7 @@ class Tiers:
 class Budgets:
     rep_discount_pct_of_planned_gross: float
     kam_discount_pct_of_planned_gross: float
+    opening_quarter_gross: Mapping[str, float]  # channel → the opening quarter's planned gross per customer
 
 
 @dataclass(frozen=True)
@@ -322,6 +324,19 @@ class Lifecycle:
     lookback_months: int
     regular_min_order_months: int
     vip_min_net_revenue: float
+    contact_weeks: Mapping[Phase, int]
+    concession_share: Mapping[Phase, float]
+    listing_sequence: Mapping[Phase, tuple[str, ...]]  # product line codes
+
+
+@dataclass(frozen=True)
+class PromptRule:
+    code: str
+    kind: str
+    priority: int
+    mandatory: bool
+    adaptable: bool
+    parameters: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -331,6 +346,7 @@ class Policies:
     lifecycle: Lifecycle
     prompt_caps: Mapping[Phase, int]
     seasonal_exclusion: Mapping[str, tuple[int, ...]]  # product line code → months
+    prompt_rules: tuple[PromptRule, ...]
 
 
 @dataclass(frozen=True)
@@ -386,11 +402,26 @@ class Field:
 
 
 @dataclass(frozen=True)
+class Capacity:
+    cases: int
+    kg: int
+
+
+@dataclass(frozen=True)
+class Window:
+    opens: str | None  # HH:MM
+    closes: str | None
+    unloading_minutes: int
+
+
+@dataclass(frozen=True)
 class Delivery:
     carriers_per_dc: int
     parcel_carriers: int
     inbound_carriers: int
     events_per_route_day: float
+    capacity: Mapping[str, Capacity]  # vehicle class → capacity
+    windows: Mapping[str, Window]  # kind of delivery point → its window
 
 
 @dataclass(frozen=True)

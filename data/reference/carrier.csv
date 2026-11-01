@@ -1,0 +1,9 @@
+code,name,kind,dc,rate_base,rate_per_km,rate_per_stop,vans,trucks_7_5t,trucks_12t
+DOP-J1,Autodoprava Mašek s.r.o.,dc,DC-JIRNY,2200.00,32.00,45.00,3,4,2
+DOP-J2,Polabská spedice s.r.o.,dc,DC-JIRNY,1950.00,34.00,50.00,3,4,2
+DOP-J3,Doprava Horák a syn s.r.o.,dc,DC-JIRNY,2400.00,29.00,40.00,3,4,2
+DOP-M1,Moravská doprava Vlček s.r.o.,dc,DC-MODRICE,1900.00,33.00,48.00,3,4,2
+DOP-M2,Autodoprava Kadlec s.r.o.,dc,DC-MODRICE,2100.00,31.00,45.00,3,4,2
+DOP-M3,Hanácká spedice s.r.o.,dc,DC-MODRICE,2300.00,30.00,42.00,3,4,2
+DOP-BAL,Kurýrní služba Rychlík s.r.o.,parcel,,0.00,0.00,95.00,4,0,0
+DOP-SVOZ,Kamionová doprava Říha s.r.o.,inbound,,3200.00,38.00,0.00,0,0,2
