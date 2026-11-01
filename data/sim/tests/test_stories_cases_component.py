@@ -209,6 +209,35 @@ def test_s3_counts_small_retail_only(db: psycopg.Connection, put: Put) -> None:
     assert rates[1]["acquisition"] == 0
 
 
+def test_s3_conversion_counts_the_market_only(db: psycopg.Connection, put: Put) -> None:
+    """The rep converts one visit in two at an independent. Two visits without an order at a key-account chain's
+    station, whose orders come through the key account, leave the rate at a half (counted, they gave a quarter)."""
+    with db.transaction(force_rollback=True):
+        put(db, "area", area_id=10)
+        put(db, "assignment", assignment_id=1, employee_id=1, kind="rep_area", area_id=10, **TENURE)
+        put(db, "chain", chain_id=1, is_key_account=True)
+        put(db, "store", store_id=1, area_id=10, store_class="minimarket")
+        put(db, "store", store_id=2, area_id=10, store_class="petrol", chain_id=1)
+        put(db, "customer", customer_id=1, channel="small_retail", store_id=1)
+        put(db, "customer", customer_id=2, channel="gas_ka", store_id=2)
+        for k, (store, outcome) in enumerate(((1, "order"), (1, "no_order"), (2, "no_order"), (2, "no_order"))):
+            day = date(2024, 3, 4) + timedelta(days=k)
+            put(
+                db,
+                "visit",
+                visit_id=k,
+                employee_id=1,
+                store_id=store,
+                customer_id=store,
+                day=day,
+                kind="sales",
+                outcome=outcome,
+            )
+        _last_order_day(db, put, date(2024, 12, 31))
+        rates = _cte(db, "detectors/s3.sql", "rates")
+    assert float(rates[1]["conversion"]) == pytest.approx(0.5)
+
+
 # ── S5: the gain of a display ────────────────────────────────────────────────
 
 

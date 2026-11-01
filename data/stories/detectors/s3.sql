@@ -1,9 +1,10 @@
 -- S3 — the reps differ (design 04 §S3). Per rep — the person, across the area moves, from 2024-01-01 to the world's
--- last order day — the four observed rates of small retail, each over its base:
---   conversion  = sales visits at a customer that took an order ÷ those visits;
+-- last order day — the four observed rates of small retail (the market: independents, franchises and station shops;
+-- no key-account chain, no HoReCa), each over its base:
+--   conversion  = sales visits at a market customer that took an order ÷ those visits (the tourplans also reach the
+--                 key-account chains' stations, whose orders come through the key account);
 --   acquisition = customers won in the rep's area while assigned ÷ the potential store-days there: the area's open
---                 small-retail stores (independents, franchises and station shops; no key-account chain, no HoReCa)
---                 × the days, less the days they were customers;
+--                 market stores × the days, less the days they were customers;
 --   churn       = customers lost likewise ÷ the active customer-days there;
 --   cross-sell  = customer × lines bought for the first time likewise ÷ the active customer-days. A line counts only
 --                 when it comes more than 90 days after the customer's start or the history's (2024-01-01), whichever
@@ -65,6 +66,7 @@ active_days AS (
 conversion AS (
     SELECT v.employee_id, AVG(CASE WHEN v.outcome = 'order' THEN 1.0 ELSE 0.0 END) AS rate
     FROM visit v
+    JOIN market m ON m.store_id = v.store_id
     CROSS JOIN as_of
     WHERE v.kind = 'sales' AND v.customer_id IS NOT NULL AND v.day BETWEEN DATE '2024-01-01' AND as_of.day
     GROUP BY v.employee_id
