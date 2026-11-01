@@ -21,7 +21,8 @@ then (`build-lexicon` lands at M3).
 The vocabulary itself — the column's values, matched per MV — is declared on the db columns (model/db): names
 `searchable method: TYPOS(1)` (or `TOKENS` for the multi-word SKU, product and site names), codes `method: EXACT`.
 
-Carriers have no list yet: their names are generated at G1 S1.1, not reference data.
+The carriers' words are their names, and the name without its legal form (`Autodoprava Mašek s.r.o.` is said
+`Autodoprava Mašek`), from `data/reference/carrier.csv`.
 """
 
 from __future__ import annotations
@@ -42,9 +43,11 @@ from hartland_sim.setup.classifier.chains import CHAINS
 REPO = Path(__file__).resolve().parent.parent
 MEMBERS_DIR = REPO / "model/lexicon/cs/members"
 
-# The sub-brands a chain's stores and shops trade under (the classifier's patterns, as they are written). Hand-kept.
+# The sub-brands a chain's stores and shops trade under (the classifier's patterns, as they are written). Hand-kept;
+# the unit tests hold each to its chain's patterns. COOP's `Tempo` is a pattern but not a word here: `tempo` is a
+# common noun ("tempo růstu tržeb"), and a compiled list would bind such a question to COOP.
 CHAIN_SUB_BRANDS: dict[str, tuple[str, ...]] = {
-    "COOP": ("Jednota", "Konzum", "Tempo", "Terno", "TUTY"),
+    "COOP": ("Jednota", "Konzum", "Terno", "TUTY"),
     "PENNY": ("Penny Market",),
     "OMV": ("Viva",),
     "SHELL": ("Shell Select",),
@@ -104,6 +107,11 @@ def _forms(*words: str | None) -> tuple[str, ...]:
 
 def _nicknames(cell: str | None) -> tuple[str, ...]:
     return tuple(n for n in (cell or "").split(";") if n)
+
+
+def _without_legal_form(name: str) -> str:
+    """`Autodoprava Mašek s.r.o.` → `Autodoprava Mašek`: the name as a person says it."""
+    return re.sub(r",?\s+(s\.\s?r\.\s?o\.|a\.\s?s\.)$", "", name)
 
 
 def word_lists() -> list[WordList]:
@@ -182,6 +190,15 @@ def word_lists() -> list[WordList]:
             tuple(
                 Member(row["code"], row["name"], _forms(row["name"], row["town"] if row["kind"] == "dc" else None))
                 for row in read("site")
+            ),
+        ),
+        WordList(
+            "carrier",
+            "carrier",
+            "data/reference/carrier.csv (name; the name without its legal form)",
+            tuple(
+                Member(row["code"], row["name"], _forms(row["name"], _without_legal_form(row["name"])))
+                for row in read("carrier")
             ),
         ),
     ]
@@ -268,6 +285,8 @@ def main(argv: list[str] | None = None) -> int:
     for path in stale:
         path.write_text(files[path], encoding="utf-8")
         print(f"wrote {path.relative_to(REPO)}")
+    for path in extra:
+        print(f"not seeded: {path.relative_to(REPO)} — remove it")
     print(f"seed_members: {len(files)} lists, {len(stale)} written")
     return 0
 

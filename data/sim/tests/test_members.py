@@ -8,7 +8,10 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 from hartland_sim.io.reference import read
+from hartland_sim.setup.classifier import chains
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -60,6 +63,7 @@ def test_every_list_and_its_size() -> None:
         "kraj": 14,
         "okres": 99,
         "site": 18,
+        "carrier": 8,
     }
 
 
@@ -86,6 +90,39 @@ def test_the_nicknames_reach_their_product_and_the_pack_words_their_pack() -> No
     }
     assert lists["site"]["DC-JIRNY"].forms == ("Distribuční centrum Jirny", "Jirny")
     assert lists["site"]["FA-KOLIN"].forms == ("Závod Kolín",)  # Kolín is the okres's word
+
+
+def test_a_carrier_is_its_name_and_its_name_without_the_legal_form() -> None:
+    carriers = {m.code: m for m in next(w for w in seed.word_lists() if w.name == "carrier").members}
+    assert carriers["DOP-J1"].forms == ("Autodoprava Mašek s.r.o.", "Autodoprava Mašek")
+    assert carriers["DOP-J3"].forms == ("Doprava Horák a syn s.r.o.", "Doprava Horák a syn")
+
+
+def test_every_chain_word_is_its_chain_to_the_classifier() -> None:
+    """A sub-brand is a word of its chain because the classifier reads it as that chain: a renamed pattern is seen."""
+    for code, words in seed.CHAIN_SUB_BRANDS.items():
+        for word in words:
+            chain = chains.match(brand=word)
+            assert chain is not None and chain.code == code, f"{word!r}: {chain and chain.code} (want {code})"
+
+
+def test_tempo_is_a_pattern_but_not_a_word() -> None:
+    """COOP Tempo is a COOP format (the classifier keeps it), but `tempo` is a common noun (review-202 ⚑R202-A)."""
+    assert chains.match(name="COOP Tempo").code == "COOP"  # type: ignore[union-attr]
+    words = {form.casefold() for w in seed.word_lists() for m in w.members for form in m.forms}
+    assert "tempo" not in words
+
+
+def test_the_write_mode_names_a_list_it_did_not_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    members = tmp_path / "model/lexicon/cs/members"
+    monkeypatch.setattr(seed, "REPO", tmp_path)
+    monkeypatch.setattr(seed, "MEMBERS_DIR", members)
+    members.mkdir(parents=True)
+    (members / "old.ttrm").write_text("package hartland\n", encoding="utf-8")
+    assert seed.main([]) == 0
+    assert "not seeded: model/lexicon/cs/members/old.ttrm — remove it" in capsys.readouterr().out
 
 
 def test_every_word_reads_as_czech() -> None:

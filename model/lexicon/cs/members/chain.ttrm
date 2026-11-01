@@ -52,7 +52,7 @@ def term chain_globus_cs {
 def term chain_coop_cs {
     description: "COOP (COOP)"
     for: db.hartland.chain.name
-    forms: ["COOP", "Jednota", "Konzum", "Tempo", "Terno", "TUTY"]
+    forms: ["COOP", "Jednota", "Konzum", "Terno", "TUTY"]
 }
 
 def term chain_makro_cs {

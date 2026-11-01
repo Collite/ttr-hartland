@@ -18,10 +18,10 @@ for (const file of await modelFiles('lexicon/cs/members')) {
   lists.set(path.basename(file, '.ttrm'), result.ast);
 }
 
-test('L1 — the nine lists, each `model lexicon locale cs`, every entry a term with a `for:` and its forms', () => {
+test('L1 — the ten lists, each `model lexicon locale cs`, every entry a term with a `for:` and its forms', () => {
   assert.deepEqual(
     [...lists.keys()].sort(),
-    ['brand', 'chain', 'kraj', 'okres', 'pack', 'product', 'product_line', 'site', 'sku'],
+    ['brand', 'carrier', 'chain', 'kraj', 'okres', 'pack', 'product', 'product_line', 'site', 'sku'],
   );
   for (const [stem, ast] of lists) {
     assert.equal(ast.modelDirective?.modelCode, 'lexicon', stem);

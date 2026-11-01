@@ -9,13 +9,14 @@ the sources and re-seed (`uv run python scripts/seed_members.py`; the unit tests
 | `pack` | the catalogue's three pack words | `malá sklenice` · `velká sklenice` · `doplňovačka`, each the packs it means |
 | `product` | the 48 products | the name + `nicknames_cs` (`klasik`, `zlatý kafe`, `trojka`, …) |
 | `product_line` · `brand` | 11 lines · 2 brands | the name |
-| `chain` | the 22 chains of the store classifier | the name + the sub-brands (`Jednota`, `Viva`, `Shell Select`, …) |
+| `chain` | the 22 chains of the store classifier | the name + the sub-brands (`Jednota`, `Viva`, `Shell Select`, …); not COOP's `Tempo`, a common noun |
 | `kraj` · `okres` | 14 kraje · 99 okresy (Prague's 22 districts among them) | nominative, genitive, locative (`data/reference/declension.csv`, hand-kept) |
 | `site` | the 18 sites | the name; a DC's town (`Jirny`, `Modřice`) |
+| `carrier` | the 8 carriers of `carrier.csv` | the name + the name without its legal form (`Autodoprava Mašek`) |
 
 One term per member; a word names one member (the editor's `ttr/lexicon-duplicate-form` and
 `ttr/lexicon-form-collides-with-name` hold the lists to it — so a factory's town, an okres's name too, is not a site's
-word). Carriers have no list yet: their names are generated at G1 S1.1.
+word).
 
 **The `for:` is a placeholder.** The pinned toolchain (ttr-core grammar/v0.21.1) reaches a member only as
 `<er attribute>.<code>` with `valueLabels` on the attribute; there is no er layer before M1, and an EAN-13 SKU code
