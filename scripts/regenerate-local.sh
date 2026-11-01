@@ -19,13 +19,7 @@ pins="$(python3 scripts/toolchain-lock.py)"   # its own line, so a failed read s
 while IFS='=' read -r key value; do export "$key=$value"; done <<<"$pins"
 echo "toolchain.lock: ttr-core $TTR_CORE_REF · metadata ttr-metadata $VELES_TTR_METADATA"
 
-toolchain="${TTR_CORE:-$checkout/../tatrman}"
-have="$(git -C "$toolchain" rev-parse HEAD 2>/dev/null || true)"
-want="$(git -C "$toolchain" rev-parse --verify --quiet "$TTR_CORE_REF^{commit}" 2>/dev/null || true)"
-if [ -z "$have" ] || [ "$have" != "$want" ]; then
-  echo "regenerate: $toolchain is at '${have:0:12}', toolchain.lock pins $TTR_CORE_REF${want:+ (${want:0:12})} — check that out and build it first" >&2
-  exit 2
-fi
+bash scripts/toolchain-check.sh "$checkout"   # exit 2 when $TTR_CORE is not at the lock's ref
 
 # Content, not `git status`: a file already modified before the build and modified again by it reads the same there.
 model_hash() { find model -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum; }

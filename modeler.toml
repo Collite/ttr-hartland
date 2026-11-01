@@ -26,6 +26,6 @@ schema = "hartland"
 # The tree groups files by MODEL KIND (model/db, model/er, …), not by domain, so the directory-inferred package would
 # differ per folder and every cross-kind ref (er2db, md2db, a lexicon `for:`) would need an import. Every model/*.ttrm
 # declares `package hartland` instead — one flat package, as ttr-demo's. layout = "off" silences the resulting
-# directory/declaration mismatch; `ttr/package-prefix-divergence` still fires per file (info, by design) and changes
-# no resolution.
+# directory/declaration mismatch; `ttr/package-prefix-divergence` still fires per file (a warning, which the model
+# suites accept by code) and changes no resolution.
 layout = "off"

@@ -82,14 +82,19 @@ h-l-run *ARGS:
 tatrman := env_var_or_default("TTR_CORE", "../tatrman")
 ttr_loader := env_var_or_default("TTR_LOADER", "../ttr-loader")
 
+# The TS model verbs run this first: exit 2 when the ttr-core checkout is not at toolchain.lock's [ttr-core].ref
+# (scripts/toolchain-check.sh, which regenerate-local.sh shares).
+_toolchain:
+    TTR_CORE="{{tatrman}}" bash scripts/toolchain-check.sh
+
 # Every model suite (node's test runner, no deps): every *.test.mjs under model/.
-verify-model:
+verify-model: _toolchain
     TATRMAN_PACKAGES="{{tatrman}}/packages" node --test $(find model -name '*.test.mjs' | sort)
 
 # Through a symlink named `ttr-hartland`: the CLI writes `generatedFrom` = the project directory's basename, so a
 # worktree's name would leak into the artifact.
 # generated/resolved-packages.json (packages, entities, areas) via the ttr-core Modeler CLI.
-resolve-packages:
+resolve-packages: _toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     link="$(mktemp -d)"; trap 'rm -rf "$link"' EXIT
@@ -97,7 +102,7 @@ resolve-packages:
     node "{{tatrman}}/packages/migrate/dist/cli.js" resolve-packages "$link/ttr-hartland" --out "$(pwd)/generated/resolved-packages.json" --verbose
 
 # Drift check: fail when the committed generated/resolved-packages.json is stale.
-check-model:
+check-model: _toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     link="$(mktemp -d)"; trap 'rm -rf "$link"' EXIT
@@ -108,7 +113,7 @@ check-model:
 # prints the differences, exit 1 on any (contracts §1), and refuses a SQL form it does not read. It parses the .ttrm
 # files themselves, so no regenerate is needed first.
 # data/ddl/schema.sql ⇄ model/db — the model-gate fails on any difference.
-ddl-drift *ARGS:
+ddl-drift *ARGS: _toolchain
     TATRMAN_PACKAGES="{{tatrman}}/packages" uv run python scripts/ddl_drift.py "$@"
 
 # The lexicon archive generated/lexicon.tar.zst (M3 S3.1).

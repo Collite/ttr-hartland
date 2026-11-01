@@ -20,8 +20,10 @@ What the import could not say, added by hand:
   NULL only where the SQL guarantees it.
 - **Grains** — each table's `grain` from the inventory as its leading comment.
 - **The member vocabularies** (MV, M0 S0.1 T5): `search { searchable method: … }` on the code and name of `sku`,
-  `product`, `product_line`, `brand`, `chain`, `kraj`, `okres`, `site`, `carrier` — codes `EXACT`, names `TYPOS(1)`
-  or `TOKENS` (multi-word). The words beyond the values are `../lexicon/cs/members/`.
+  `product`, `product_line`, `brand`, `chain`, `kraj`, `okres`, `site`, `carrier` — codes `EXACT`; names `TOKENS`
+  where a part of the name is said alone (`sku`, `product`, `site`, `kraj`) and `TYPOS(1)` where the name is said
+  whole (`okres`, `product_line`, `brand`, `chain`, `carrier`). M3 S3.1's matching tests have the last word. The
+  words beyond the values are `../lexicon/cs/members/`.
 
 Known gaps (M0 S0.1 Found while doing; ttr-core#353): `document.language`, `competitor_sighting.description` and
 `delivery_event.description` are not declarable — `language` and `description` are TTR-M keywords, not identifiers,

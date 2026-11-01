@@ -18,8 +18,9 @@ its member vocabulary's column (`db.hartland.<table>.name`; the pack words `sku.
 M3 S3.1 T5 re-targets the terms — extending this script — when it completes the lists. Nothing compiles them before
 then (`build-lexicon` lands at M3).
 
-The vocabulary itself — the column's values, matched per MV — is declared on the db columns (model/db): names
-`searchable method: TYPOS(1)` (or `TOKENS` for the multi-word SKU, product and site names), codes `method: EXACT`.
+The vocabulary itself — the column's values, matched per MV — is declared on the db columns (model/db): codes
+`method: EXACT`; names `TOKENS` where a part of the name is said alone (sku, product, site, kraj), `TYPOS(1)` where
+the name is said whole (okres, product_line, brand, chain, carrier).
 
 The carriers' words are their names, and the name without its legal form (`Autodoprava Mašek s.r.o.` is said
 `Autodoprava Mašek`), from `data/reference/carrier.csv`.

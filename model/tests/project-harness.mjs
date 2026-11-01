@@ -34,14 +34,24 @@ export const ACCEPTED_RESIDUAL_CODES = new Set([
   'ttr/package-prefix-divergence',
 ]);
 
-// Narrower: one code, only where the message matches. M0 T3: ttr-core's resolver (TS here, and its Kotlin mirror)
-// reads `area` in a qualified reference as the kind keyword (`def area`), so `db.hartland.area.<column>` does not
-// resolve when the column name is shared with another table (ttr-core#352). `just load-model` passes it, but the
-// load does not check FK references at all. Remove the entry when the toolchain moves past the fix.
-export const ACCEPTED_RESIDUALS = [{ code: 'ttr/unresolved-reference', message: /'db\.hartland\.area\.\w+'/ }];
+// Narrower: one code, in one file, only where the message matches; `count` is how many there are, which D7 holds, so
+// a new one is seen. M0 T3: ttr-core's resolver (TS here, and its Kotlin mirror) reads `area` in a qualified reference
+// as the kind keyword (`def area`), so `db.hartland.area.<column>` does not resolve when the column name is shared
+// with another table (ttr-core#352). `area`'s two such columns, in fks.ttrm's five foreign keys to and from it.
+// `just load-model` passes them, but the load does not check FK references at all. M1 widens the entry on purpose when
+// its er2db meets the bug, with its own comment; remove it when the toolchain moves past the fix.
+export const ACCEPTED_RESIDUALS = [
+  {
+    code: 'ttr/unresolved-reference',
+    file: 'model/db/fks.ttrm',
+    message: /'db\.hartland\.area\.(area_id|region_id)'/,
+    count: 5,
+  },
+];
 
-const accepted = (d) =>
-  ACCEPTED_RESIDUAL_CODES.has(d.code) || ACCEPTED_RESIDUALS.some((r) => r.code === d.code && r.message.test(d.message));
+const narrow = (file, d) =>
+  ACCEPTED_RESIDUALS.find((r) => r.code === d.code && r.file === file && r.message.test(d.message));
+const accepted = (file, d) => ACCEPTED_RESIDUAL_CODES.has(d.code) || narrow(file, d) !== undefined;
 
 export { parseString };
 
@@ -122,10 +132,22 @@ export function blocking(diagnostics) {
   const out = [];
   for (const [file, list] of diagnostics) {
     for (const d of list) {
-      if ((d.severity === 'error' || d.severity === 'warning') && !accepted(d)) {
+      if ((d.severity === 'error' || d.severity === 'warning') && !accepted(file, d)) {
         out.push(`${file}:${d.line ?? '?'} ${d.severity} ${d.code} — ${d.message}`);
       }
     }
   }
   return out;
+}
+
+/** How many diagnostics each ACCEPTED_RESIDUALS entry accepts, in its order (D7 compares them with each `count`). */
+export function narrowResidualCounts(diagnostics) {
+  const counts = ACCEPTED_RESIDUALS.map(() => 0);
+  for (const [file, list] of diagnostics) {
+    for (const d of list) {
+      const at = ACCEPTED_RESIDUALS.indexOf(narrow(file, d));
+      if (at >= 0) counts[at] += 1;
+    }
+  }
+  return counts;
 }

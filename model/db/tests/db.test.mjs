@@ -9,7 +9,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { repoRoot, modelFiles, parseString, loadProject, blocking } from '../../tests/project-harness.mjs';
+import {
+  repoRoot, modelFiles, parseString, loadProject, blocking, ACCEPTED_RESIDUALS, narrowResidualCounts,
+} from '../../tests/project-harness.mjs';
 
 const schemaSql = await readFile(path.join(repoRoot, 'data/ddl/schema.sql'), 'utf-8');
 
@@ -107,4 +109,6 @@ test('D7 — the whole model resolves: no error or warning beyond the accepted r
   const project = await loadProject();
   for (const [file, errors] of project.parseErrors) assert.deepEqual(errors, [], `${file} parses`);
   assert.deepEqual(blocking(project.diagnostics), []);
+  // Each narrow residual accepts exactly as many as it says: one more is a new diagnostic, one fewer a fix to record.
+  assert.deepEqual(narrowResidualCounts(project.diagnostics), ACCEPTED_RESIDUALS.map((r) => r.count));
 });

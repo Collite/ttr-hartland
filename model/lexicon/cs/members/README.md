@@ -24,5 +24,6 @@ cannot be a reference segment. Until M3 S3.1 T5 re-targets each term to its memb
 vocabulary's column (`db.hartland.<table>.name`; the pack words `db.hartland.sku.pack_format`) and its `description`
 names the member. Nothing compiles these before M3 (`build-lexicon`).
 
-The vocabularies themselves are declared on the db columns (MV): the names `searchable method: TYPOS(1)` — `TOKENS`
-for the multi-word SKU, product, kraj and site names — the codes `method: EXACT`.
+The vocabularies themselves are declared on the db columns (MV): the codes `method: EXACT`; the names `TOKENS` where
+a part of the name is said alone (`sku`, `product`, `site`, `kraj`), `TYPOS(1)` where the name is said whole (`okres`,
+`product_line`, `brand`, `chain`, `carrier`). M3 S3.1's matching tests have the last word.

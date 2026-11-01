@@ -36,7 +36,8 @@ just test -m component      # the Postgres 16 tier (Docker for testcontainers, o
 
 The model verbs borrow a built ttr-core checkout at `toolchain.lock`'s ref — `TTR_CORE` (default `../tatrman`) — and,
 for `load-model`, the metadata service's loader at `[veles].ttr-metadata` — `TTR_LOADER` (default `../ttr-loader`,
-`just build-loader`):
+`just build-loader`). They refuse a ttr-core checkout at any other commit (exit 2, naming it, its HEAD and the lock's
+ref): another toolchain's verdict is not the model's.
 
 ```sh
 just verify-model           # the model suites (model/**/*.test.mjs)
