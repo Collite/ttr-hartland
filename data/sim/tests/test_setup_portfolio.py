@@ -18,7 +18,7 @@ from hartland_sim.io.reference import read
 from hartland_sim.setup.policies import budgets
 from hartland_sim.setup.portfolio import CHANNELS, listed
 from hartland_sim.setup.rows import tables
-from hartland_sim.setup.run import Setup, run
+from hartland_sim.setup.run import Setup
 from hartland_sim.world import OPEN, Budget
 
 WORLD = WorldConfig.load()
@@ -26,8 +26,8 @@ STORIES = StoriesConfig.load()
 
 
 @pytest.fixture(scope="module")
-def setup() -> Setup:
-    return run()
+def setup(opening: Setup) -> Setup:
+    return opening
 
 
 def _rows(setup: Setup, table: str) -> list[dict[str, Any]]:

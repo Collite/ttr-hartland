@@ -583,8 +583,8 @@ tables:
   - name: delivery_point
     group: customers
     grain: >-
-      a place goods go to (a chain's store or station, a customer's own store, a HoReCa address, an operator's depot,
-      an own shop, a web consumer's town)
+      a place goods go to (a chain's store or station, a DC-level chain's DC, a customer's own store, a HoReCa
+      address, an operator's or wholesaler's depot, an own shop, a web consumer's town)
     columns:
       - { name: delivery_point_id, type: bigint }
       - { name: customer_id, type: bigint, ref: customer.customer_id }

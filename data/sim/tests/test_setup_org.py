@@ -14,6 +14,7 @@ import pytest
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import read
+from hartland_sim.setup.market import Market
 from hartland_sim.setup.org import rep_areas
 from hartland_sim.setup.run import Setup, run
 from hartland_sim.world import OPEN, Actor
@@ -24,8 +25,8 @@ MOVES = STORIES.story("S3").parameters["area_move_days"]
 
 
 @pytest.fixture(scope="module")
-def setup() -> Setup:
-    return run()
+def setup(opening: Setup) -> Setup:
+    return opening
 
 
 def _rows(setup: Setup, table: str) -> list[dict[str, Any]]:
@@ -147,7 +148,7 @@ def test_each_rep_moves_twice_within_its_region_and_never_back(setup: Setup) -> 
 
 
 def test_the_other_duties_one_each(setup: Setup) -> None:
-    kinds = Counter(duty.kind for duty in setup.world.duties)
+    kinds = Counter(duty.kind for duty in setup.world.duties if duty.kind != "kam_customer")  # the KAMs': customers
     assert kinds == {"rep_area": 150, "area_manager_region": 6, "pm_line": 11, "dispatcher_dc": 6}
     dispatch = Counter(duty.target for duty in setup.world.duties if duty.kind == "dispatcher_dc")
     assert dispatch == {"DC-JIRNY": 3, "DC-MODRICE": 3}
@@ -203,21 +204,21 @@ def test_discipline_and_pos_skill_follow_s5_and_s6(setup: Setup) -> None:
     }
 
 
-def test_the_null_world_gives_everyone_average_skills() -> None:
+def test_the_null_world_gives_everyone_average_skills(osm_market: Market) -> None:
     null = replace(
         STORIES,
         stories=tuple(replace(story, enabled=False) for story in STORIES.stories),
         anomalies=tuple(replace(anomaly, enabled=False) for anomaly in STORIES.anomalies),
     )
-    actors = run(stories=null).org.actors.values()
+    actors = run(stories=null, market=osm_market).org.actors.values()
     assert {
         (a.skills.conversion, a.skills.retention, a.skills.discount_discipline, a.skills.pos_skill) for a in actors
     } == {(1.0, 1.0, 1.0, 1.0)}
     assert not any(a.skills.skips_visits or a.skills.records_nothing or a.skills.profile for a in actors)
 
 
-def test_two_runs_give_the_same_rows(setup: Setup) -> None:
-    again = run()
+def test_two_runs_give_the_same_rows(setup: Setup, osm_market: Market) -> None:
+    again = run(market=osm_market)
     for table in ("employee", "assignment", "org_unit", "region", "okres"):
         assert again.tables[table] == setup.tables[table], table
 

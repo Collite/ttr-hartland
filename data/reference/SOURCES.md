@@ -9,6 +9,11 @@ Every file in `data/reference/` is one of three kinds:
 Each file is checked against its schema in `schemas/` by `just reference-check`. The OpenStreetMap extract (G0 S0.3)
 is under the ODbL; see [`LICENSE-DATA.md`](../../LICENSE-DATA.md).
 
+**Renamed stores.** The world keeps every OSM name, except for the customers the planted payment cases pin
+(`stories/anomalies.yaml`: A-1's chronic late payers, A-14's credit-blocked customer). Their behaviour is invented
+and the businesses are real, so setup gives each of them an invented Czech name (`Potraviny U Musilů`) on the
+customer, the store and the delivery point; their OSM id, okres and coordinates stay (⚑R196-B).
+
 ## Public facts
 
 **Terms.** Data from ČSÚ (Český statistický úřad) is published under

@@ -22,6 +22,8 @@ import numpy as np
 
 from hartland_sim.streams import STREAMS
 
+Generator = np.random.Generator  # for the draw sites' annotations: no module but this one names np.random
+
 _master_seed: int | None = None
 
 

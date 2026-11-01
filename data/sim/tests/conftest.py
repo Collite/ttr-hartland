@@ -1,5 +1,6 @@
-"""Shared fixtures: the committed reference files (`ref`, the okres table and its parts); and, for the component
-tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
+"""Shared fixtures: the committed reference files (`ref`, the okres table and its parts); the OSM market and the
+opening world setup builds from the committed inputs (`osm_market`, `opening`, one run per session); and, for the
+component tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
 (`hartland_db`), and `put`, which writes one hand-built row into it."""
 
 from __future__ import annotations
@@ -21,6 +22,9 @@ from psycopg.types.json import Jsonb
 from hartland_sim.config import DDL_DIR, Column, InventoryConfig
 from hartland_sim.io.ddl import DOCWH, OWNER, READONLY
 from hartland_sim.io.reference import read
+from hartland_sim.setup import market as market_setup
+from hartland_sim.setup.market import Market
+from hartland_sim.setup.run import Setup, run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -55,6 +59,18 @@ def leaves(okres: dict[str, dict[str, Any]]) -> list[str]:
 def prague_districts(okres: dict[str, dict[str, Any]]) -> list[str]:
     """The 22 Prague districts (`parent_okres` = Praha, `CZ0100`), in order."""
     return [code for code, row in okres.items() if row["parent_okres"] == PRAHA]
+
+
+@pytest.fixture(scope="session")
+def osm_market() -> Market:
+    """The market of the committed OSM extract (`setup.market`): stores, chains, the HoReCa sample."""
+    return market_setup.build()
+
+
+@pytest.fixture(scope="session")
+def opening(osm_market: Market) -> Setup:
+    """The opening world and setup's rows, from the committed inputs (G1 S1.1). Read it, never change it."""
+    return run(market=osm_market)
 
 
 @pytest.fixture(scope="session")
