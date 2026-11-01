@@ -119,6 +119,14 @@ def test_s1_weeks_are_the_curves(stories: StoriesConfig) -> None:
     }
 
 
+def test_s1_and_s2_locate_an_order_where_it_is_sold() -> None:
+    """S1-weather and S2-affluence read an order's place by one rule: a store, an own shop or a web consumer's town.
+    Any other delivery point without a store (a chain's DC, a vending depot, a wholesaler's warehouse) drops out."""
+    sold = re.compile(r"dp\.store_id IS NOT NULL OR o\.channel IN \([^)]*\)")
+    found = {name: sold.findall(_sql(f"detectors/{name}.sql")) for name in ("s1_weather", "s2_affluence")}
+    assert found == {name: ["dp.store_id IS NOT NULL OR o.channel IN ('web', 'own_shops')"] for name in found}
+
+
 def test_s3_names_the_pinned_stars_and_weak_reps(stories: StoriesConfig) -> None:
     expected = [(pin.slot, pin.profile) for pin in stories.pins.reps if pin.profile in {"star", "weak"}]
     assert _values(_sql("detectors/s3.sql"), "pinned") == expected
@@ -142,6 +150,21 @@ def test_s5_names_the_managers_skills(stories: StoriesConfig) -> None:
         rf" FILTER \(WHERE region = '{worst}'\)",
         _sql("detectors/s5_best_worst.sql"),
     )
+
+
+def test_s5s_spread_waits_for_its_threshold(stories: StoriesConfig) -> None:
+    """The spread is gain ÷ cost, not 04's return, so 04's 3 is provisional until G2 S2.3 derives it from the
+    mechanics, at T6: the YAML, the SQL's header and the stories README say so."""
+    (spread,) = stories.story("S5").also
+    assert (spread.sql, spread.metric, spread.threshold, spread.direction) == (
+        "detectors/s5_best_worst.sql",
+        "best_over_worst_gain_per_cost",
+        3,
+        ">=",
+    )
+    assert re.search(r"The threshold,\s+(-- )?3, is provisional", _sql(spread.sql))
+    assert "# Provisional." in _sql("s5.yaml")
+    assert "One is still to be set that way: S5's spread" in " ".join(_sql("README.md").split())
 
 
 def test_s5s_two_files_judge_one_return() -> None:
@@ -329,3 +352,4 @@ def test_dry_lists_the_key(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "stories-check --dry: 6 stories, 10 detectors, 15 probes — nothing run" in out
     assert "      detectors/s1.sql             min_peak_over_trough >= 1.25 · null world <" in out
+    assert "      detectors/s5_best_worst.sql  best_over_worst_gain_per_cost >= 3.0 · null world <" in out

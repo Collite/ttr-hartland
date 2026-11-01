@@ -1,6 +1,6 @@
 -- S1, the weather term (design 04 §S1): Pearson's r of a region's weekly dried-soup cases (each region's cases ÷ its
 -- own mean, so the large regions do not dominate) against its weekly mean temperature, 2024–2025. Cold weeks sell
--- soup: the story gives r ≤ −0.5.
+-- soup: the story gives r ≤ −0.5. The cases are the orders delivered where they are sold, as in s2_affluence.sql.
 WITH weekly_cases AS (
     SELECT a.region_id, date_trunc('week', o.ordered_on)::date AS week, SUM(l.qty_cases) AS cases
     FROM sales_order_line l
@@ -12,6 +12,7 @@ WITH weekly_cases AS (
     JOIN product p ON p.product_id = s.product_id
     JOIN product_line pl ON pl.product_line_id = p.product_line_id
     WHERE pl.code = 'POLEVKY' AND o.ordered_on BETWEEN DATE '2024-01-01' AND DATE '2025-12-31'
+      AND (dp.store_id IS NOT NULL OR o.channel IN ('web', 'own_shops'))
     GROUP BY a.region_id, 2
 ),
 weekly_temp AS (

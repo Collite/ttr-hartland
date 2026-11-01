@@ -114,46 +114,114 @@ def test_s2_compares_mechanic_with_mechanic(db: psycopg.Connection, put: Put) ->
     assert float(metric) == pytest.approx(1.0)
 
 
+def _tv_promotion(db: psycopg.Connection, put: Put) -> None:
+    """Line 1's TV promotion, 2025-11-10…12-21 (42 days), and its 1+1 in the 8 weeks before, 09-08…10-05 (35 clean
+    days before are left). Four okresy, one a quarter: 1 the poorest, 4 the richest."""
+    _catalogue(db, put)
+    for okres, affluence in ((1, 0.8), (2, 0.9), (3, 1.0), (4, 1.3)):
+        put(db, "okres", okres_id=okres, affluence_index=affluence)
+    put(db, "campaign", campaign_id=1, has_tv=True)
+    put(
+        db,
+        "promotion",
+        promotion_id=1,
+        campaign_id=1,
+        target_product_line_id=1,
+        valid_from=date(2025, 11, 10),
+        valid_to=date(2025, 12, 21),
+    )
+    put(
+        db,
+        "promotion",
+        promotion_id=2,
+        target_product_line_id=1,
+        valid_from=date(2025, 9, 8),
+        valid_to=date(2025, 10, 5),
+    )
+    _last_order_day(db, put, date(2026, 10, 31))
+
+
+def _cases(
+    db: psycopg.Connection,
+    put: Put,
+    okres: int,
+    day: date,
+    qty: float,
+    *,
+    store: bool = True,
+    channel: str = "small_retail",
+) -> None:
+    """One order of `qty` cases of line 1, delivered in `okres`: to a store, or to a place without one (a DC, a depot,
+    an own shop, a web consumer's town)."""
+    n = next(_ids)
+    put(db, "delivery_point", delivery_point_id=n, okres_id=okres, store_id=n if store else None)
+    put(db, "sales_order", sales_order_id=n, delivery_point_id=n, channel=channel, ordered_on=day)
+    put(db, "sales_order_line", sales_order_line_id=n, sales_order_id=n, sku_id=1, qty_cases=qty)
+
+
 def test_s2_affluence_reads_the_clean_days_only(db: psycopg.Connection, put: Put) -> None:
     """Gold's 1+1 surges in the TV promotion's 8 weeks before; the days it ran are left out on both sides. The rich
     okres doubles its daily cases, the poor one keeps them: lift 2 over lift 1."""
     with db.transaction(force_rollback=True):
-        _catalogue(db, put)
-        for okres, affluence in ((1, 0.8), (2, 0.9), (3, 1.0), (4, 1.3)):
-            put(db, "okres", okres_id=okres, affluence_index=affluence)
-        put(db, "campaign", campaign_id=1, has_tv=True)
-        put(
-            db,
-            "promotion",
-            promotion_id=1,
-            campaign_id=1,
-            target_product_line_id=1,
-            valid_from=date(2025, 11, 10),
-            valid_to=date(2025, 12, 21),
-        )  # 42 days, 35 clean days before
-        put(
-            db,
-            "promotion",
-            promotion_id=2,
-            target_product_line_id=1,
-            valid_from=date(2025, 9, 8),
-            valid_to=date(2025, 10, 5),
-        )  # inside the 8 weeks before
-
-        def cases(okres: int, day: date, qty: float) -> None:
-            n = next(_ids)
-            put(db, "delivery_point", delivery_point_id=n, okres_id=okres)
-            put(db, "sales_order", sales_order_id=n, delivery_point_id=n, ordered_on=day)
-            put(db, "sales_order_line", sales_order_line_id=n, sales_order_id=n, sku_id=1, qty_cases=qty)
-
-        cases(4, date(2025, 9, 20), 350)  # the 1+1's surge
-        cases(4, date(2025, 10, 20), 35)
-        cases(4, date(2025, 11, 20), 84)
-        cases(1, date(2025, 10, 20), 35)
-        cases(1, date(2025, 11, 20), 42)
-        _last_order_day(db, put, date(2026, 10, 31))
+        _tv_promotion(db, put)
+        _cases(db, put, 4, date(2025, 9, 20), 350)  # the 1+1's surge
+        _cases(db, put, 4, date(2025, 10, 20), 35)
+        _cases(db, put, 4, date(2025, 11, 20), 84)
+        _cases(db, put, 1, date(2025, 10, 20), 35)
+        _cases(db, put, 1, date(2025, 11, 20), 42)
         metric = _one(db, "detectors/s2_affluence.sql")
     assert float(metric) == pytest.approx(2.0)
+
+
+def test_s2_affluence_reads_the_stores_and_the_web_not_the_dcs(db: psycopg.Connection, put: Put) -> None:
+    """A chain that orders to its own DC puts its national volume in the DC's okres, a rich one here: the order leaves
+    the metric at 2. A web consumer's order counts where the consumer lives: doubling the poor okres's cases during
+    the promotion, it brings the metric to 1."""
+    with db.transaction(force_rollback=True):
+        _tv_promotion(db, put)
+        _cases(db, put, 4, date(2025, 10, 20), 35)
+        _cases(db, put, 4, date(2025, 11, 20), 84)
+        _cases(db, put, 1, date(2025, 10, 20), 35)
+        _cases(db, put, 1, date(2025, 11, 20), 42)
+        _cases(db, put, 4, date(2025, 11, 21), 5000, store=False, channel="big_retail")  # to the chain's DC
+        assert float(_one(db, "detectors/s2_affluence.sql")) == pytest.approx(2.0)
+        _cases(db, put, 1, date(2025, 11, 21), 42, store=False, channel="web")
+        metric = _one(db, "detectors/s2_affluence.sql")
+    assert float(metric) == pytest.approx(1.0)
+
+
+def test_s2_affluence_reads_the_own_shops_not_the_depots(db: psycopg.Connection, put: Put) -> None:
+    """An own shop is a site, not a store, and sells where it stands: its order doubles the poor okres's cases during
+    the promotion and brings the metric to 1, as a web order does. A vending operator's depot is not where its
+    machines are: its order in the rich okres leaves the metric at 1."""
+    with db.transaction(force_rollback=True):
+        _tv_promotion(db, put)
+        _cases(db, put, 4, date(2025, 10, 20), 35)
+        _cases(db, put, 4, date(2025, 11, 20), 84)
+        _cases(db, put, 1, date(2025, 10, 20), 35)
+        _cases(db, put, 1, date(2025, 11, 20), 42)
+        _cases(db, put, 1, date(2025, 11, 21), 42, store=False, channel="own_shops")
+        assert float(_one(db, "detectors/s2_affluence.sql")) == pytest.approx(1.0)
+        _cases(db, put, 4, date(2025, 11, 21), 5000, store=False, channel="vending")  # to the operator's depot
+        metric = _one(db, "detectors/s2_affluence.sql")
+    assert float(metric) == pytest.approx(1.0)
+
+
+# ── S1: the region's weeks ───────────────────────────────────────────────────
+
+
+def test_s1_weather_reads_the_stores_not_the_dcs(db: psycopg.Connection, put: Put) -> None:
+    """A chain that orders to its own DC puts its national volume in the DC's okres, and so in the DC's region: the
+    region's week counts the store's 10 cases alone."""
+    with db.transaction(force_rollback=True):
+        _catalogue(db, put, code="POLEVKY")
+        put(db, "okres", okres_id=1)
+        put(db, "area", area_id=1, region_id=1)
+        put(db, "area_okres", area_id=1, okres_id=1)
+        _cases(db, put, 1, date(2025, 1, 15), 10)
+        _cases(db, put, 1, date(2025, 1, 16), 5000, store=False, channel="big_retail")  # to the chain's DC
+        weeks = _cte(db, "detectors/s1_weather.sql", "weekly_cases")
+    assert float(weeks[1]["cases"]) == pytest.approx(10)
 
 
 # ── S3: rates over their bases ───────────────────────────────────────────────
@@ -207,6 +275,35 @@ def test_s3_counts_small_retail_only(db: psycopg.Connection, put: Put) -> None:
         _last_order_day(db, put, date(2024, 12, 31))
         rates = _cte(db, "detectors/s3.sql", "rates")
     assert rates[1]["acquisition"] == 0
+
+
+def test_s3_conversion_counts_the_market_only(db: psycopg.Connection, put: Put) -> None:
+    """The rep converts one visit in two at an independent. Two visits without an order at a key-account chain's
+    station, whose orders come through the key account, leave the rate at a half (counted, they gave a quarter)."""
+    with db.transaction(force_rollback=True):
+        put(db, "area", area_id=10)
+        put(db, "assignment", assignment_id=1, employee_id=1, kind="rep_area", area_id=10, **TENURE)
+        put(db, "chain", chain_id=1, is_key_account=True)
+        put(db, "store", store_id=1, area_id=10, store_class="minimarket")
+        put(db, "store", store_id=2, area_id=10, store_class="petrol", chain_id=1)
+        put(db, "customer", customer_id=1, channel="small_retail", store_id=1)
+        put(db, "customer", customer_id=2, channel="gas_ka", store_id=2)
+        for k, (store, outcome) in enumerate(((1, "order"), (1, "no_order"), (2, "no_order"), (2, "no_order"))):
+            day = date(2024, 3, 4) + timedelta(days=k)
+            put(
+                db,
+                "visit",
+                visit_id=k,
+                employee_id=1,
+                store_id=store,
+                customer_id=store,
+                day=day,
+                kind="sales",
+                outcome=outcome,
+            )
+        _last_order_day(db, put, date(2024, 12, 31))
+        rates = _cte(db, "detectors/s3.sql", "rates")
+    assert float(rates[1]["conversion"]) == pytest.approx(0.5)
 
 
 # ── S5: the gain of a display ────────────────────────────────────────────────
@@ -271,6 +368,20 @@ def test_s5_a_loan_outside_the_history_is_ignored(db: psycopg.Connection, put: P
         db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
         margin = _cte(db, "detectors/s5.sql", "margin")
     assert set(margin) == {1}
+
+
+def test_s5_counts_the_giveaways_from_the_loans_first_day(db: psycopg.Connection, put: Put) -> None:
+    """The loans count from 2024-02-26, so the give-aways do too: one handed out in January is not charged."""
+    with db.transaction(force_rollback=True):
+        _pos(db, put)
+        put(db, "area", area_id=1, region_id=1)
+        put(db, "store", store_id=1, area_id=1)
+        for k, day in enumerate((date(2024, 1, 15), date(2024, 3, 4))):
+            put(db, "visit", visit_id=k, store_id=1, day=day)
+            put(db, "pos_handout", pos_handout_id=k, visit_id=k, cost=100 * (k + 1))
+        _last_order_day(db, put, date(2025, 5, 31))
+        giveaway = _cte(db, "detectors/s5.sql", "giveaway")
+    assert float(giveaway["PHA"]["cost"]) == pytest.approx(200)
 
 
 # ── S6: a difference, not a ratio ────────────────────────────────────────────

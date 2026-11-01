@@ -1057,7 +1057,8 @@ tables:
       - { name: name, type: text }
       - { name: campaign_id, type: bigint, nullable: true, ref: campaign.campaign_id }
       - { name: goal, type: text }
-      - { name: target_product_line_id, type: bigint, nullable: true, ref: product_line.product_line_id }
+      # Every promotion targets a line (every template names one); a SKU promotion's `target_sku_id` narrows it.
+      - { name: target_product_line_id, type: bigint, ref: product_line.product_line_id }
       - { name: target_sku_id, type: bigint, nullable: true, ref: sku.sku_id }
       - { name: target_uplift_pct, type: "numeric(6,2)" }
       - { name: target_period_weeks, type: integer }

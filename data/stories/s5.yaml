@@ -19,7 +19,12 @@ detector:
   null_world: "<"
 also:
   - sql: detectors/s5_best_worst.sql
-    metric: best_over_worst_return
+    metric: best_over_worst_gain_per_cost
+    # Provisional. 04 set the 3 for the return; gain ÷ cost is 1 + the return, so the same story reads smaller (returns
+    # of 1.5 and 0.3, 5× apart, give 2.5 ÷ 1.3 = 1.92). G2 S2.3 derives it once T2's placements and T4's give-aways
+    # exist (at T6, before the first build): the expected gain ÷ cost of PHA and of VCH from this file's and
+    # world.yaml's mechanics over the market (as s2.yaml derives S2-affluence's). It sets the threshold between that
+    # spread and the null world's 1.0, never from a build (stories README).
     threshold: 3
     direction: ">="
     null_world: "<"

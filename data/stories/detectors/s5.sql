@@ -9,9 +9,9 @@ WITH skill (region, pos_skill) AS (
 -- margin at the display's store (at the customer, when the loan names no store) per day during the loan, minus that of
 -- the 8 weeks before, times the loan's days: a store that bought nothing before gains all it buys, and a loan without
 -- orders keeps its cost. Only loans lent from 2024-02-26 count, so their 8 weeks before are inside the history. The
--- cost is the asset's over 36 months for the loan's days, plus the region's give-aways.
+-- cost is the asset's over 36 months for the loan's days, plus the region's give-aways from the same day on.
 as_of AS (
-    SELECT MAX(ordered_on) AS day FROM sales_order
+    SELECT MAX(ordered_on) AS day, DATE '2024-02-26' AS first_day FROM sales_order
 ),
 loan AS (
     SELECT
@@ -26,7 +26,7 @@ loan AS (
     CROSS JOIN as_of
     JOIN pos_asset pa ON pa.pos_asset_id = pl.pos_asset_id
     JOIN region r ON r.region_id = pa.region_id
-    WHERE pl.lent_on BETWEEN DATE '2024-02-26' AND as_of.day
+    WHERE pl.lent_on BETWEEN as_of.first_day AND as_of.day
 ),
 margin AS (
     SELECT
@@ -52,7 +52,7 @@ giveaway AS (
     JOIN area a ON a.area_id = st.area_id
     JOIN region r ON r.region_id = a.region_id
     CROSS JOIN as_of
-    WHERE v.day BETWEEN DATE '2024-01-01' AND as_of.day
+    WHERE v.day BETWEEN as_of.first_day AND as_of.day
     GROUP BY r.code
 ),
 region_return AS (

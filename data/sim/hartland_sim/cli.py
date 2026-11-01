@@ -87,11 +87,12 @@ def ddl(args: argparse.Namespace) -> int:
 
     try:
         inventory = InventoryConfig.load()
-    except ConfigError as error:
+        problems = drift(inventory, args.ddl_dir) if args.check else []
+        changed = [] if args.check else write(inventory, args.ddl_dir)
+    except ConfigError as error:  # the inventory, or a view file missing from --ddl-dir
         print(error, file=sys.stderr)
         return 1
     if args.check:
-        problems = drift(inventory, args.ddl_dir)
         for problem in problems:
             print(problem, file=sys.stderr)
         if problems:
@@ -99,7 +100,6 @@ def ddl(args: argparse.Namespace) -> int:
             return 1
         print(f"hartland-sim ddl --check: data/ddl/ matches data/inventory.yaml ({len(inventory.tables)} tables)")
         return 0
-    changed = write(inventory, args.ddl_dir)
     print(f"hartland-sim ddl: {', '.join(changed) or 'nothing'} {'written' if changed else 'changed'}")
     return 0
 

@@ -18,10 +18,11 @@ The view files are hand-written SELECTs, read by the render, not written by it.
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Mapping
 from pathlib import Path
 
-from hartland_sim.config import DDL_DIR, Column, InventoryConfig, Table, constraint_name
+from hartland_sim.config import DDL_DIR, Column, ConfigError, InventoryConfig, Table, constraint_name
 
 GENERATED = ("schema.sql", "indexes.sql", "views/grants.sql")
 
@@ -43,7 +44,11 @@ _HEADER = (
 
 
 def render(inventory: InventoryConfig, ddl_dir: Path = DDL_DIR) -> dict[str, str]:
-    """The generated files by their path under `ddl_dir`; the view SQL is read from `ddl_dir/views/`."""
+    """The generated files by their path under `ddl_dir`; the view SQL is read from `ddl_dir/views/`. `ConfigError`
+    names every view file missing there (the inventory's own check reads the repo's `data/ddl`, not `--ddl-dir`)."""
+    missing = [view for view in inventory.views if not (ddl_dir / view.sql_file).is_file()]
+    if missing:
+        raise ConfigError("\n".join(f"{view.name}: no {ddl_dir / view.sql_file}" for view in missing))
     return {
         "schema.sql": _schema(inventory, ddl_dir),
         "indexes.sql": _indexes(inventory),
@@ -180,11 +185,5 @@ def _grants(inventory: InventoryConfig) -> str:
 
 
 def _wrapped(names: list[str], prefix: str, width: int = 120) -> list[str]:
-    lines, line = [], prefix
-    for name in names:
-        word = f"{name}, " if name != names[-1] else f"{name};"
-        if len(line) + len(word.rstrip()) > width:
-            lines.append(line.rstrip())
-            line = prefix
-        line += word
-    return [*lines, line.rstrip()]
+    """`names` as a list ending in `;`, wrapped at `width`, each line starting with `prefix`."""
+    return textwrap.wrap(", ".join(names) + ";", width, initial_indent=prefix, subsequent_indent=prefix)
