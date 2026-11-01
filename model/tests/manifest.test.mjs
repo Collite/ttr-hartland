@@ -64,10 +64,11 @@ test('M5 — connections.toml: the one descriptor pg-hartland (CZK, cs, the Open
   assert.match(text, /^schema\s+= "hartland"/m);
 });
 
-test('M6 — toolchain.lock reads as four pins (scripts/toolchain-lock.py): ttr-core 0.20.x and the metadata loader', () => {
+test('M6 — toolchain.lock reads as four pins (scripts/toolchain-lock.py): ttr-core 0.21.1 and the metadata loader on it', () => {
   const out = execFileSync('python3', [path.join(repoRoot, 'scripts/toolchain-lock.py')], { encoding: 'utf-8' });
   const pins = Object.fromEntries(out.trim().split('\n').map((l) => l.split('=')));
   assert.deepEqual(Object.keys(pins), ['TTR_CORE_REF', 'VELES_IMAGE', 'VELES_TTR_METADATA', 'STRICT_LOAD']);
-  assert.match(pins.TTR_CORE_REF, /^grammar\/v0\.20\.\d+$/);
+  assert.equal(pins.TTR_CORE_REF, 'grammar/v0.21.1');
+  assert.equal(pins.VELES_TTR_METADATA, '0.21.1');
   assert.equal(pins.STRICT_LOAD, 'true');
 });

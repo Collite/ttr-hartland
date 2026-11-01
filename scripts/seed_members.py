@@ -12,7 +12,7 @@ One `def term` per member: its words (`forms`) — the name, a product's nicknam
 town — an okres's name too — is not a site's word. Every word passes the NH-D8 guard (`checks.czech`).
 
 **The target is a placeholder.** A term names its member through `for:`, and the toolchain the model is pinned to
-(ttr-core grammar/v0.20.3) reaches a member only as `<er attribute>.<code>` with `valueLabels` on the attribute: there
+(ttr-core grammar/v0.21.1) reaches a member only as `<er attribute>.<code>` with `valueLabels` on the attribute: there
 is no er layer before M1, and an EAN-13 SKU code cannot be a reference segment at all. So at M0 every term points at
 its member vocabulary's column (`db.hartland.<table>.name`; the pack words `sku.pack_format`), which resolves, and
 M3 S3.1 T5 re-targets the terms — extending this script — when it completes the lists. Nothing compiles them before

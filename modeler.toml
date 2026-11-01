@@ -9,7 +9,7 @@ version = "0.1.0"
 preferred = "cs"   # Czech only (NH-D8): the one authored lexicon locale; the en locale is not authored
 
 [schemas]
-# The model kinds in use. `cn` joins at M4 (after cn's CN-P8 S8.6: `variant`).
+# The model kinds in use. `cn` joins at M4 (cn's `variant`, CN-P8 S8.6, is in the pinned grammar 0.21.1).
 declared = ["db", "er", "md", "binding", "lexicon"]
 
 [schemas.hartland]

@@ -61,10 +61,9 @@ jobs:
       # So this tag tracks the toolchain THE SERVING IMAGES WERE BUILT AGAINST. Bump it in the same change that rolls
       # the readers, never before, and rebuild generated/ with the same tag in the same commit.
       #
-      # grammar/v0.20.3 (NH M0, 2026-11-01): ttr-demo's pin since CN-P8 S8.3 — the things-in-time grammar the serving
-      # metadata 0.11.32 (ttr-metadata 0.20.2, [veles] in the lock) reads; a 0.18 loader cannot parse 0.20 syntax and
-      # a 0.20 loader refuses some 0.18 content, so the model is written for the readers bp-dsk and hartland run. Moves
-      # at M4 (cn's `variant`, CN-P8 S8.6), by a D-n.
+      # grammar/v0.21.1 (Bora, NH M0, 2026-11-01): the release with cn's `variant` (CN-P8 S8.6), read by metadata
+      # 0.11.35 (ttr-metadata 0.21.1, [veles] in the lock). bp-dsk and hartland serve 0.11.32 (0.20.2) today, for
+      # ttr-demo's model; they roll to 0.11.35 before this model is served (M5 staging, SW). M4 needs no move.
       #
       # The pin lives in toolchain.lock ([ttr-core].ref), beside the metadata image and the ttr-metadata version it was
       # built with ([veles].image, [veles].ttr-metadata) — one file read by this gate and regenerate.yml.

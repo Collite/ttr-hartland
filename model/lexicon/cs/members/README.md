@@ -17,7 +17,7 @@ One term per member; a word names one member (the editor's `ttr/lexicon-duplicat
 `ttr/lexicon-form-collides-with-name` hold the lists to it — so a factory's town, an okres's name too, is not a site's
 word). Carriers have no list yet: their names are generated at G1 S1.1.
 
-**The `for:` is a placeholder.** The pinned toolchain (ttr-core grammar/v0.20.3) reaches a member only as
+**The `for:` is a placeholder.** The pinned toolchain (ttr-core grammar/v0.21.1) reaches a member only as
 `<er attribute>.<code>` with `valueLabels` on the attribute; there is no er layer before M1, and an EAN-13 SKU code
 cannot be a reference segment. Until M3 S3.1 T5 re-targets each term to its member, it points at its member
 vocabulary's column (`db.hartland.<table>.name`; the pack words `db.hartland.sku.pack_format`) and its `description`
