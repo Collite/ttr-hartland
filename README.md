@@ -49,7 +49,8 @@ ttr-hartland/
 │   │                                        catalogue · the OSM extract · promotion and letter templates
 │   ├── ddl/                                 schema.sql · indexes.sql · views/grants.sql (rendered from the inventory,
 │   │                                        committed, drift-checked) · views/<name>.sql (the views' SELECTs)
-│   ├── schemas/                             the JSON Schemas of world.yaml and inventory.yaml
+│   ├── schemas/                             the JSON Schemas of world.yaml, inventory.yaml, the stories, the
+│   │                                        anomalies, and the promotion and visit-note templates
 │   ├── sim/hartland_sim/ · sim/tests/       the generator
 │   ├── recon/                               invariants · R0 · R1
 │   ├── documents/<yyyy>/<mm>/               the rendered letters and sheets

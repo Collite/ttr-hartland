@@ -7,11 +7,16 @@
 # A table: `name` · `group` (the model's db files) · `grain` · `columns` · `pk` · `load_order` (an integer; every
 # foreign key points to a lower one, or to its own table) · `writer` · `rows_expected` (03's figure) · `serves`
 # (stories S1–S6, demonstrations H-A…H-N) · `id_key` (the business key the id is hashed from, contracts §2; absent
-# when the primary key is the business key itself) · `indexes` (indexes.sql, applied after the load) · `unique`.
+# when the primary key is the business key itself) · `indexes` (indexes.sql, applied after the load) · `unique` ·
+# `docwh: false` (an answer the DocWH is scored against: the hartland_docwh role gets no grant on it).
+# `id_key` names the parts of the business key, which need not be columns: a parent's own key (`customer`), a sequence
+# (`seq`). The generator passes them by these names (S1.1's `row_id(table, **key)`).
 # A column: `name` · `type` · `nullable` (false when absent; contracts §1's `null`, which YAML would read as a null
 # key) · `ref: <table>.<column>` (a foreign key, DEFERRABLE INITIALLY DEFERRED) · `coded: <codes name>` (its values and
-# their Czech labels, below; a CHECK in the DDL) · `label_cs` (the column's Czech label, where the model fixes one).
-# A view: `kind: materialized_view` (or `view`) and `sql_file` under data/ddl/views/.
+# their Czech labels, below; a CHECK in the DDL) · `label_cs` (the column's Czech label, where the model fixes one) ·
+# `docwh: false` (hidden from hartland_docwh, which then gets its table column by column). A column whose `ref` is
+# `document.document_id` is hidden from it too: it says which promotion, price list or SKU a document describes.
+# A view: `kind: materialized_view` (or `view`), `sql_file` under data/ddl/views/ and `docwh`, as a table's.
 #
 # Not here (contracts §1): `_sim_meta` and `_sim_checkpoint`, the generator's own (created by `load-world`).
 
@@ -561,7 +566,7 @@ tables:
       - { name: channel, type: text, coded: document_channel }
       - { name: sender_name, type: text, nullable: true }
       - { name: sender_email, type: text, nullable: true }
-      - { name: sender_customer_id, type: bigint, nullable: true, ref: customer.customer_id }
+      - { name: sender_customer_id, type: bigint, nullable: true, ref: customer.customer_id, docwh: false }
       - { name: format, type: text, coded: document_format }
       - { name: path, type: text }
       - { name: sha256, type: text }
@@ -1628,7 +1633,7 @@ tables:
       - { name: ref_table, type: text, nullable: true }
       - { name: ref_id, type: bigint, nullable: true }
     pk: [stock_movement_id]
-    id_key: [ref_table, ref_id, sku, kind]
+    id_key: [ref_table, ref_id, sku, dc, day, kind]
     indexes: [[sku_id, dc_site_id, day]]
     load_order: 790
     writer: daily
@@ -2043,6 +2048,7 @@ tables:
   - name: document_golden
     group: documents
     grain: the expected extraction of a generated document (the DocWH's answer key)
+    docwh: false
     columns:
       - { name: document_id, type: bigint, ref: document.document_id }
       - { name: schema, type: text }
@@ -2057,6 +2063,7 @@ tables:
   - name: complaint
     group: documents
     grain: a complaint as the company records it
+    docwh: false
     columns:
       - { name: complaint_id, type: bigint }
       - { name: code, type: text }
@@ -2088,6 +2095,7 @@ tables:
   - name: return_request_hdr
     group: documents
     grain: a customer's return request (the header; its state is derived from its lines by the view return_request)
+    docwh: false
     columns:
       - { name: rr_request_number, type: bigint }
       - { name: rr_customer_sk, type: bigint, ref: customer.customer_id }
@@ -2107,6 +2115,7 @@ tables:
   - name: return_request_line
     group: documents
     grain: a line of a return request — the key of the return flow
+    docwh: false
     columns:
       - { name: rl_line_id, type: bigint }
       - { name: rl_request_number, type: bigint, ref: return_request_hdr.rr_request_number }
@@ -2131,6 +2140,7 @@ tables:
   - name: return_receipt
     group: documents
     grain: goods received back against a return line
+    docwh: false
     columns:
       - { name: rc_receipt_id, type: bigint }
       - { name: rc_line_id, type: bigint, ref: return_request_line.rl_line_id }
@@ -2149,6 +2159,7 @@ tables:
   - name: credit_note
     group: documents
     grain: a credit note settling a return line
+    docwh: false
     columns:
       - { name: cn_credit_note_id, type: bigint }
       - { name: cn_line_id, type: bigint, ref: return_request_line.rl_line_id }
@@ -2167,6 +2178,7 @@ tables:
   - name: refund_payment
     group: documents
     grain: the payment of a credit note
+    docwh: false
     columns:
       - { name: rp_payment_id, type: bigint }
       - { name: rp_credit_note_id, type: bigint, ref: credit_note.cn_credit_note_id }
@@ -2182,6 +2194,7 @@ tables:
   - name: replacement_shipment
     group: documents
     grain: a replacement sent for a return line
+    docwh: false
     columns:
       - { name: rs_shipment_id, type: bigint }
       - { name: rs_line_id, type: bigint, ref: return_request_line.rl_line_id }
@@ -2228,6 +2241,7 @@ views:
     kind: view
     group: views
     grain: a return request with its state derived from its lines (received · decided · closed) — the family's own view
+    docwh: false
     sql_file: views/return_request.sql
     load_order: 2040
     serves: [H-I, H-M]

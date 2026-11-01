@@ -6,9 +6,11 @@
   the views from `data/ddl/views/<name>.sql` — the materialized ones `WITH NO DATA`, refreshed by `load-world`.
 - **`indexes.sql`** — the inventory's indexes, applied after the load (G5 S5.1).
 - **`views/grants.sql`** — the roles' rights (contracts §8), applied by `load-world`: the owner role owns, the readonly
-  role reads everything, the DocWH loader reads everything but `document.sender_customer_id` — the ground truth the
-  pipeline is scored against (contracts §5). Postgres cannot revoke one column of a table-wide grant, so the loader
-  gets `document` column by column. The roles exist on the cluster (olymp); this file grants, never creates.
+  role reads everything, the DocWH loader reads no answer the pipeline is scored against (contracts §5): no table or
+  view marked `docwh: false` (the golden extractions, the complaints, the return family), and no column hidden from it
+  — `document.sender_customer_id` and every `document_id` that says which promotion, price list or SKU a document
+  describes (`Column.hidden_from_docwh`). Postgres cannot revoke one column of a table-wide grant, so a table with a
+  hidden column is granted column by column. The roles exist on the cluster (olymp); this file grants, never creates.
 
 The three files are generated and committed; `--check` (CI) fails when a committed file differs from the render.
 The view files are hand-written SELECTs, read by the render, not written by it.
@@ -16,19 +18,16 @@ The view files are hand-written SELECTs, read by the render, not written by it.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 
-from hartland_sim.config import DATA_DIR, Column, InventoryConfig, Table
-
-DDL_DIR = DATA_DIR / "ddl"
+from hartland_sim.config import DDL_DIR, Column, InventoryConfig, Table, constraint_name
 
 GENERATED = ("schema.sql", "indexes.sql", "views/grants.sql")
 
 OWNER = "hartland_owner"
 READONLY = "hartland_readonly"
 DOCWH = "hartland_docwh"
-HIDDEN_FROM_DOCWH = ("document", "sender_customer_id")
 
 # LICENSE-DATA.md §2, in Czech (NH-D8): the comment on the schema.
 LICENCE_NOTICE = (
@@ -112,10 +111,10 @@ def _create_table(schema: str, table: Table, codes: Mapping[str, Mapping[str, st
     lines = [_column(column, codes) for column in table.columns]
     lines.append(f"CONSTRAINT {table.name}_pkey PRIMARY KEY ({', '.join(table.pk)})")
     for key in table.unique:
-        lines.append(f"CONSTRAINT {_name(table.name, key, 'key')} UNIQUE ({', '.join(key)})")
+        lines.append(f"CONSTRAINT {constraint_name(table.name, key, 'key')} UNIQUE ({', '.join(key)})")
     for fk in table.fks:
         lines.append(
-            f"CONSTRAINT {_name(table.name, [fk.column], 'fkey')} FOREIGN KEY ({fk.column})"
+            f"CONSTRAINT {constraint_name(table.name, [fk.column], 'fkey')} FOREIGN KEY ({fk.column})"
             f" REFERENCES {schema}.{fk.table} ({fk.target}) DEFERRABLE INITIALLY DEFERRED"
         )
     body = ",\n".join(f"    {line}" for line in lines)
@@ -132,13 +131,6 @@ def _column(column: Column, codes: Mapping[str, Mapping[str, str]]) -> str:
     return text
 
 
-def _name(table: str, columns: Iterable[str], suffix: str) -> str:
-    name = "_".join([table, *columns, suffix])
-    if len(name) > 63:  # Postgres truncates identifiers at 63 bytes; two long names could then collide
-        raise ValueError(f"{name}: longer than Postgres's 63 bytes — shorten a column name")
-    return name
-
-
 # ── indexes.sql ──────────────────────────────────────────────────────────────
 
 
@@ -147,7 +139,8 @@ def _indexes(inventory: InventoryConfig) -> str:
     for table in inventory.tables:
         for key in table.indexes:
             parts.append(
-                f"CREATE INDEX {_name(table.name, key, 'idx')} ON {inventory.schema}.{table.name} ({', '.join(key)});"
+                f"CREATE INDEX {constraint_name(table.name, key, 'idx')}"
+                f" ON {inventory.schema}.{table.name} ({', '.join(key)});"
             )
     return "\n".join(parts) + "\n"
 
@@ -157,20 +150,41 @@ def _indexes(inventory: InventoryConfig) -> str:
 
 def _grants(inventory: InventoryConfig) -> str:
     schema = inventory.schema
-    hidden_table, hidden_column = HIDDEN_FROM_DOCWH
-    others = [table.name for table in inventory.tables if table.name != hidden_table]
-    others += [view.name for view in inventory.views]
-    visible = [column.name for column in inventory.table(hidden_table).columns if column.name != hidden_column]
+    whole, by_column = [], []
+    for table in inventory.tables:
+        if not table.docwh:
+            continue
+        visible = [column.name for column in table.columns if not column.hidden_from_docwh]
+        if len(visible) == len(table.columns):
+            whole.append(table.name)
+        else:
+            by_column.append(f"GRANT SELECT ({', '.join(visible)}) ON {schema}.{table.name} TO {DOCWH};")
+    whole += [view.name for view in inventory.views if view.docwh]
+    hidden = [table.name for table in inventory.tables if not table.docwh]
+    hidden += [view.name for view in inventory.views if not view.docwh]
     lines = [
         _HEADER,
         f"-- The roles of contracts §8, applied by `load-world` as {OWNER}; they exist on the cluster.",
-        f"-- {DOCWH} reads everything but {hidden_table}.{hidden_column} (contracts §5),",
-        f"-- so it gets {hidden_table} column by column.",
+        f"-- {DOCWH} reads no answer the DocWH is scored against (contracts §5): no grant on",
+        *_wrapped(hidden, "--   "),
+        "-- and a table with a hidden column (a document's sender; a `document_id` saying which promotion, price list",
+        "-- or SKU a document describes) is granted column by column, without it.",
         "",
         f"GRANT USAGE ON SCHEMA {schema} TO {READONLY}, {DOCWH};",
         f"GRANT SELECT ON ALL TABLES IN SCHEMA {schema} TO {READONLY};",
         f"REVOKE ALL ON ALL TABLES IN SCHEMA {schema} FROM {DOCWH};",
     ]
-    lines += [f"GRANT SELECT ON {schema}.{name} TO {DOCWH};" for name in others]
-    lines.append(f"GRANT SELECT ({', '.join(visible)}) ON {schema}.{hidden_table} TO {DOCWH};")
+    lines += [f"GRANT SELECT ON {schema}.{name} TO {DOCWH};" for name in whole]
+    lines += by_column
     return "\n".join(lines) + "\n"
+
+
+def _wrapped(names: list[str], prefix: str, width: int = 120) -> list[str]:
+    lines, line = [], prefix
+    for name in names:
+        word = f"{name}, " if name != names[-1] else f"{name};"
+        if len(line) + len(word.rstrip()) > width:
+            lines.append(line.rstrip())
+            line = prefix
+        line += word
+    return [*lines, line.rstrip()]

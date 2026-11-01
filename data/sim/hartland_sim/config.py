@@ -19,7 +19,7 @@ import hashlib
 import json
 import types
 import typing
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -41,39 +41,53 @@ class ConfigError(ValueError):
 
 
 def read_yaml(path: Path) -> Any:
-    """The YAML at `path` with its dates as ISO strings (the schema speaks JSON); `ConfigError` when it is not YAML."""
+    """The YAML at `path`, its keys as text and its dates as `date`s; `ConfigError` when it is not YAML."""
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as error:
         raise ConfigError(f"{path.name}: not YAML ({error})") from None
-    return _isodates(data)
+    return _text_keys(data)
+
+
+def _text_keys(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _text_keys(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_text_keys(item) for item in value]
+    return value
 
 
 def _isodates(value: Any) -> Any:
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, dict):
-        return {str(key): _isodates(item) for key, item in value.items()}
+        return {key: _isodates(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_isodates(item) for item in value]
     return value
 
 
 def validate(data: Any, schema_name: str, what: str) -> None:
-    """Every problem of `data` against `data/schemas/<schema_name>.schema.json`, raised as one `ConfigError`."""
+    """Every problem of `data` against `data/schemas/<schema_name>.schema.json`, raised as one `ConfigError`.
+
+    The schema speaks JSON, so it checks a copy with the dates as ISO strings (`format: date`); `data` keeps its
+    `date`s for `build`."""
     schema = json.loads((SCHEMA_DIR / f"{schema_name}.schema.json").read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
-    problems = sorted(_problem(error, data) for error in validator.iter_errors(data))
+    json_data = _isodates(data)
+    errors = validator.iter_errors(json_data)
+    problems = sorted({problem for error in errors for problem in _problems(error, json_data)})
     if problems:
         raise ConfigError("\n".join(f"{what}: {problem}" for problem in problems))
 
 
-def _problem(error: Any, data: Any) -> str:
+def _problems(error: Any, data: Any) -> list[str]:
     path = _path(error.absolute_path, data)
     if error.validator == "required":
+        # One error per missing key, each carrying the whole `required` list: name every key the object lacks.
         missing = [name for name in error.validator_value if name not in error.instance]
-        return f"{'.'.join([*path, missing[0]])}: missing"
-    return f"{'.'.join(path) or '(top)'}: {error.message}"
+        return [f"{'.'.join([*path, name])}: missing" for name in missing]
+    return [f"{'.'.join(path) or '(top)'}: {error.message}"]
 
 
 def _path(parts: Any, data: Any) -> list[str]:
@@ -128,7 +142,7 @@ def _convert(tp: Any, value: Any) -> Any:
             return tuple(_convert(args[0], item) for item in value)
         return tuple(_convert(arg, item) for arg, item in zip(args, value, strict=True))
     if tp is date:
-        return date.fromisoformat(value)
+        return value if isinstance(value, date) else date.fromisoformat(value)
     if tp is float:
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise TypeError(f"{value!r} is not a number")
@@ -150,6 +164,8 @@ def _frozen(value: Any) -> Any:
 
 # ── WorldConfig (data/world.yaml) ────────────────────────────────────────────
 
+# `special_retail` is world.yaml's own key (its factors, terms, limits, listings). In the data it is a sub-channel:
+# G1 writes `channel = small_retail`, `sub_channel = special_retail` (the inventory's `channel` list has no such value).
 Channel = Literal["big_retail", "small_retail", "special_retail", "gas_ka", "own_shops", "web", "vending", "horeca"]
 Phase = Literal["potential", "occasional", "regular", "vip"]
 
@@ -414,6 +430,8 @@ class WorldConfig:
 # ── InventoryConfig (data/inventory.yaml) ────────────────────────────────────
 
 INVENTORY_FILE = DATA_DIR / "inventory.yaml"
+DDL_DIR = DATA_DIR / "ddl"
+DOCUMENT_KEY = "document.document_id"
 
 Writer = Literal["setup", "daily", "month_end", "quarter_end", "year_end", "documents"]
 
@@ -426,6 +444,12 @@ class Column:
     ref: str | None = None  # "<table>.<column>"
     coded: str | None = None  # a name of `InventoryConfig.codes`
     label_cs: str | None = None
+    docwh: bool = True  # false: hidden from hartland_docwh (contracts §5)
+
+    @property
+    def hidden_from_docwh(self) -> bool:
+        """An answer the DocWH is scored against: marked so, or a provenance link to the document it was read from."""
+        return not self.docwh or self.ref == DOCUMENT_KEY
 
 
 @dataclass(frozen=True)
@@ -449,6 +473,7 @@ class Table:
     id_key: tuple[str, ...] | None = None
     unique: tuple[tuple[str, ...], ...] = ()
     indexes: tuple[tuple[str, ...], ...] = ()
+    docwh: bool = True  # false: an answer the DocWH is scored against, no grant to hartland_docwh
 
     @property
     def fks(self) -> tuple[ForeignKey, ...]:
@@ -461,6 +486,20 @@ class Table:
         (found,) = [column for column in self.columns if column.name == name]
         return found
 
+    @property
+    def constraint_names(self) -> tuple[str, ...]:
+        """The names `just ddl` gives the primary key, the unique keys, the foreign keys and the indexes."""
+        return (
+            f"{self.name}_pkey",
+            *(constraint_name(self.name, key, "key") for key in self.unique),
+            *(constraint_name(self.name, [fk.column], "fkey") for fk in self.fks),
+            *(constraint_name(self.name, key, "idx") for key in self.indexes),
+        )
+
+
+def constraint_name(table: str, columns: Iterable[str], suffix: str) -> str:
+    return "_".join([table, *columns, suffix])
+
 
 @dataclass(frozen=True)
 class View:
@@ -471,6 +510,7 @@ class View:
     sql_file: str  # relative to data/ddl/
     load_order: int
     serves: tuple[str, ...]
+    docwh: bool = True
 
 
 @dataclass(frozen=True)
@@ -518,6 +558,8 @@ class InventoryConfig:
         problems += [
             f"{view.name}: a view loads after every table" for view in self.views if view.load_order <= last_table
         ]
+        missing = [view for view in self.views if not (DDL_DIR / view.sql_file).is_file()]
+        problems += [f"{view.name}: no data/ddl/{view.sql_file}" for view in missing]
         return problems
 
     def _table_problems(self, table: Table, by_name: Mapping[str, Table]) -> list[str]:
@@ -535,6 +577,8 @@ class InventoryConfig:
             problems += [f"{table.name}: {what} names no column {name!r}" for name in key if name not in columns]
         if table.id_key is not None and len(table.pk) > 1:
             problems += [f"{table.name}: an id_key with a composite pk {list(table.pk)}"]
+        # Postgres truncates a name at 63 bytes, so two long names could collide: shorten a column name.
+        problems += [f"{table.name}: {name} is over 63 bytes" for name in table.constraint_names if len(name) > 63]
         for column in table.columns:
             if column.coded is not None and column.coded not in self.codes:
                 problems.append(f"{table.name}.{column.name}: coded {column.coded!r} is no code list")

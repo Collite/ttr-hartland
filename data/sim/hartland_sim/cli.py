@@ -105,7 +105,7 @@ def ddl(args: argparse.Namespace) -> int:
 
 
 def _ddl_arguments(parser: argparse.ArgumentParser) -> None:
-    from hartland_sim.io.ddl import DDL_DIR
+    from hartland_sim.config import DDL_DIR
 
     parser.add_argument("--check", action="store_true", help="fail when data/ddl/ differs from the render (CI)")
     parser.add_argument("--ddl-dir", type=Path, default=DDL_DIR, help="the DDL folder (default: the repo's data/ddl)")

@@ -10,8 +10,8 @@ import pytest
 
 from hartland_sim.checks.czech import assert_czech
 from hartland_sim.cli import main
-from hartland_sim.config import InventoryConfig
-from hartland_sim.io.ddl import DDL_DIR, GENERATED, LICENCE_NOTICE, drift, render, write
+from hartland_sim.config import DDL_DIR, InventoryConfig
+from hartland_sim.io.ddl import GENERATED, LICENCE_NOTICE, drift, render, write
 
 
 @pytest.fixture(scope="module")
@@ -68,17 +68,67 @@ def test_the_schema_carries_the_licence_in_czech(schema_sql: str) -> None:
     assert_czech(LICENCE_NOTICE, what="the schema comment", allow=names)
 
 
-def test_the_docwh_loader_never_reads_the_sender(inventory: InventoryConfig) -> None:
+# The answers the DocWH is scored against (contracts §5): the golden extractions, the complaints, the return family.
+ANSWERS = {
+    "document_golden",
+    "complaint",
+    "return_request_hdr",
+    "return_request_line",
+    "return_receipt",
+    "credit_note",
+    "refund_payment",
+    "replacement_shipment",
+    "return_request",
+}
+# The tables the loader reads column by column: the sender, and the provenance `document_id`s.
+BY_COLUMN = {
+    "document",
+    "sku",
+    "standard_price_list",
+    "channel_price_list",
+    "prompt_rule",
+    "lifecycle_rule",
+    "campaign",
+    "promotion",
+}
+
+
+def _docwh_grants(grants: str) -> tuple[set[str], dict[str, list[str]]]:
+    """What hartland_docwh is granted: the tables and views whole, and the column lists by table."""
+    whole = set(re.findall(r"^GRANT SELECT ON hartland\.(\w+) TO hartland_docwh;$", grants, re.M))
+    pattern = r"^GRANT SELECT \((.*)\) ON hartland\.(\w+) TO hartland_docwh;$"
+    by_column = {table: columns.split(", ") for columns, table in re.findall(pattern, grants, re.M)}
+    return whole, by_column
+
+
+def test_the_docwh_loader_reads_no_answer(inventory: InventoryConfig) -> None:
     grants = render(inventory)["views/grants.sql"]
-    (document,) = re.findall(r"^GRANT SELECT \((.*)\) ON hartland\.document TO hartland_docwh;$", grants, re.M)
-    columns = document.split(", ")
-    assert "sender_customer_id" not in columns
-    assert set(columns) == {column.name for column in inventory.table("document").columns} - {"sender_customer_id"}
-    assert "GRANT SELECT ON hartland.document TO hartland_docwh;" not in grants
-    granted = set(re.findall(r"^GRANT SELECT ON hartland\.(\w+) TO hartland_docwh;$", grants, re.M))
+    whole, by_column = _docwh_grants(grants)
+    hidden = {table.name for table in inventory.tables if not table.docwh}
+    assert hidden | {view.name for view in inventory.views if not view.docwh} == ANSWERS
+    assert not (whole | set(by_column)) & ANSWERS
+    assert set(by_column) == BY_COLUMN
     everything = {table.name for table in inventory.tables} | {view.name for view in inventory.views}
-    assert granted == everything - {"document"}
+    assert whole == everything - ANSWERS - BY_COLUMN
+    for table, columns in by_column.items():
+        refs = {column.name: column.ref for column in inventory.table(table).columns}
+        assert [name for name in columns if refs[name] == "document.document_id"] == [], table
+        assert set(columns) == set(refs) - {name for name, ref in refs.items() if ref == "document.document_id"} - {
+            "sender_customer_id"
+        }, table
+    assert "sender_customer_id" not in by_column["document"]
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA hartland TO hartland_readonly;" in grants
+
+
+def test_a_view_the_docwh_loader_reads_reads_no_answer(inventory: InventoryConfig) -> None:
+    """A view runs with its owner's rights, so a view that read an answer would hand it on."""
+    hidden = {table.name for table in inventory.tables if not table.docwh}
+    hidden |= {column.name for table in inventory.tables for column in table.columns if column.hidden_from_docwh}
+    for view in inventory.views:
+        if view.docwh:
+            lines = (DDL_DIR / view.sql_file).read_text(encoding="utf-8").splitlines()
+            words = {word for line in lines for word in re.findall(r"\w+", line.split("--")[0])}
+            assert not words & hidden, view.name
 
 
 def test_every_index_of_the_inventory(inventory: InventoryConfig) -> None:

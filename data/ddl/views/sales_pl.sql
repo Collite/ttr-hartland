@@ -3,8 +3,11 @@
 -- line's discount list by kind; `retro` rolls into discount_individual (contracts §4, the review-189 note), while the
 -- GL keeps it on its own account. Money in CZK without VAT.
 --
--- The rep: the one assigned to the store's area on the order day, else the KAM assigned to the customer, else whoever
--- took the order. The area: the store's, else the delivery point's okres's.
+-- The rep is whoever answers for the sale on the order day: in small retail (station shops included, a sub-channel)
+-- the rep assigned to the store's area; in the KAM channels (big retail, gas KA, vending, HoReCa) the KAM assigned to
+-- the customer; else (own shops, the web, an area or customer without one) whoever took the order. A rep still sees
+-- the chain stores of their area, through `area_id`, not through this column. The area: the store's, else the
+-- delivery point's okres's.
 SELECT
     l.sales_order_line_id AS line_id,
     o.sales_order_id AS order_id,
@@ -18,7 +21,10 @@ SELECT
     l.sku_id,
     p.product_line_id,
     pl.brand_id,
-    COALESCE(rep.employee_id, kam.employee_id, o.taken_by_employee_id) AS rep_employee_id,
+    CASE
+        WHEN o.channel = 'small_retail' THEN COALESCE(rep.employee_id, o.taken_by_employee_id)
+        ELSE COALESCE(kam.employee_id, o.taken_by_employee_id)
+    END AS rep_employee_id,
     COALESCE(st.area_id, ao.area_id) AS area_id,
     ok.code AS okres_code,
     o.dc_site_id,

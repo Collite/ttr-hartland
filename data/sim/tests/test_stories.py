@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import shutil
 from collections import Counter
+from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -249,6 +251,37 @@ def test_a_missing_detector_and_a_missing_probe_fail_together(stories_copy: Path
     assert str(error.value).splitlines() == [
         "s2.yaml: no detectors/s2_affluence.sql",
         "anomalies.yaml: A-9: no probes/a9.sql",
+    ]
+
+
+def test_the_parameters_dates_are_dates(stories: StoriesConfig) -> None:
+    assert stories.anomaly("A-2").parameters["launched_on"] == date(2025, 9, 1)
+    assert stories.anomaly("A-9").parameters["month"] == date(2026, 3, 1)
+
+    def strings(value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value] if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) else []
+        if isinstance(value, Mapping):
+            return [text for item in value.values() for text in strings(item)]
+        if isinstance(value, tuple):
+            return [text for item in value for text in strings(item)]
+        return []
+
+    parameters = [story.parameters for story in stories.stories] + [anomaly.parameters for anomaly in stories.anomalies]
+    assert strings(tuple(parameters)) == []
+
+
+def test_two_missing_keys_of_a_detector_are_both_named(stories_copy: Path) -> None:
+    def two(data: dict[str, Any]) -> None:
+        data["detector"].pop("metric")
+        data["detector"].pop("threshold")
+
+    _edit(stories_copy / "s4.yaml", two)
+    with pytest.raises(ConfigError) as error:
+        StoriesConfig.load(stories_copy)
+    assert str(error.value).splitlines() == [
+        "s4.yaml: detector.metric: missing",
+        "s4.yaml: detector.threshold: missing",
     ]
 
 

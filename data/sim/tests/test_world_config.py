@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import date
 from functools import reduce
 from pathlib import Path
 from typing import Any
@@ -179,6 +180,27 @@ def _broken(tmp_path: Path, change: Any) -> Path:
 def test_a_missing_key_fails_with_its_path(tmp_path: Path) -> None:
     path = _broken(tmp_path, lambda data: data["pricing"]["tiers"].pop("volume"))
     with pytest.raises(ConfigError, match=r"^world\.yaml: pricing\.tiers\.volume: missing$"):
+        WorldConfig.load(path)
+
+
+def test_two_missing_keys_of_one_object_are_both_named(tmp_path: Path) -> None:
+    def two(data: dict[str, Any]) -> None:
+        data["salesforce"].pop("reps")
+        data["salesforce"].pop("dispatchers")
+
+    with pytest.raises(ConfigError) as error:
+        WorldConfig.load(_broken(tmp_path, two))
+    assert str(error.value).splitlines() == [
+        "world.yaml: salesforce.dispatchers: missing",
+        "world.yaml: salesforce.reps: missing",
+    ]
+
+
+def test_a_date_stays_a_date_and_a_number_is_no_date(world: WorldConfig, tmp_path: Path) -> None:
+    """The schema checks the dates as ISO strings; the typed view keeps them as `date`s."""
+    assert world.history.first_day == date(2024, 1, 1)
+    path = _broken(tmp_path, lambda data: data["history"].update(first_day=31))
+    with pytest.raises(ConfigError, match=r"^world\.yaml: history\.first_day: 31 is not of type 'string'$"):
         WorldConfig.load(path)
 
 

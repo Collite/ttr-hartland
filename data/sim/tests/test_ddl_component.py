@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from datetime import date
 
 import psycopg
 import pytest
@@ -11,6 +13,8 @@ from hartland_sim.config import InventoryConfig
 from hartland_sim.io.ddl import DOCWH, LICENCE_NOTICE, READONLY
 
 pytestmark = pytest.mark.component
+
+Put = Callable[..., None]  # conftest's `put`
 
 # information_schema's spelling of the inventory's types.
 _TYPES = {"timestamptz": "timestamp with time zone", "time": "time without time zone"}
@@ -80,16 +84,27 @@ def test_every_index_is_there(db: psycopg.Connection, inventory: InventoryConfig
     assert expected <= names
 
 
-def test_the_docwh_loader_cannot_read_the_sender(db: psycopg.Connection) -> None:
-    """contracts §5: the column-level grant, tested."""
+def test_the_docwh_loader_reads_no_answer(db: psycopg.Connection) -> None:
+    """contracts §5: the sender, the answer tables and views, and the provenance `document_id`s are refused."""
+    refused = [
+        "SELECT sender_customer_id FROM hartland.document",
+        "SELECT * FROM hartland.document",
+        "SELECT * FROM hartland.document_golden",
+        "SELECT * FROM hartland.complaint",
+        "SELECT * FROM hartland.return_request_hdr",
+        "SELECT * FROM hartland.return_request",
+        "SELECT document_id FROM hartland.promotion",
+        "SELECT launch_document_id FROM hartland.sku",
+    ]
     db.execute(f"SET ROLE {DOCWH}")
     try:
         db.execute("SELECT document_id, code, family, path FROM hartland.document")
         db.execute("SELECT count(*) FROM hartland.customer")
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            db.execute("SELECT sender_customer_id FROM hartland.document")
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            db.execute("SELECT * FROM hartland.document")
+        db.execute("SELECT code, target_sku_id FROM hartland.promotion")
+        db.execute("SELECT count(*) FROM hartland.sales_pl")
+        for statement in refused:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                db.execute(statement)
     finally:
         db.execute("RESET ROLE")
     db.execute(f"SET ROLE {READONLY}")
@@ -97,6 +112,37 @@ def test_the_docwh_loader_cannot_read_the_sender(db: psycopg.Connection) -> None
         db.execute("SELECT sender_customer_id FROM hartland.document")
     finally:
         db.execute("RESET ROLE")
+
+
+def test_sales_pl_credits_a_kam_channel_sale_to_the_kam(db: psycopg.Connection, put: Put) -> None:
+    """At one store with an area rep: a big-retail sale is the customer's KAM's, a small-retail sale the rep's, and an
+    own-shop sale (no KAM) the taker's."""
+    year = {"valid_from": date(2024, 1, 1), "valid_to": date(2026, 12, 31)}
+    with db.transaction(force_rollback=True):
+        put(db, "okres", okres_id=1)
+        put(db, "store", store_id=2, okres_id=1, area_id=3)
+        put(db, "assignment", assignment_id=4, employee_id=41, kind="rep_area", area_id=3, **year)
+        put(db, "assignment", assignment_id=5, employee_id=51, kind="kam_customer", customer_id=10, **year)
+        put(db, "product_line", product_line_id=6)
+        put(db, "product", product_id=7, product_line_id=6)
+        put(db, "sku", sku_id=8, product_id=7)
+        for n, channel in ((10, "big_retail"), (11, "small_retail"), (12, "own_shops")):
+            put(db, "customer", customer_id=n, channel=channel)
+            put(db, "delivery_point", delivery_point_id=n, customer_id=n, store_id=2, okres_id=1)
+            put(
+                db,
+                "sales_order",
+                sales_order_id=n,
+                customer_id=n,
+                delivery_point_id=n,
+                channel=channel,
+                ordered_on=date(2025, 3, 3),
+                taken_by_employee_id=99,
+            )
+            put(db, "sales_order_line", sales_order_line_id=n, sales_order_id=n, sku_id=8)
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        rows = db.execute("SELECT order_id, rep_employee_id FROM hartland.sales_pl ORDER BY order_id").fetchall()
+    assert rows == [(10, 51), (11, 41), (12, 99)]
 
 
 def test_a_deferred_key_lets_a_load_copy_children_first(db: psycopg.Connection) -> None:

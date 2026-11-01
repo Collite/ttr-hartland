@@ -130,6 +130,8 @@ def test_every_table_with_an_id_has_its_business_key(inventory: InventoryConfig)
     for table in inventory.tables:
         surrogate = len(table.pk) == 1 and table.name not in {"calendar", "document_golden"}
         assert (table.id_key is not None) is surrogate, table.name
+    # a transfer's two legs (one per DC), and two write-offs without a ref, hash apart
+    assert {"dc", "day"} <= set(inventory.table("stock_movement").id_key or ())
 
 
 def test_the_provenance_columns_of_contracts_5(inventory: InventoryConfig) -> None:
@@ -239,6 +241,34 @@ def test_an_unknown_code_list_and_a_missing_key_column_fail_together(tmp_path: P
     assert str(error.value).splitlines() == [
         "inventory.yaml: site.kind: coded 'site_kinds' is no code list",
         "inventory.yaml: store: index names no column 'chain'",
+    ]
+
+
+def test_two_missing_keys_of_a_column_are_both_named(tmp_path: Path) -> None:
+    def bare(tables: dict[str, Any], data: Any) -> None:
+        tables["kraj"]["columns"][1] = {"nullable": True}
+
+    with pytest.raises(ConfigError) as error:
+        InventoryConfig.load(_broken(tmp_path, bare))
+    assert str(error.value).splitlines() == [
+        "inventory.yaml: tables.kraj.columns.1.name: missing",
+        "inventory.yaml: tables.kraj.columns.1.type: missing",
+    ]
+
+
+def test_a_missing_view_file_and_a_long_name_fail_together(tmp_path: Path) -> None:
+    """Both would otherwise crash `just ddl` with a traceback: they arrive as problem lines instead."""
+
+    def two(tables: dict[str, Any], data: Any) -> None:
+        tables["promotion"]["indexes"] = [["target_product_line_id", "target_uplift_pct", "target_period_weeks"]]
+        data["views"][0]["sql_file"] = "views/nowhere.sql"
+
+    with pytest.raises(ConfigError) as error:
+        InventoryConfig.load(_broken(tmp_path, two))
+    assert str(error.value).splitlines() == [
+        "inventory.yaml: promotion: promotion_target_product_line_id_target_uplift_pct_target_period_weeks_idx is over"
+        " 63 bytes",
+        "inventory.yaml: sales_pl: no data/ddl/views/nowhere.sql",
     ]
 
 
