@@ -10,9 +10,11 @@
 # nothing. The job never commits authored model/**: the script refuses a build that changed it.
 #
 # The App's token is minted only after the build, when there is something to push: the checkout persists no
-# credentials, so nothing the toolchain build runs can read a write token. Until the App's secrets exist on this repo
-# (STUDIO_APP_ID / STUDIO_APP_PRIVATE_KEY) a stale branch cannot be pushed: a dispatched run then fails, a pull-request
-# run warns (model-gate's check-model reports the same branch red anyway).
+# credentials, so nothing the toolchain build runs can read a write token. A push that loses a race rebuilds on the new
+# head; regenerate-push.sh takes the token out of its environment first, so that rebuild cannot read it either.
+#
+# Until the App's secrets exist on this repo (STUDIO_APP_ID / STUDIO_APP_PRIVATE_KEY) a stale branch cannot be pushed:
+# a dispatched run then fails, a pull-request run warns (model-gate's check-model reports the same branch red anyway).
 name: regenerate
 
 on:

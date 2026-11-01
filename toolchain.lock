@@ -7,6 +7,8 @@
 # load-bearing: the ⛔ PINNED comment block in .github/workflows/model-gate.yml.
 #
 # A pin is frozen inside a phase and moves by a D-n. M4's cn layer needs no move: 0.21.1 reads `variant`.
+# Whoever moves a [veles] pin runs `just check-veles-pin`: olymp's metadata release on bp-dsk and hartland = image,
+# and ttr-server's server-libs/v<image> builds with ttr-metadata.
 # No [ttrp] / [automation-preview] tables: this model has no TTR-P recipes and no automation package.
 [ttr-core]
 ref = "grammar/v0.21.1"          # the gate's toolchain checkout (Bora, 2026-11-01)

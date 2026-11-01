@@ -166,3 +166,9 @@ build-loader:
 # Rebuild generated/ with the toolchain toolchain.lock pins (scripts/regenerate-local.sh; regenerate.yml runs the same).
 regenerate:
     bash scripts/regenerate-local.sh
+
+# Whoever moves a [veles] pin runs this (scripts/check-veles-pin.sh; not CI, olymp is private): the metadata release
+# olymp deploys on bp-dsk and hartland is [veles].image, and ttr-server's server-libs/v<image> names
+# [veles].ttr-metadata. `just check-veles-pin [<olymp-checkout> [<revision>]]` — default ../olymp, origin/master.
+check-veles-pin *ARGS:
+    bash scripts/check-veles-pin.sh "$@"
