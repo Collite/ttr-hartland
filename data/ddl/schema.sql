@@ -592,7 +592,7 @@ CREATE TABLE hartland.promotion (
     name text NOT NULL,
     campaign_id bigint,
     goal text NOT NULL,
-    target_product_line_id bigint,
+    target_product_line_id bigint NOT NULL,
     target_sku_id bigint,
     target_uplift_pct numeric(6,2) NOT NULL,
     target_period_weeks integer NOT NULL,

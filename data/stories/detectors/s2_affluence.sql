@@ -13,8 +13,7 @@ tv AS (
     FROM promotion pr
     CROSS JOIN as_of
     JOIN campaign ca ON ca.campaign_id = pr.campaign_id
-    WHERE ca.has_tv AND pr.target_product_line_id IS NOT NULL
-      AND pr.valid_from BETWEEN DATE '2024-02-26' AND as_of.day
+    WHERE ca.has_tv AND pr.valid_from BETWEEN DATE '2024-02-26' AND as_of.day
 ),
 clean_day AS (
     SELECT tv.promotion_id, tv.line_id, d.day, d.day >= tv.valid_from AS during
