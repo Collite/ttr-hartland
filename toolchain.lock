@@ -1,10 +1,10 @@
 # The toolchain the model is written for — set by Bora 2026-11-01 (NH M0 S0.1): ttr-core grammar/v0.21.1, the release
 # with cn's `variant` (CN-P8 S8.6, ttr-core#349), and the metadata release built on it, server-libs 0.11.35
-# (ttr-server#367). Started from ttr-demo's lock (grammar/v0.20.3, metadata 0.11.32 — what bp-dsk and hartland serve
-# today); the readers roll to 0.11.35 before this model is served (M5's staging on bp-dsk, SW on hartland). Bump in
-# the same change that rolls the readers; rebuild generated/ with the same pins in the same commit. Read by
-# model-gate.yml and regenerate.yml through scripts/toolchain-lock.py. Why the pin is load-bearing: the ⛔ PINNED
-# comment block in .github/workflows/model-gate.yml.
+# (ttr-server#367). Started from ttr-demo's lock (grammar/v0.20.3, metadata 0.11.32). The readers are already on
+# 0.11.35: bp-dsk since olymp#258 and hartland since olymp#259 (both 2026-11-01), serving ttr-demo's model until M5's
+# staging and SW put this one there. Bump in the same change that rolls the readers; rebuild generated/ with the same
+# pins in the same commit. Read by model-gate.yml and regenerate.yml through scripts/toolchain-lock.py. Why the pin is
+# load-bearing: the ⛔ PINNED comment block in .github/workflows/model-gate.yml.
 #
 # A pin is frozen inside a phase and moves by a D-n. M4's cn layer needs no move: 0.21.1 reads `variant`.
 # No [ttrp] / [automation-preview] tables: this model has no TTR-P recipes and no automation package.

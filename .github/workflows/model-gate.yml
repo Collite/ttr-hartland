@@ -62,8 +62,8 @@ jobs:
       # the readers, never before, and rebuild generated/ with the same tag in the same commit.
       #
       # grammar/v0.21.1 (Bora, NH M0, 2026-11-01): the release with cn's `variant` (CN-P8 S8.6), read by metadata
-      # 0.11.35 (ttr-metadata 0.21.1, [veles] in the lock). bp-dsk and hartland serve 0.11.32 (0.20.2) today, for
-      # ttr-demo's model; they roll to 0.11.35 before this model is served (M5 staging, SW). M4 needs no move.
+      # 0.11.35 (ttr-metadata 0.21.1, [veles] in the lock). bp-dsk and hartland run 0.11.35 since 2026-11-01
+      # (olymp#258, #259), for ttr-demo's model, so the readers are already at this pin. M4 needs no move.
       #
       # The pin lives in toolchain.lock ([ttr-core].ref), beside the metadata image and the ttr-metadata version it was
       # built with ([veles].image, [veles].ttr-metadata) — one file read by this gate and regenerate.yml.
