@@ -11,14 +11,16 @@ parameters:
   disciplined_choice_exponent: 2 # a disciplined rep grants ∝ elasticity ^ (discipline × 2), below the line's maximum
   undisciplined_discount_pct: [5, 8] # flat, to whoever asks
   undisciplined_target_miss_pct: [20, 40] # an undisciplined product manager's targets miss by this much
-  # Pinned: two disciplined and two undisciplined reps (by the area of their first assignment, as in anomalies.yaml)
-  # and the product managers of two lines.
+  # Pinned: two disciplined and two undisciplined reps (by the area they hold on the warm-up's first day, as in
+  # anomalies.yaml) and the product managers of two lines.
   pinned_reps: { SJC-02: 1.4, ZSC-02: 1.35, SMS-02: 0.5, VCH-05: 0.55 }
   pinned_product_managers: { GOLD: 1.4, CLASSIC: 0.5 }
 detector:
   sql: detectors/s6.sql
-  metric: disciplined_over_undisciplined_margin_per_discount
-  threshold: 2
+  # The disciplined reps' margin gained per discount crown minus the undisciplined reps': 04's "> 1 … < 0.5" gives
+  # at least 0.5. A difference, because the undisciplined gain is negative by design.
+  metric: disciplined_minus_undisciplined_margin_per_discount
+  threshold: 0.5
   direction: ">="
   null_world: "<"
 also:

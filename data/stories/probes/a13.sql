@@ -1,5 +1,6 @@
--- A-13 — the rejected prompt pattern: customers who rejected three unsupplied-items prompts naming the noodle line
--- and got none after the third.
+-- A-13 — the rejected prompt pattern: customers who rejected three unsupplied-items prompts naming the noodle line and
+-- got no noodle prompt after the third rejection: the prompt that brought the running count of rejections to 3 is
+-- their last one. A customer who goes on getting (and rejecting) them is not the pattern.
 WITH noodle AS (
     SELECT rp.customer_id, rp.generated_on, rp.outcome,
            COUNT(*) FILTER (WHERE rp.outcome = 'rejected') OVER (
@@ -13,6 +14,5 @@ FROM (
     SELECT customer_id
     FROM noodle
     GROUP BY customer_id
-    HAVING MAX(rejected_so_far) >= 3
-       AND COUNT(*) FILTER (WHERE rejected_so_far >= 3 AND outcome <> 'rejected') = 0
+    HAVING COUNT(*) FILTER (WHERE rejected_so_far >= 3) = 1
 ) stopped

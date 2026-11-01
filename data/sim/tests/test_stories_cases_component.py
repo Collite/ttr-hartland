@@ -1,0 +1,328 @@
+"""G0 S0.4 T3, the component tier: the detectors' and probes' definitions on hand-built rows. Each case writes only the
+rows its SQL reads (conftest's `put`), inside a transaction that rolls back; the foreign keys are deferred, so the
+rest is never missed. G5 S5.2 tunes the stories' parameters on the build; these cases pin what the SQL means."""
+
+from __future__ import annotations
+
+import itertools
+import re
+from collections.abc import Callable
+from datetime import date, timedelta
+from typing import Any
+
+import psycopg
+import pytest
+
+from hartland_sim.config import STORIES_DIR
+
+pytestmark = pytest.mark.component
+
+Put = Callable[..., None]  # conftest's `put`
+
+_ids = itertools.count(10_000)
+
+
+@pytest.fixture(scope="module")
+def db(hartland_db: psycopg.Connection) -> psycopg.Connection:
+    return hartland_db
+
+
+def _one(db: psycopg.Connection, name: str) -> Any:
+    """The file's one number."""
+    db.execute("SET LOCAL search_path TO hartland")
+    ((value,),) = db.execute((STORIES_DIR / name).read_text(encoding="utf-8")).fetchall()
+    return value
+
+
+def _cte(db: psycopg.Connection, name: str, cte: str) -> dict[Any, dict[str, Any]]:
+    """The rows of the CTE `cte` of the file, by their first column, each as a mapping of its columns."""
+    sql = (STORIES_DIR / name).read_text(encoding="utf-8")
+    final = re.search(r"^SELECT", sql, re.M)  # the final SELECT starts its line; the CTEs' bodies are indented
+    assert final, name
+    db.execute("SET LOCAL search_path TO hartland")
+    cursor = db.execute(sql[: final.start()] + f"SELECT * FROM {cte}")
+    assert cursor.description is not None
+    names = [column.name for column in cursor.description]
+    return {row[0]: dict(zip(names, row, strict=True)) for row in cursor.fetchall()}
+
+
+def _catalogue(db: psycopg.Connection, put: Put, lines: int = 1, code: str | None = None) -> None:
+    """Lines 1…n, each with one product and one SKU of the same id."""
+    for n in range(1, lines + 1):
+        put(db, "product_line", product_line_id=n, code=code or f"L{n}")
+        put(db, "product", product_id=n, product_line_id=n)
+        put(db, "sku", sku_id=n, product_id=n)
+
+
+def _sale(
+    db: psycopg.Connection,
+    put: Put,
+    *,
+    customer: int,
+    day: date,
+    gross: float = 100,
+    line: int = 1,
+    store: int | None = None,
+    agreed: float = 0,
+    channel: str = "small_retail",
+) -> None:
+    """One order of one case: `gross` CZK, of which `agreed` the agreed discount (sales_pl's customer margin is the
+    difference). Okres 1 must exist."""
+    n = next(_ids)
+    put(db, "delivery_point", delivery_point_id=n, customer_id=customer, store_id=store, okres_id=1)
+    put(db, "sales_order", sales_order_id=n, customer_id=customer, delivery_point_id=n, channel=channel, ordered_on=day)
+    put(
+        db, "sales_order_line", sales_order_line_id=n, sales_order_id=n, sku_id=line, qty_cases=1, list_price_case=gross
+    )
+    if agreed:
+        put(db, "sales_order_line_discount", sales_order_line_id=n, seq=1, kind="agreed", amount_line=agreed)
+
+
+def _last_order_day(db: psycopg.Connection, put: Put, day: date) -> None:
+    """The world's last order day, which the detectors read as `as_of`."""
+    put(db, "sales_order", sales_order_id=next(_ids), ordered_on=day)
+
+
+TENURE = {"valid_from": date(2023, 1, 1), "valid_to": date(2026, 12, 31)}
+
+
+# ── S3: rates over their bases ───────────────────────────────────────────────
+
+
+def test_s3_acquisition_is_per_potential_store_not_per_day(db: psycopg.Connection, put: Put) -> None:
+    """Two reps win one store in fifty: one in an area of 50 stores, one in an area of 200. Their acquisition rates
+    are equal; per duty day they were 4× apart."""
+    with db.transaction(force_rollback=True):
+        for rep, area, stores, won in ((1, 10, 50, 1), (2, 20, 200, 4)):
+            put(db, "area", area_id=area)
+            put(db, "assignment", assignment_id=rep, employee_id=rep, kind="rep_area", area_id=area, **TENURE)
+            for k in range(stores):
+                store = area * 1000 + k
+                put(db, "store", store_id=store, area_id=area, store_class="minimarket")
+                if k < won:
+                    since = date(2024, 6, 1)
+                    put(db, "customer", customer_id=store, channel="small_retail", store_id=store, since=since)
+        _last_order_day(db, put, date(2024, 12, 31))
+        rates = _cte(db, "detectors/s3.sql", "rates")
+    acquisition = {rep: float(rates[rep]["acquisition"]) for rep in (1, 2)}
+    assert acquisition[1] == pytest.approx(1 / (50 * 366 - 214))
+    assert acquisition[2] == pytest.approx(acquisition[1])
+
+
+def test_s3_the_historys_first_orders_add_no_line(db: psycopg.Connection, put: Put) -> None:
+    """A customer since 2022 buying its four usual lines in January 2024 adds nothing; a fifth line in July does."""
+    with db.transaction(force_rollback=True):
+        _catalogue(db, put, lines=5)
+        put(db, "okres", okres_id=1)
+        put(db, "area", area_id=10)
+        put(db, "assignment", assignment_id=1, employee_id=1, kind="rep_area", area_id=10, **TENURE)
+        put(db, "store", store_id=1, area_id=10, store_class="minimarket")
+        put(db, "customer", customer_id=1, channel="small_retail", store_id=1, since=date(2022, 5, 1))
+        for line in range(1, 5):
+            _sale(db, put, customer=1, store=1, line=line, day=date(2024, 1, 15))
+        assert _cte(db, "detectors/s3.sql", "rates")[1]["cross_sell"] == 0
+        _sale(db, put, customer=1, store=1, line=5, day=date(2024, 7, 1))
+        rates = _cte(db, "detectors/s3.sql", "rates")
+    assert float(rates[1]["cross_sell"]) == pytest.approx(1 / 183)  # one line ÷ 2024-01-01…07-01
+
+
+def test_s3_counts_small_retail_only(db: psycopg.Connection, put: Put) -> None:
+    """A HoReCa customer won in the area (the KAMs') is not the rep's win."""
+    with db.transaction(force_rollback=True):
+        put(db, "area", area_id=10)
+        put(db, "assignment", assignment_id=1, employee_id=1, kind="rep_area", area_id=10, **TENURE)
+        put(db, "store", store_id=1, area_id=10, store_class="minimarket")
+        put(db, "store", store_id=2, area_id=10, store_class="horeca")
+        put(db, "customer", customer_id=2, channel="horeca", store_id=2, since=date(2024, 6, 1))
+        _last_order_day(db, put, date(2024, 12, 31))
+        rates = _cte(db, "detectors/s3.sql", "rates")
+    assert rates[1]["acquisition"] == 0
+
+
+# ── S5: the gain of a display ────────────────────────────────────────────────
+
+
+def _pos(db: psycopg.Connection, put: Put) -> None:
+    _catalogue(db, put)
+    put(db, "okres", okres_id=1)
+    put(db, "region", region_id=1, code="PHA")
+    put(db, "pos_asset", pos_asset_id=1, region_id=1, cost=36_000)
+
+
+def test_s5_a_display_that_wins_a_new_store_gains(db: psycopg.Connection, put: Put) -> None:
+    """No orders in the 8 weeks before and ten during: the gain is all ten. A loan without any order keeps its cost."""
+    with db.transaction(force_rollback=True):
+        _pos(db, put)
+        for customer in (1, 2):
+            put(db, "store", store_id=customer)
+            put(db, "customer", customer_id=customer, store_id=customer)
+            put(
+                db,
+                "pos_loan",
+                pos_loan_id=customer,
+                pos_asset_id=1,
+                customer_id=customer,
+                store_id=customer,
+                lent_on=date(2025, 3, 3),
+                returned_on=date(2025, 6, 1),
+            )
+        for week in range(10):
+            _sale(db, put, customer=1, store=1, day=date(2025, 3, 10) + timedelta(weeks=week), gross=1000)
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        margin = _cte(db, "detectors/s5.sql", "margin")
+    assert float(margin[1]["gain"]) == pytest.approx(10_000)
+    assert margin[1]["cost"] > 0
+    assert (margin[2]["gain"], margin[2]["cost"] > 0) == (0, True)
+
+
+def test_s5_a_display_at_a_chain_store_reads_that_store(db: psycopg.Connection, put: Put) -> None:
+    """A loan at one store of a chain customer reads that store's sales, not the chain's."""
+    with db.transaction(force_rollback=True):
+        _pos(db, put)
+        put(db, "customer", customer_id=1, channel="big_retail")
+        for store in (1, 2):
+            put(db, "store", store_id=store)
+        put(db, "pos_loan", pos_loan_id=1, pos_asset_id=1, customer_id=1, store_id=1, lent_on=date(2025, 3, 3))
+        _sale(db, put, customer=1, store=1, day=date(2025, 4, 1), gross=1000, channel="big_retail")
+        _sale(db, put, customer=1, store=2, day=date(2025, 4, 1), gross=5000, channel="big_retail")
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        margin = _cte(db, "detectors/s5.sql", "margin")
+    assert float(margin[1]["gain"]) == pytest.approx(1000)
+
+
+def test_s5_a_loan_outside_the_history_is_ignored(db: psycopg.Connection, put: Put) -> None:
+    """Lent after the world's last order day (no negative days), or before 2024-02-26 (no 8 weeks before)."""
+    with db.transaction(force_rollback=True):
+        _pos(db, put)
+        put(db, "customer", customer_id=1)
+        for loan, lent_on in ((1, date(2025, 3, 3)), (2, date(2025, 6, 1)), (3, date(2024, 1, 15))):
+            put(db, "pos_loan", pos_loan_id=loan, pos_asset_id=1, customer_id=1, lent_on=lent_on)
+        _last_order_day(db, put, date(2025, 5, 31))
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        margin = _cte(db, "detectors/s5.sql", "margin")
+    assert set(margin) == {1}
+
+
+# ── S6: a difference, not a ratio ────────────────────────────────────────────
+
+
+def test_s6_holds_when_the_undisciplined_gain_is_negative(db: psycopg.Connection, put: Put) -> None:
+    """The disciplined rep gains 1.2 CZK of margin per discount crown, the undisciplined one loses 0.6: the metric is
+    1.8 (the ratio of ratios was −2, a fail). The disciplined customer's order before the agreement carries its
+    predecessor's discount, which is not this agreement's."""
+    with db.transaction(force_rollback=True):
+        _catalogue(db, put)
+        put(db, "okres", okres_id=1)
+        for rep, slot in ((1, "SJC-02"), (2, "SMS-02")):
+            put(db, "area", area_id=rep, code=slot)
+            put(db, "assignment", assignment_id=rep, employee_id=rep, kind="rep_area", area_id=rep, **TENURE)
+            put(db, "customer", customer_id=rep)
+            put(
+                db,
+                "price_agreement",
+                price_agreement_id=rep,
+                customer_id=rep,
+                product_line_id=1,
+                kind="agreed_discount",
+                valid_from=date(2025, 1, 1),
+                valid_to=date(2025, 3, 31),
+                agreed_by_employee_id=rep,
+            )
+        # 90 days; the 8 weeks before give 5 600 ÷ 56 = 100 CZK a day
+        _sale(db, put, customer=1, day=date(2024, 12, 1), gross=7600, agreed=2000)
+        _sale(db, put, customer=1, day=date(2025, 2, 1), gross=31_000, agreed=10_000)  # (21 000 − 9 000) ÷ 10 000
+        _sale(db, put, customer=2, day=date(2024, 12, 1), gross=5600)
+        _sale(db, put, customer=2, day=date(2025, 2, 1), gross=11_000, agreed=5000)  # (6 000 − 9 000) ÷ 5 000
+        _last_order_day(db, put, date(2026, 10, 31))
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        metric = _one(db, "detectors/s6.sql")
+    assert float(metric) == pytest.approx(1.2 - (-0.6))
+
+
+# ── the probes ───────────────────────────────────────────────────────────────
+
+
+def test_a13_a_stop_after_the_third_rejection(db: psycopg.Connection, put: Put) -> None:
+    def prompts(customer: int, count: int) -> None:
+        for k in range(count):
+            put(
+                db,
+                "rep_prompt",
+                rep_prompt_id=next(_ids),
+                customer_id=customer,
+                kind="unsupplied_items",
+                generated_on=date(2025, 1, 6) + timedelta(weeks=2 * k),
+                payload='{"lines": ["NUDLE"]}',
+                outcome="rejected",
+            )
+
+    with db.transaction(force_rollback=True):
+        prompts(1, 5)  # rejected five times: no stop
+        assert _one(db, "probes/a13.sql") == 0
+        prompts(2, 3)  # rejected three times, then none
+        assert _one(db, "probes/a13.sql") == 1
+
+
+def test_a14_finds_the_planted_signature_not_any_hold(db: psycopg.Connection, put: Put) -> None:
+    def order(customer: int, day: date, reason: str | None = "credit_limit", status: str = "released") -> None:
+        put(
+            db,
+            "sales_order",
+            sales_order_id=next(_ids),
+            customer_id=customer,
+            ordered_on=day,
+            hold_reason=reason,
+            status=status,
+        )
+
+    with db.transaction(force_rollback=True):
+        order(1, date(2026, 6, 10))  # one held order: the policy, not the case
+        assert _one(db, "probes/a14.sql") == 0
+        order(2, date(2026, 6, 3))
+        order(2, date(2026, 6, 17))  # two held, both released, none before: the case
+        assert _one(db, "probes/a14.sql") == 1
+        order(3, date(2026, 6, 3))
+        order(3, date(2026, 6, 17))
+        order(3, date(2025, 9, 8), reason="overdue")  # held before: a customer with a history of holds
+        assert _one(db, "probes/a14.sql") == 1
+
+
+def test_a6_counts_promotion_sightings_only(db: psycopg.Connection, put: Put) -> None:
+    with db.transaction(force_rollback=True):
+        put(db, "competitor", competitor_id=1, code="KAVALIR")
+        put(db, "region", region_id=1, code="VCH")
+        put(db, "area", area_id=1, region_id=1)
+        put(db, "store", store_id=1, area_id=1)
+
+        def sightings(count: int, kind: str) -> None:
+            for k in range(count):
+                visit = next(_ids)
+                put(db, "visit", visit_id=visit, store_id=1, day=date(2025, 11, 3) + timedelta(days=3 * k))
+                put(
+                    db,
+                    "competitor_sighting",
+                    competitor_sighting_id=visit,
+                    visit_id=visit,
+                    competitor_id=1,
+                    activity_kind=kind,
+                )
+
+        sightings(12, "price_cut")
+        assert _one(db, "probes/a6.sql") == 0
+        sightings(10, "promotion")
+        assert _one(db, "probes/a6.sql") == 10
+
+
+def test_a12_sees_more_buyers_not_only_bigger_baskets(db: psycopg.Connection, put: Put) -> None:
+    """Liberec sells one Premium soup in 5 of its 10 receipts, the other shop in 2 of 10: 2.5× more buyers, one unit
+    each. Per buying basket both were 1."""
+    with db.transaction(force_rollback=True):
+        _catalogue(db, put, code="PREMIUM")
+        for site, code, buyers in ((1, "SH-LIBEREC", 5), (2, "SH-JINDE", 2)):
+            put(db, "site", site_id=site, code=code, kind="shop")
+            for k in range(10):
+                receipt = next(_ids)
+                put(db, "shop_receipt", shop_receipt_id=receipt, site_id=site)
+                if k < buyers:
+                    put(db, "shop_receipt_line", shop_receipt_line_id=receipt, shop_receipt_id=receipt, sku_id=1, qty=1)
+        assert _one(db, "probes/a12.sql") == 1

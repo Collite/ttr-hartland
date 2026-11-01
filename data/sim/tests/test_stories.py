@@ -137,9 +137,22 @@ def test_s5_names_the_managers_skills(stories: StoriesConfig) -> None:
     best = max(skill, key=skill.__getitem__)
     worst = min((region for region in skill if region not in generous), key=skill.__getitem__)
     assert re.search(
-        rf"region = '{best}'\) / NULLIF\(MAX\(pos_return\) FILTER \(WHERE region = '{worst}'\)",
+        rf"FILTER \(WHERE region = '{best}'\)\n    / NULLIF\(GREATEST\(MAX\(gain / NULLIF\(cost, 0\)\)"
+        rf" FILTER \(WHERE region = '{worst}'\)",
         _sql("detectors/s5_best_worst.sql"),
     )
+
+
+def test_s5s_two_files_judge_one_return() -> None:
+    """The spread and the rank read the same region return: one block, byte for byte in both files."""
+
+    def block(sql: str) -> str:
+        found = re.search(r"^-- region return: begin\n.*^-- region return: end\n", sql, re.S | re.M)
+        assert found
+        return found.group(0)
+
+    assert block(_sql("detectors/s5.sql")) == block(_sql("detectors/s5_best_worst.sql"))
+    assert "giveaway AS (" in block(_sql("detectors/s5.sql"))
 
 
 def test_s6_names_the_pinned_reps_and_managers(stories: StoriesConfig) -> None:
@@ -152,6 +165,25 @@ def test_s6_names_the_pinned_reps_and_managers(stories: StoriesConfig) -> None:
         (line, "true" if discipline >= 1 else "false") for line, discipline in managers.items()
     ]
     assert all(low <= value <= high for value in [*parameters["pinned_reps"].values(), *managers.values()])
+    # The metric is a difference, not a ratio (the undisciplined gain is negative by design): the YAML, the SQL's
+    # header and its final SELECT say the same.
+    detector = stories.story("S6").detector
+    assert (detector.metric, detector.threshold, detector.direction) == (
+        "disciplined_minus_undisciplined_margin_per_discount",
+        0.5,
+        ">=",
+    )
+    sql = _sql("detectors/s6.sql")
+    assert "gain per crown minus the undisciplined reps'" in " ".join(sql.split())
+    assert "gives at least 0.5" in " ".join(sql.split())
+    assert re.search(r"FILTER \(WHERE disciplined\), 0\)\n    - SUM\(margin_gain\)", sql)
+
+
+def test_no_window_ends_on_a_fixed_last_day(stories: StoriesConfig) -> None:
+    """A prolonged world is judged to its new end: no detector or probe stops at the original last day."""
+    files = {detector.sql for story in stories.stories for detector in story.detectors}
+    files |= {anomaly.probe.sql for anomaly in stories.anomalies}
+    assert [name for name in sorted(files) if "2026-10-31" in _sql(name)] == []
 
 
 # ── the pins (design 04 §S3, §7) ────────────────────────────────────────────

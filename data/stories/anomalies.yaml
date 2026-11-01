@@ -104,8 +104,9 @@ anomalies:
     probe: { sql: probes/a15.sql, expect: ">= 30" }
 
 pins:
-  # The eight reps of S3 (and the A-7 and A-8 traits), each by the area of their first assignment (area.csv), so a
-  # pin survives the two area moves; the skills each in S3's `skill_range`.
+  # The eight reps of S3 (and the A-7 and A-8 traits), each by the area they hold on the warm-up's first day,
+  # 2023-01-01 (area.csv), so a pin survives the two area moves and a later hire into the area is not the pin; the
+  # skills each in S3's `skill_range`.
   reps:
     - { slot: PHA-03, profile: star, conversion: 1.35, acquisition: 1.32, retention: 1.3, cross_sell: 1.34 }
     - { slot: JMV-04, profile: star, conversion: 1.3, acquisition: 1.38, retention: 1.33, cross_sell: 1.3 }

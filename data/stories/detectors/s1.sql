@@ -1,6 +1,7 @@
 -- S1 — seasonality (design 04 §S1): per line, the mean weekly cases of its peak weeks ÷ those of its trough weeks,
--- 2024–2025, free goods left out. The metric is the smallest ratio over the lines with a curve (s1.yaml `curves`:
--- Decaf is flat, the Professional lines follow their channel). The weeks below are s1.yaml's (a test keeps them so).
+-- ISO years 2024–2025 (whole weeks: 2024-01-01 … 2025-12-28), free goods left out. The metric is the smallest ratio
+-- over the lines with a curve (s1.yaml `curves`: Decaf is flat, the Professional lines follow their channel). The
+-- weeks below are s1.yaml's (a test keeps them so).
 WITH curve (line, peak, trough) AS (
     VALUES
         ('CLASSIC', ARRAY[45,46,47,48,49,50,51,52,53,1,2,3,4,5,6,7,8], ARRAY[27,28,29,30,31,32,33]),
@@ -20,7 +21,7 @@ weekly AS (
     JOIN sku s ON s.sku_id = l.sku_id
     JOIN product p ON p.product_id = s.product_id
     JOIN product_line pl ON pl.product_line_id = p.product_line_id
-    WHERE o.ordered_on BETWEEN DATE '2024-01-01' AND DATE '2025-12-31' AND NOT l.is_free_goods
+    WHERE c.iso_year BETWEEN 2024 AND 2025 AND NOT l.is_free_goods
     GROUP BY pl.code, c.iso_year, c.week
 ),
 ratio AS (

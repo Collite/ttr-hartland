@@ -651,7 +651,8 @@ class Anomaly:
 
 @dataclass(frozen=True)
 class RepPin:
-    """A pinned rep of S3, by the area of their first assignment (`slot`), with the four skills and the traits."""
+    """A pinned rep of S3, by the area they hold on the warm-up's first day (`slot`), with the four skills and the
+    traits. A rep hired later into that area (a leaver's replacement) is not the pin."""
 
     slot: str
     profile: str
