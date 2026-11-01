@@ -104,8 +104,9 @@ check-model:
     ln -s "$(pwd)" "$link/ttr-hartland"
     node "{{tatrman}}/packages/migrate/dist/cli.js" resolve-packages "$link/ttr-hartland" --check --out "$(pwd)/generated/resolved-packages.json"
 
-# Tables, columns (name · type · nullability), primary keys, foreign keys, views (name · columns); prints the
-# differences, exit 1 on any (contracts §1). It parses the .ttrm files themselves, so no regenerate is needed first.
+# Tables, columns (name · type · nullability), primary keys, foreign keys, views (name · columns · a plain view's SQL);
+# prints the differences, exit 1 on any (contracts §1), and refuses a SQL form it does not read. It parses the .ttrm
+# files themselves, so no regenerate is needed first.
 # data/ddl/schema.sql ⇄ model/db — the model-gate fails on any difference.
 ddl-drift *ARGS:
     TATRMAN_PACKAGES="{{tatrman}}/packages" uv run python scripts/ddl_drift.py "$@"

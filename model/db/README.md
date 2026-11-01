@@ -15,8 +15,9 @@ What the import could not say, added by hand:
 - **Deferrable foreign keys** — every FK is `DEFERRABLE INITIALLY DEFERRED` in the database; TTR-M has no flag for
   it, so `fks.ttrm` says it in its header.
 - **The views** (the importer lists tables only): the four materialized views `sales_pl`, `trade_spend`,
-  `route_current`, `receivable` as `def table` (⚑NH-P-10) and `return_request` as `def view` with its SQL.
-  Nullability is the SELECT's: NOT NULL only where the SQL guarantees it.
+  `route_current`, `receivable` as `def table` (⚑NH-P-10) and `return_request` as `def view` with its SQL, a copy
+  of `data/ddl/views/return_request.sql` that `ddl-drift` holds to `schema.sql`'s. Nullability is the SELECT's: NOT
+  NULL only where the SQL guarantees it.
 - **Grains** — each table's `grain` from the inventory as its leading comment.
 - **The member vocabularies** (MV, M0 S0.1 T5): `search { searchable method: … }` on the code and name of `sku`,
   `product`, `product_line`, `brand`, `chain`, `kraj`, `okres`, `site`, `carrier` — codes `EXACT`, names `TYPOS(1)`

@@ -74,7 +74,8 @@ def _layer() -> dict[str, object]:
                                   col("extra", "text", True)]},
             "big": {"file": "views.ttrm", "kind": "table", "primaryKey": [],
                     "columns": [col("okres_id", "bigint"), col("kraj_name", "text")]},
-            "small": {"file": "views.ttrm", "kind": "view", "primaryKey": [], "columns": [col("okres_id", "bigint")]},
+            "small": {"file": "views.ttrm", "kind": "view", "primaryKey": [], "columns": [col("okres_id", "bigint")],
+                      "definitionSql": "\n    -- the okresy\n    SELECT okres_id\n    FROM okres\n"},
         },
         "fks": {"okres_kraj_id_fkey": {"file": "fks.ttrm", "from": ["okres.kraj_id"], "to": ["kraj.kraj_id"]}},
         "parseErrors": [],
@@ -169,6 +170,40 @@ def test_a_known_gap_is_a_note_until_it_closes_or_changes() -> None:
     assert _diffs(_layer(), gaps={("okres", "gone"): "x"}) == [
         "okres.gone: a known gap, but schema.sql has no such column — remove it from KNOWN_GAPS"
     ]
+    assert _diffs(_layer(), gaps={("ghost", "note"): "x"}) == [
+        "ghost.note: a known gap, but schema.sql has no table ghost — remove it from KNOWN_GAPS"
+    ]
+
+
+def test_a_form_ddl_drift_does_not_read_is_refused() -> None:
+    """The renderer writes NOT NULL, CHECK and named constraints only; anything else is an error, not misread."""
+    sql = """
+CREATE TABLE hartland.odd (
+    a bigint NULL,
+    b bigint PRIMARY KEY,
+    c bigint REFERENCES hartland.kraj (kraj_id),
+    d bigint NOT NULL CHECK (d > 0),
+    FOREIGN KEY (d) REFERENCES hartland.kraj (kraj_id)
+);
+"""
+    assert dd.schema_from_sql(sql).errors == [
+        "odd.a: `NULL` — ddl-drift reads only NOT NULL and CHECK on a column",
+        "odd.b: `PRIMARY KEY` — ddl-drift reads only NOT NULL and CHECK on a column",
+        "odd.c: `REFERENCES hartland.kraj (kraj_id)` — ddl-drift reads only NOT NULL and CHECK on a column",
+        "odd: `FOREIGN KEY (d) REFERENCES hartland.kraj (kraj_id)` — ddl-drift reads only columns and named "
+        "constraints",
+    ]
+
+
+def test_a_view_s_sql_copy_is_compared_without_comments_or_layout() -> None:
+    sql = SQL.replace("SELECT okres_id FROM okres;", "SELECT okres_id FROM okres WHERE okres_id > 0;")
+    assert _diffs(_layer(), sql) == [
+        "small: the definitionSql in model/db/views.ttrm is not schema.sql's SELECT (data/ddl/views/small.sql) "
+        "— copy it again"
+    ]
+    layer = _layer()
+    del _tables(layer)["small"]["definitionSql"]
+    assert _diffs(layer) == ["small: a view without its definitionSql in model/db/views.ttrm"]
 
 
 def test_parse_errors_and_select_star_fail() -> None:
@@ -241,3 +276,24 @@ def test_a_column_added_to_the_inventory_fails_until_the_ttrm_has_it(
     (db / "reference.ttrm").write_text(edited, encoding="utf-8")
     assert dd.main(args) == 0
     assert "— clean" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(_toolchain() is None, reason="no built ttr-core (TATRMAN_PACKAGES or ../tatrman) and node")
+def test_a_changed_view_sql_and_a_foreign_key_declared_twice_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("TATRMAN_PACKAGES", str(_toolchain()))
+    schema = (REPO / "data/ddl/schema.sql").read_text(encoding="utf-8")
+    assert schema.count("        ELSE 'decided'\n") == 1
+    (tmp_path / "schema.sql").write_text(schema.replace("        ELSE 'decided'\n", "        ELSE 'open'\n"))
+    db = tmp_path / "db"
+    shutil.copytree(REPO / "model/db", db)
+    fks = (db / "fks.ttrm").read_text(encoding="utf-8")
+    first = fks[fks.index("def fk ") :]
+    (db / "fks.ttrm").write_text(fks + "\n" + first[: first.index("}") + 1] + "\n", encoding="utf-8")
+
+    assert dd.main(["--schema", str(tmp_path / "schema.sql"), "--model-db", str(db)]) == 1
+    out = capsys.readouterr().out
+    assert "DRIFT      return_request: the definitionSql in model/db/views.ttrm is not schema.sql's SELECT" in out
+    name = first.split()[2]
+    assert f"DRIFT      model/db/fks.ttrm: foreign key {name} is declared twice" in out

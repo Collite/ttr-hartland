@@ -9,6 +9,12 @@ This compares the two and prints every difference, exit 1 on any:
   (name, from-columns, to-columns) — schema.sql's FKs against `fks.ttrm`'s;
 - views by name, kind (a materialized view is a `def table` in views.ttrm, ⚑NH-P-10; a plain view a `def view`) and
   column names, in order — the SELECT's output names. A view's types are not compared: the SQL text does not say them.
+  A plain view's `definitionSql` is a copy of its SELECT (data/ddl/views/<view>.sql, rendered into schema.sql); the
+  two compare as sqlglot writes them, so comments and layout do not count and anything else does.
+
+It reads the forms `just ddl` writes — `NOT NULL` and `CHECK` on a column, named table constraints — and refuses any
+other (an explicit `NULL`, a column-level `PRIMARY KEY` or `REFERENCES`, an unnamed constraint) as a difference, rather
+than misread it.
 
 Types compare in the importer's vocabulary (ttr-core's SqlTypeMapper, which mirrors the metadata service's): a
 Postgres type maps to the TTR-M type `ttr import-schema` writes, and `numeric(p,s)` to `decimal` with length p and
@@ -19,8 +25,8 @@ The schema side is sqlglot over schema.sql (the materialized views' SELECTs pars
 TATRMAN_PACKAGES — the justfile passes TTR_CORE's), or a JSON dump of it (`--layer-json`, the tests').
 
 KNOWN_GAPS lists the columns the layer cannot declare (M0 S0.1 Found while doing; ttr-core#353). They are printed,
-never failed — until the gap closes or changes: a known gap the layer now declares, or schema.sql no longer has,
-fails, so the entry is removed in the change that closes it.
+never failed — until the gap closes or changes: a known gap the layer now declares, or schema.sql no longer has (the
+column or its whole table), fails, so the entry is removed in the change that closes it.
 """
 
 from __future__ import annotations
@@ -95,6 +101,7 @@ class Relation:
     columns: list[Column] = field(default_factory=list)
     primary_key: list[str] = field(default_factory=list)
     file: str = ""
+    sql: str | None = None  # a plain view's SELECT, as sqlglot writes it (no comments, one layout)
 
 
 @dataclass(frozen=True)
@@ -139,6 +146,10 @@ def _names(node: exp.Expression | None) -> list[str]:
     return [e.name for e in (node.expressions if node is not None else [])]
 
 
+def _canonical(query: exp.Expr | exp.Expression) -> str:
+    return query.sql(dialect="postgres", comments=False)
+
+
 def _select_columns(name: str, query: exp.Expr | exp.Expression, errors: list[str]) -> list[Column]:
     if not isinstance(query, exp.Query):
         errors.append(f"view {name}: its body is not a query")
@@ -168,7 +179,8 @@ def schema_from_sql(text: str) -> Side:
             _table(statement, side)
         elif kind == "VIEW":
             name = statement.this.name
-            side.relations[name] = Relation(name, "view", _select_columns(name, statement.expression, side.errors))
+            columns = _select_columns(name, statement.expression, side.errors)
+            side.relations[name] = Relation(name, "view", columns, sql=_canonical(statement.expression))
     return side
 
 
@@ -179,9 +191,22 @@ def _table(statement: exp.Create, side: Side) -> None:
     for element in schema.expressions:
         if isinstance(element, exp.ColumnDef):
             ttr, length, precision = pg_type(element.args["kind"])
-            not_null = any(isinstance(c.args.get("kind"), exp.NotNullColumnConstraint) for c in element.constraints)
+            not_null = False
+            for constraint in element.constraints:
+                kind = constraint.args.get("kind")
+                if isinstance(kind, exp.NotNullColumnConstraint) and not kind.args.get("allow_null"):
+                    not_null = True
+                elif not isinstance(kind, exp.CheckColumnConstraint):
+                    side.errors.append(
+                        f"{name}.{element.name}: `{constraint.sql('postgres')}` — ddl-drift reads only NOT NULL and "
+                        "CHECK on a column"
+                    )
             relation.columns.append(Column(element.name, ttr, length, precision, optional=not not_null))
-        elif isinstance(element, exp.Constraint):
+        elif not isinstance(element, exp.Constraint):
+            side.errors.append(
+                f"{name}: `{element.sql('postgres')}` — ddl-drift reads only columns and named constraints"
+            )
+        else:
             for constraint in element.expressions:
                 if isinstance(constraint, exp.PrimaryKey):
                     relation.primary_key = _names(constraint)
@@ -209,7 +234,13 @@ def layer_from_json(dump: dict[str, Any]) -> Side:
             for c in t["columns"]
         ]
         kind = "table" if t["kind"] == "table" else "view"
-        side.relations[name] = Relation(name, kind, columns, list(t["primaryKey"]), str(t["file"]))
+        sql = None
+        if t.get("definitionSql"):
+            try:
+                sql = _canonical(sqlglot.parse_one(t["definitionSql"], read="postgres"))
+            except sqlglot.errors.ParseError as e:
+                side.errors.append(f"model/db/{t['file']}: {name}'s definitionSql does not parse: {e}")
+        side.relations[name] = Relation(name, kind, columns, list(t["primaryKey"]), str(t["file"]), sql)
     fks: dict[str, dict[str, list[str]]] = dump.get("fks", {})
     for name, fk in fks.items():
         side.fks[name] = ForeignKey(name, tuple(fk["from"]), tuple(fk["to"]))
@@ -252,7 +283,11 @@ def compare(
         else:
             diffs += _view_diffs(sql, ttr)
     for table, column in sorted(known_gaps):
-        if table in schema.relations and column not in {c.name for c in schema.relations[table].columns}:
+        if table not in schema.relations:
+            diffs.append(
+                f"{table}.{column}: a known gap, but schema.sql has no table {table} — remove it from KNOWN_GAPS"
+            )
+        elif column not in {c.name for c in schema.relations[table].columns}:
             diffs.append(
                 f"{table}.{column}: a known gap, but schema.sql has no such column — remove it from KNOWN_GAPS"
             )
@@ -329,6 +364,14 @@ def _view_diffs(sql: Relation, ttr: Relation) -> list[str]:
             diffs.append(f"{sql.name}.{name}: in model/db/{ttr.file}, not a column of the view in schema.sql")
     if set(names_sql) == set(names_ttr) and names_sql != names_ttr:
         diffs.append(f"{sql.name}: column order differs — schema.sql {names_sql}, model/db {names_ttr}")
+    if sql.kind == "view" and ttr.kind == "view":
+        if ttr.sql is None:
+            diffs.append(f"{sql.name}: a view without its definitionSql in model/db/{ttr.file}")
+        elif ttr.sql != sql.sql:
+            diffs.append(
+                f"{sql.name}: the definitionSql in model/db/{ttr.file} is not schema.sql's SELECT "
+                f"(data/ddl/views/{sql.name}.sql) — copy it again"
+            )
     return diffs
 
 

@@ -4,9 +4,11 @@
 //
 //   TATRMAN_PACKAGES=<ttr-core>/packages node scripts/db-layer.mjs [<db-dir>]   # default: ../tatrman/packages, model/db
 //
-// Prints { tables: {name: {file, kind, primaryKey, columns: [{name, type, length, precision, optional}]}},
+// Prints { tables: {name: {file, kind, primaryKey, columns: [{name, type, length, precision, optional}],
+//                         definitionSql}},
 //          fks: {name: {file, from: ["table.column"], to: ["table.column"]}}, parseErrors: ["file: message"] }.
-// Exit 0 even with parse errors: they are part of the report, and the caller fails on them.
+// Exit 0 even with parse errors (a relation or a foreign key declared twice is one): they are part of the report, and
+// the caller fails on them.
 
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -43,8 +45,10 @@ for (const file of files) {
         kind: def.kind,
         primaryKey: def.primaryKey ?? [],
         columns: (def.columns ?? []).map((c) => ({ name: c.name, ...type(c.type), optional: c.optional === true })),
+        definitionSql: def.definitionSql?.value ?? null,
       };
     } else if (def.kind === 'fk') {
+      if (out.fks[def.name]) out.parseErrors.push(`${file}: foreign key ${def.name} is declared twice`);
       out.fks[def.name] = { file, from: (def.from?.items ?? []).map(columnRef), to: (def.to?.items ?? []).map(columnRef) };
     }
   }
