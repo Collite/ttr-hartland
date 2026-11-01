@@ -13,9 +13,13 @@ re-parameterised build start from the same opening. `Meta` is `_sim_meta(key, va
 the inputs, the last day done and the build id. Neither table is in the inventory (contracts §1): the generator
 writes both beside the CSVs, `load-world` creates them.
 
-**Deterministic.** The same inputs pickle to the same bytes: the state holds lists, tuples, dicts and dataclasses
-only — never a `set`, whose order follows `PYTHONHASHSEED` — filled in a fixed order, and the pickle protocol is
-pinned (review-188).
+**Deterministic.** The same inputs pickle to the same bytes on the same path: the state holds lists, tuples, dicts
+and dataclasses only — never a `set`, whose order follows `PYTHONHASHSEED` — filled in a fixed order, and the pickle
+protocol is pinned (review-188). A world restored from a checkpoint and moved on pickles *equal* to the world a
+straight build reaches, not byte-identical: pickle's memo writes one string shared by two fields otherwise than two
+equal strings, and a restore shares what the straight build did not (review-201 N7). So two checkpoints are compared
+by `restore()`, never by their bytes or sha256; the tables, not `_sim_checkpoint`, are a build's identity. The memo
+stays (no `Pickler.fast`): without it a restore would turn one shared object into two.
 
 **The trust boundary.** The checkpoint's sha256 is integrity, not authenticity: whoever can write `_sim_checkpoint`
 can run code on the `prolong` host when it unpickles the blob. That is acceptable while only the owner role writes
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import os
 import pickle
 from collections.abc import Iterable
 from dataclasses import dataclass, field, fields, is_dataclass
@@ -34,6 +39,7 @@ from pathlib import Path
 
 PROTOCOL = 5
 CHECKPOINT_FILE = "_sim_checkpoint.csv"
+CHECKPOINT_HEADER = ("day", "sha256", "blob")
 META_FILE = "_sim_meta.csv"
 OPEN = date(9999, 12, 31)  # a validity without an end (`03` §0)
 
@@ -223,37 +229,53 @@ class Checkpoint:
 
     def save(self, run: Path, keep: Iterable[date] = ()) -> None:
         """Write this checkpoint to `run/_sim_checkpoint.csv`, keeping the rows of the `keep` days already there (the
-        warm-up's last day) and dropping the others. The blob is bytea's hex text (`\\x…`), as COPY reads it."""
-        kept = [row for row in load_all(run) if row.day in set(keep) and row.day != self.day]
-        rows = sorted([*kept, self], key=lambda row: row.day)
+        warm-up's last day) and dropping the others. The blob is bytea's hex text (`\\x…`), as COPY reads it.
+
+        A kept row is copied as its text, never decoded and encoded again. The file is written beside the old one and
+        moved into its place, so a failed write leaves the old file whole."""
+        days = frozenset(keep)
+        kept = [row for row in _texts(run) if date.fromisoformat(row[0]) in days and row[0] != self.day.isoformat()]
+        rows = sorted([*kept, (self.day.isoformat(), self.sha256, "\\x" + self.blob.hex())])
         run.mkdir(parents=True, exist_ok=True)
-        with (run / CHECKPOINT_FILE).open("w", encoding="utf-8", newline="") as out:
+        path = run / CHECKPOINT_FILE
+        partial = path.with_name(f"{CHECKPOINT_FILE}.partial")
+        with partial.open("w", encoding="utf-8", newline="") as out:
             writer = csv.writer(out, lineterminator="\n")
-            writer.writerow(["day", "sha256", "blob"])
-            for row in rows:
-                writer.writerow([row.day.isoformat(), row.sha256, "\\x" + row.blob.hex()])
+            writer.writerow(CHECKPOINT_HEADER)
+            writer.writerows(rows)
+        os.replace(partial, path)
 
     @classmethod
     def load(cls, run: Path, day: date | None = None) -> Checkpoint:
-        """The checkpoint of `day` in `run`, or the last one; `FileNotFoundError` when there is none."""
-        rows = [row for row in load_all(run) if day is None or row.day == day]
+        """The checkpoint of `day` in `run`, or the last one; `FileNotFoundError` when there is none. Only that row's
+        blob is decoded."""
+        rows = sorted(row for row in _texts(run) if day is None or row[0] == day.isoformat())
         if not rows:
             raise FileNotFoundError(f"no checkpoint{f' of {day}' if day else ''} in {run}")
-        return rows[-1]
+        return _decoded(rows[-1])
 
 
 def load_all(run: Path) -> list[Checkpoint]:
     """Every checkpoint in `run/_sim_checkpoint.csv`, in day order (none when the file is missing)."""
+    return [_decoded(row) for row in sorted(_texts(run))]
+
+
+def _decoded(row: tuple[str, str, str]) -> Checkpoint:
+    day, sha256, blob = row
+    return Checkpoint(date.fromisoformat(day), sha256, bytes.fromhex(blob.removeprefix("\\x")))
+
+
+def _texts(run: Path) -> list[tuple[str, str, str]]:
+    """The rows of `run/_sim_checkpoint.csv` as their text: (day, sha256, the blob's hex)."""
     path = run / CHECKPOINT_FILE
     if not path.is_file():
         return []
     csv.field_size_limit(2**31 - 1)
     with path.open(encoding="utf-8", newline="") as source:
-        rows = [
-            Checkpoint(date.fromisoformat(row["day"]), row["sha256"], bytes.fromhex(row["blob"].removeprefix("\\x")))
-            for row in csv.DictReader(source)
-        ]
-    return sorted(rows, key=lambda row: row.day)
+        reader = csv.reader(source)
+        if tuple(next(reader, ())) != CHECKPOINT_HEADER:
+            raise ValueError(f"{path} does not start with {','.join(CHECKPOINT_HEADER)}")
+        return [(day, sha256, blob) for day, sha256, blob in reader]
 
 
 @dataclass(frozen=True)

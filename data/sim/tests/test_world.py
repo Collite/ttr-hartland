@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import os
 import pickle
@@ -9,6 +10,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -114,6 +116,53 @@ def test_save_keeps_the_warm_up_checkpoint_and_the_last(tmp_path: Path) -> None:
     header, first = (tmp_path / CHECKPOINT_FILE).read_text(encoding="utf-8").splitlines()[:2]
     assert header == "day,sha256,blob"
     assert first.split(",")[2].startswith("\\x")  # bytea's hex text, as COPY reads it
+
+
+def test_save_keeps_the_days_of_a_generator_too(tmp_path: Path) -> None:
+    days = [WARM_UP_END, date(2024, 1, 1), date(2024, 1, 2)]
+    for day in days:
+        Checkpoint.of(_world(day)).save(tmp_path, keep=days)
+    Checkpoint.of(_world(date(2024, 1, 3))).save(tmp_path, keep=(day for day in [WARM_UP_END, date(2024, 1, 2)]))
+    assert [row.day for row in load_all(tmp_path)] == [WARM_UP_END, date(2024, 1, 2), date(2024, 1, 3)]
+
+
+def test_a_save_that_fails_halfway_leaves_the_old_file_whole(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    Checkpoint.of(_world(WARM_UP_END)).save(tmp_path)
+    before = (tmp_path / CHECKPOINT_FILE).read_bytes()
+
+    class Full:
+        """A writer whose disk fills after the header."""
+
+        def __init__(self, out: Any, **_: Any) -> None:
+            self.out, self.rows = out, 0
+
+        def writerow(self, row: Any) -> None:
+            if self.rows:
+                raise OSError("No space left on device")
+            self.out.write(",".join(row) + "\n")
+            self.rows += 1
+
+        def writerows(self, rows: Any) -> None:
+            for row in rows:
+                self.writerow(row)
+
+    monkeypatch.setattr(csv, "writer", Full)
+    with pytest.raises(OSError, match="No space"):
+        Checkpoint.of(_world(date(2024, 1, 1))).save(tmp_path, keep=[WARM_UP_END])
+    monkeypatch.undo()
+    assert (tmp_path / CHECKPOINT_FILE).read_bytes() == before
+    assert Checkpoint.load(tmp_path).restore() == _world(WARM_UP_END)
+
+
+def test_a_restored_world_pickles_equal_not_byte_identical() -> None:
+    """review-201 N7, ⚑R201-B: a restore shares strings a straight build does not, and pickle's memo writes the two
+    otherwise; the worlds are equal, so checkpoints are compared by `restore()`, never by their bytes."""
+    straight = _world()
+    restored = Checkpoint.of(_world()).restore()
+    for world in (straight, restored):
+        world.customers[11].status = "active"  # the same value, now a literal
+    assert restored == straight
+    assert Checkpoint.of(restored).restore() == Checkpoint.of(straight).restore()
 
 
 def test_load_without_a_checkpoint_says_so(tmp_path: Path) -> None:
