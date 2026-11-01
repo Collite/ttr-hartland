@@ -1,0 +1,16 @@
+# The toolchain the serving images were built against — copied from ttr-demo's toolchain.lock with the same pins
+# (NH M0 S0.1 T1, 2026-11-01: ttr-demo master after CN-P8 S8.3). Bump in the same change that rolls the readers;
+# rebuild generated/ with the same pins in the same commit. Read by model-gate.yml and regenerate.yml through
+# scripts/toolchain-lock.py. Why the pin is load-bearing: the ⛔ PINNED comment block in .github/workflows/model-gate.yml.
+#
+# Moves at M4 (cn's `variant`, CN-P8 S8.6), by a D-n — a pin is frozen inside a phase.
+# No [ttrp] / [automation-preview] tables: this model has no TTR-P recipes and no automation package.
+[ttr-core]
+ref = "grammar/v0.20.3"          # the gate's toolchain checkout (ttr-demo's since CN-P8 S8.3)
+
+[veles]
+image = "0.11.32"                # the metadata image bp-dsk and hartland serve (CN-P8 S8.3, olymp#247)
+ttr-metadata = "0.20.2"          # `tatrman-ttr-metadata` in ttr-server's `gradle/libs.versions.toml` at `server-libs/v<image>`;
+                                 # the gate builds its Kotlin loader from ttr-core `grammar/v<this>`, stamped with it
+# true = the gate fails without the loader, false = the gate says it did not run it.
+strict-load = true

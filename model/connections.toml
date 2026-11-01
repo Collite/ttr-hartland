@@ -1,0 +1,16 @@
+# model/connections.toml — the connection descriptor of the New Hartland (contracts §8). NOT a TTR-M construct: the
+# grammar has no `connection` def. A repo-level descriptor the cluster's readers consume at deploy time; it points at
+# modeler.toml's [schemas.hartland] handle. Currency and locale are display facts: CZK, Czech (NH-D8).
+
+[[connection]]
+id       = "pg-hartland"
+database = "hartland"
+dialect  = "postgres"
+schema   = "hartland"   # modeler.toml's [schemas.hartland] handle = the Postgres schema
+currency = "CZK"
+locale   = "cs"
+timezone = "Europe/Prague"
+
+[connection.locators]
+openmetadata.service = "hartland-pg"
+openmetadata.schema = "hartland"
