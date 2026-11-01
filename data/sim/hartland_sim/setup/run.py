@@ -15,7 +15,7 @@ from pathlib import Path
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.reference import REFERENCE_DIR
 from hartland_sim.rng import using_master_seed
-from hartland_sim.setup import customers, policies, portfolio, reference
+from hartland_sim.setup import customers, opening, policies, portfolio, reference
 from hartland_sim.setup import org as org_setup
 from hartland_sim.setup.customers import Customers
 from hartland_sim.setup.market import Market
@@ -61,6 +61,7 @@ def run(
         state.duties = list(org.duties)
         state.customers = {customer.customer_id: customer for customer in made.customers}
         state.budgets = policies.budgets(out, world, planned(state, made))
+        state.stock = opening.stock(out, world, products, covers, made, geography)
     return Setup(state, out, geography, org, products, covers, made)
 
 
