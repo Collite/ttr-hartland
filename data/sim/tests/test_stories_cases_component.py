@@ -151,8 +151,8 @@ def _cases(
     store: bool = True,
     channel: str = "small_retail",
 ) -> None:
-    """One order of `qty` cases of line 1, delivered in `okres`: to a store, or to a place without one (a DC, a web
-    consumer's town)."""
+    """One order of `qty` cases of line 1, delivered in `okres`: to a store, or to a place without one (a DC, a depot,
+    an own shop, a web consumer's town)."""
     n = next(_ids)
     put(db, "delivery_point", delivery_point_id=n, okres_id=okres, store_id=n if store else None)
     put(db, "sales_order", sales_order_id=n, delivery_point_id=n, channel=channel, ordered_on=day)
@@ -188,6 +188,40 @@ def test_s2_affluence_reads_the_stores_and_the_web_not_the_dcs(db: psycopg.Conne
         _cases(db, put, 1, date(2025, 11, 21), 42, store=False, channel="web")
         metric = _one(db, "detectors/s2_affluence.sql")
     assert float(metric) == pytest.approx(1.0)
+
+
+def test_s2_affluence_reads_the_own_shops_not_the_depots(db: psycopg.Connection, put: Put) -> None:
+    """An own shop is a site, not a store, and sells where it stands: its order doubles the poor okres's cases during
+    the promotion and brings the metric to 1, as a web order does. A vending operator's depot is not where its
+    machines are: its order in the rich okres leaves the metric at 1."""
+    with db.transaction(force_rollback=True):
+        _tv_promotion(db, put)
+        _cases(db, put, 4, date(2025, 10, 20), 35)
+        _cases(db, put, 4, date(2025, 11, 20), 84)
+        _cases(db, put, 1, date(2025, 10, 20), 35)
+        _cases(db, put, 1, date(2025, 11, 20), 42)
+        _cases(db, put, 1, date(2025, 11, 21), 42, store=False, channel="own_shops")
+        assert float(_one(db, "detectors/s2_affluence.sql")) == pytest.approx(1.0)
+        _cases(db, put, 4, date(2025, 11, 21), 5000, store=False, channel="vending")  # to the operator's depot
+        metric = _one(db, "detectors/s2_affluence.sql")
+    assert float(metric) == pytest.approx(1.0)
+
+
+# ── S1: the region's weeks ───────────────────────────────────────────────────
+
+
+def test_s1_weather_reads_the_stores_not_the_dcs(db: psycopg.Connection, put: Put) -> None:
+    """A chain that orders to its own DC puts its national volume in the DC's okres, and so in the DC's region: the
+    region's week counts the store's 10 cases alone."""
+    with db.transaction(force_rollback=True):
+        _catalogue(db, put, code="POLEVKY")
+        put(db, "okres", okres_id=1)
+        put(db, "area", area_id=1, region_id=1)
+        put(db, "area_okres", area_id=1, okres_id=1)
+        _cases(db, put, 1, date(2025, 1, 15), 10)
+        _cases(db, put, 1, date(2025, 1, 16), 5000, store=False, channel="big_retail")  # to the chain's DC
+        weeks = _cte(db, "detectors/s1_weather.sql", "weekly_cases")
+    assert float(weeks[1]["cases"]) == pytest.approx(10)
 
 
 # ── S3: rates over their bases ───────────────────────────────────────────────

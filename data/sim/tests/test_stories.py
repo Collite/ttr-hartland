@@ -119,6 +119,14 @@ def test_s1_weeks_are_the_curves(stories: StoriesConfig) -> None:
     }
 
 
+def test_s1_and_s2_locate_an_order_where_it_is_sold() -> None:
+    """S1-weather and S2-affluence read an order's place by one rule: a store, an own shop or a web consumer's town.
+    Any other delivery point without a store (a chain's DC, a vending depot, a wholesaler's warehouse) drops out."""
+    sold = re.compile(r"dp\.store_id IS NOT NULL OR o\.channel IN \([^)]*\)")
+    found = {name: sold.findall(_sql(f"detectors/{name}.sql")) for name in ("s1_weather", "s2_affluence")}
+    assert found == {name: ["dp.store_id IS NOT NULL OR o.channel IN ('web', 'own_shops')"] for name in found}
+
+
 def test_s3_names_the_pinned_stars_and_weak_reps(stories: StoriesConfig) -> None:
     expected = [(pin.slot, pin.profile) for pin in stories.pins.reps if pin.profile in {"star", "weak"}]
     assert _values(_sql("detectors/s3.sql"), "pinned") == expected
