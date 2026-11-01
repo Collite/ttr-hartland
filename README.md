@@ -39,8 +39,10 @@ just test -m component      # the Postgres 16 tier (Docker for testcontainers, o
 ```
 ttr-hartland/
 ├── LICENSE · LICENSE-DATA.md                MIT · the ODbL for the OSM extract and the generated world
-├── justfile · pyproject.toml · uv.lock      the verbs (data now, model from M0) · the generator package
-├── .github/workflows/data-gate.yml          lint · types · tests · reference-check · ddl drift (model-gate, regenerate: M0)
+├── justfile · pyproject.toml · uv.lock      the verbs (data · model) · the generator package
+├── modeler.toml · toolchain.lock            the model's manifest · the ttr-core and metadata pins
+├── .github/workflows/                       data-gate (lint · types · tests · reference-check · ddl) · model-gate ·
+│                                            regenerate (the model's, M0) · actions/toolchain (the ttr-core build)
 ├── data/
 │   ├── inventory.yaml                       every table: the one source of the DDL, the load order, the db layer
 │   ├── world.yaml                           every number of the company (sites, channels, salesforce, pricing, dials)
@@ -60,7 +62,7 @@ ttr-hartland/
 ├── agents/         hartland.yaml · the Golem's Shem                       (M5)
 ├── automation/ · dashboards/                                              (empty until their efforts re-base)
 ├── run-set/        h-l/ (the twelve questions) · one-number/ · docwh/      (G5, DOC, M5)
-└── scripts/
+└── scripts/        osm_extract_pbf.sh · toolchain-lock.py · regenerate-{local,push}.sh · ddl_drift.py (M0)
 ```
 
 The generator's skeleton, the reference data (`data/reference/`, the catalogue included), `world.yaml`, the inventory
