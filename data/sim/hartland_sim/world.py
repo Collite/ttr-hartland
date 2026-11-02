@@ -191,6 +191,10 @@ class Promotion:
     target_sku: str | None = None  # catalogue sku_code; None = the whole line
     condition_sku: str | None = None
     reward_sku: str | None = None
+    condition_qty: float | None = None  # cases of the condition SKU (or, 1+1, of the target) a reward needs
+    reward_qty: float | None = None  # cases free per `condition_qty`
+    mandatory: bool = False  # the reps must offer it (S2.2's prompt)
+    excludes: tuple[str, ...] = ()  # the codes it may not combine with on an order (`promotion_exclusion`)
 
 
 @dataclass(frozen=True)

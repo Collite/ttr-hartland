@@ -311,6 +311,7 @@ class Promotions:
     exclusion_pairs_per_year: tuple[int, int]
     key_account_exclusive_per_year: int
     code: str
+    campaign_budget: Mapping[str, float]  # "tv" · "other" → a promotion's campaign's media budget
 
 
 @dataclass(frozen=True)

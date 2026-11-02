@@ -37,6 +37,22 @@ customer, line and day. On the order, `agreed` is the running agreed discount's 
 individual price: a running agreement for the SKU sets its price, else one for the line sets the channel list less
 its percentage. `individual`'s term takes the price the earlier steps left down to it: the channel list less the
 individual price, from the sales budget (the trade-spend line "Sales promotions"). Small retail never has one.
+
+**Promotions** (`01` §5.4, ⚑NH-8). The `World`'s promotions running on the day whose eligibility the order's point
+admits — every scope kind it names holds: channel, chain, region, store class, the customer's phase — and that touch
+one of its lines are the order's candidates. Exclusions (`not_with`) act on the order: taken in the order they were
+issued (`valid_from`, then the code), a candidate that excludes, or is excluded by, one already taken is dropped from
+the whole order, so the earlier-issued one stays (the calendar's pairs are of two lines, e.g. Gold's and Classic's TV
+price-offs: an order gets one). Then each mechanic, from Marketing's budget:
+- `price_off`: the promotion's line (or its target SKU) gets `discount_pct` off (kind promotion);
+- `conditional_price_off`: when the order holds `condition_qty` cases of the condition SKU, the reward SKU gets
+  `discount_pct` off;
+- `free_goods_same` (n + m): of each line's units in its grain, m of every n + m are free — the demand counted the
+  cases that move (S1.2) — split off as a free line of the same SKU;
+- `free_goods_other`: every `condition_qty` cases of the condition SKU bring `reward_qty` cases of the reward SKU
+  free, a line of their own.
+A free line carries the channel list and one row of 100 % (kind free_goods), so revenue and trade spend stay honest.
+A mandatory promotion's code is flagged on the lines it touches, for the rep prompts (S2.2).
 """
 
 from __future__ import annotations
@@ -51,11 +67,11 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, Tiers, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
-from hartland_sim.loop.demand import elasticity
+from hartland_sim.loop.demand import Spot, elasticity
 from hartland_sim.rng import rng
 from hartland_sim.setup.portfolio import Sku
 from hartland_sim.setup.rows import row
-from hartland_sim.world import Agreement, Condition, Customer, Price, PriceList, World
+from hartland_sim.world import Agreement, Condition, Customer, Price, PriceList, Promotion, World
 
 STANDARD_CODE = "SC-{year}-Q{quarter}"  # `standard_price_list.code`: SC = standardní ceník
 
@@ -319,26 +335,37 @@ Array = np.ndarray[Any, Any]
 
 @dataclass(frozen=True)
 class Rules:
-    """What pricing reads beside the `World`, for a run (never pickled): `world.yaml`, S6's grant behaviour, and each
-    customer × line's hidden elasticity (`demand.elasticity`) with the customers' and lines' indices."""
+    """What pricing reads beside the `World`, for a run (never pickled): `world.yaml`, S6's grant behaviour, each
+    customer × line's hidden elasticity (`demand.elasticity`), and the indices of the customers, lines, points and
+    SKUs — which a run never adds to. The points' attributes are read off the `World`'s demand, never kept here."""
 
     world: WorldConfig
     s6: Mapping[str, Any]
     elasticity: Array  # (C, L)
     customers: Mapping[int, int]  # customer_id → its row of `elasticity`
     lines: Mapping[str, int]  # line code → its column
+    points: Mapping[int, int]  # delivery_point_id → its index in the demand's points
+    sku_line: Mapping[int, str]  # sku_id → its line's code
+    sku_ids: Mapping[str, int]  # catalogue sku_code → sku_id
+    units: Mapping[int, int]  # sku_id → units per case
 
     @classmethod
     def of(cls, world: World, config: WorldConfig, stories: StoriesConfig) -> Rules:
         demand = world.demand
         if demand is None:
             raise ValueError("the World has no demand state (setup makes it)")
+        goods = demand.catalogue
+        sku_ids = [int(sku) for sku in goods.sku_ids]
         return cls(
             config,
             stories.story("S6").parameters,
             elasticity(demand, stories),
             {int(customer): c for c, customer in enumerate(demand.customer_ids)},
             {line.code: i for i, line in enumerate(demand.lines)},
+            {int(point): p for p, point in enumerate(demand.point_ids)},
+            {sku: demand.lines[int(line)].code for sku, line in zip(sku_ids, goods.line, strict=True)},
+            dict(zip(goods.sku_codes, sku_ids, strict=True)),
+            {sku: int(units) for sku, units in zip(sku_ids, goods.units, strict=True)},
         )
 
     def max_pct(self, line: str) -> float:
@@ -476,3 +503,144 @@ def agreement_row(agreement_id: int, agreement: Agreement) -> Row:
         agreed_by_employee_id=agreement.employee_id,
         budget_charge=agreement.budget_charge,
     )
+
+
+# ── promotions (T5) ──────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Draft:
+    """An order line before its price: the SKU and its quantity (cases and pieces), whether it is free goods, its
+    promotions' terms, and the mandatory promotions it carries."""
+
+    sku_id: int
+    cases: float
+    pieces: float
+    is_free_goods: bool = False
+    promotions: tuple[Term, ...] = ()
+    mandatory: tuple[str, ...] = ()
+
+
+def admits(promotion: Promotion, spot: Spot, customer: Customer, day: date) -> bool:
+    """Whether `promotion` runs on `day` and its eligibility admits the order of `customer` at `spot`."""
+    if not promotion.valid_from <= day <= promotion.valid_to:
+        return False
+    for kind, values in promotion.eligibility:
+        if kind == "channel":
+            held: str | None = customer.channel
+        elif kind == "chain":
+            held = spot.chain
+        elif kind == "region":
+            held = spot.region
+        elif kind == "store_class":
+            held = spot.store.store_class if spot.store else None
+        elif kind == "phase":
+            held = customer.phase_on(day)
+        else:
+            raise ValueError(f"{promotion.code}: no scope kind {kind!r}")
+        if held not in values:
+            return False
+    return True
+
+
+def _targets(promotion: Promotion, rules: Rules, sku_id: int) -> bool:
+    """Whether a price-off or a 1 + 1 touches `sku_id`: its target SKU, or any SKU of its line."""
+    if promotion.target_sku is not None:
+        return rules.sku_ids.get(promotion.target_sku) == sku_id
+    return rules.sku_line[sku_id] == promotion.line
+
+
+def _touches(promotion: Promotion, rules: Rules, cases: Mapping[int, float]) -> bool:
+    """Whether `promotion` does anything to an order of `cases` by SKU."""
+    if promotion.mechanic in ("price_off", "free_goods_same"):
+        return any(_targets(promotion, rules, sku) for sku in cases)
+    condition = rules.sku_ids.get(promotion.condition_sku or "")
+    if cases.get(condition or 0, 0.0) < (promotion.condition_qty or 0):
+        return False
+    if promotion.mechanic == "conditional_price_off":
+        return rules.sku_ids.get(promotion.reward_sku or "") in cases
+    return True  # free_goods_other
+
+
+def taken(candidates: Sequence[tuple[int, Promotion]]) -> list[tuple[int, Promotion]]:
+    """The candidates an order keeps: in the order issued, each one that neither excludes nor is excluded by one
+    already kept."""
+    kept: list[tuple[int, Promotion]] = []
+    for promotion_id, promotion in sorted(candidates, key=lambda found: (found[1].valid_from, found[1].code)):
+        if not any(promotion.code in other.excludes or other.code in promotion.excludes for _, other in kept):
+            kept.append((promotion_id, promotion))
+    return kept
+
+
+def promotions(
+    world: World,
+    rules: Rules,
+    customer: Customer,
+    delivery_point_id: int,
+    day: date,
+    lines: Sequence[tuple[int, float, float]],
+) -> list[Draft]:
+    """The order's lines — (sku_id, cases, pieces) — with the day's promotions applied (module docstring): each line
+    with its promotion terms (less the free part of a 1 + 1), then the free lines the promotions add."""
+    demand = world.demand
+    if demand is None:
+        raise ValueError("the World has no demand state (setup makes it)")
+    point = rules.points[delivery_point_id]
+    spot, pieces_grain = demand.spots[point], bool(demand.pieces[point])
+    cases = {sku: count for sku, count, _ in lines}
+    candidates = [
+        (promotion_id, promotion)
+        for promotion_id, promotion in world.promotions.items()
+        if admits(promotion, spot, customer, day) and _touches(promotion, rules, cases)
+    ]
+    drafts = [Draft(sku, count, each) for sku, count, each in lines]
+    free: list[Draft] = []
+    for promotion_id, promotion in taken(candidates):
+        mandatory = (promotion.code,) if promotion.mandatory else ()
+        if promotion.mechanic == "free_goods_other":
+            reward = rules.sku_ids[promotion.reward_sku or ""]
+            given = cases[rules.sku_ids[promotion.condition_sku or ""]] // (promotion.condition_qty or 1)
+            count = given * (promotion.reward_qty or 0)
+            if count > 0:
+                gift = Term("free_goods", promotion.code, MARKETING, pct=100.0, promotion_id=promotion_id)
+                free.append(Draft(reward, count, count * rules.units[reward], True, (gift,), mandatory))
+            continue
+        for n, draft in enumerate(drafts):
+            if promotion.mechanic == "conditional_price_off":
+                hit = draft.sku_id == rules.sku_ids.get(promotion.reward_sku or "")
+            else:
+                hit = _targets(promotion, rules, draft.sku_id)
+            if not hit:
+                continue
+            if promotion.mechanic == "free_goods_same":
+                drafts[n], gift_line = _split(draft, promotion, promotion_id, pieces_grain, rules.units[draft.sku_id])
+                if gift_line is not None:
+                    free.append(gift_line)
+                continue
+            off = Term("promotion", promotion.code, MARKETING, pct=promotion.discount_pct, promotion_id=promotion_id)
+            drafts[n] = Draft(
+                draft.sku_id, draft.cases, draft.pieces, False, (*draft.promotions, off), (*draft.mandatory, *mandatory)
+            )
+    return [*drafts, *free]
+
+
+def _split(
+    draft: Draft, promotion: Promotion, promotion_id: int, pieces_grain: bool, units: int
+) -> tuple[Draft, Draft | None]:
+    """A 1 + 1 (n + m) on `draft`: of every n + m units of its grain, m free, as a free line of the same SKU."""
+    n, m = int(promotion.condition_qty or 1), int(promotion.reward_qty or 1)
+    whole = round(draft.pieces if pieces_grain else draft.cases)
+    given = whole // (n + m) * m
+    mandatory = (promotion.code,) if promotion.mandatory else ()
+    flagged = (*draft.mandatory, *mandatory)
+    if given == 0:
+        return Draft(draft.sku_id, draft.cases, draft.pieces, False, draft.promotions, flagged), None
+    paid = whole - given
+    if pieces_grain:
+        kept = Draft(draft.sku_id, paid / units, float(paid), False, draft.promotions, flagged)
+        gift_cases, gift_pieces = given / units, float(given)
+    else:
+        kept = Draft(draft.sku_id, float(paid), float(paid * units), False, draft.promotions, flagged)
+        gift_cases, gift_pieces = float(given), float(given * units)
+    gift = Term("free_goods", promotion.code, MARKETING, pct=100.0, promotion_id=promotion_id)
+    return kept, Draft(draft.sku_id, gift_cases, gift_pieces, True, (gift,), mandatory)
