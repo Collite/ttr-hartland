@@ -365,3 +365,109 @@ def expected_gross(demand: Demand, day: date, points: Array | None = None) -> Ar
     _, listed, price_line = demand.catalogue.shares(day, len(demand.lines))
     gross: Array = (demand.base * (listed * price_line)[demand.point_group]).sum(axis=1)
     return gross if points is None else gross[points]
+
+
+# ── season · weather · weekday (S1) ──────────────────────────────────────────
+
+TRADE = ("big_retail", "small_retail", "gas_ka", "vending", "horeca")  # s1.yaml's `trade` week
+WEEKS = 53  # an ISO year's weeks at most; week 53 is week 52's
+
+
+def _weeks(ranges: Sequence[Sequence[int]]) -> list[int]:
+    """The ISO weeks (1–52) of inclusive ranges; a range may wrap over the new year ([45, 8])."""
+    out: list[int] = []
+    for first, last in ranges:
+        out += list(range(first, last + 1)) if first <= last else [*range(first, 53), *range(1, last + 1)]
+    return out
+
+
+def curve(peak: Sequence[Sequence[int]], trough: Sequence[Sequence[int]], amplitude: float) -> Array:
+    """A 52-week multiplier (index 0 = week 1) with mean 1 and peak weeks ÷ trough weeks = `amplitude`.
+
+    The peak weeks stand at `amplitude`, the trough weeks at 1, a week between them on the line between the nearer
+    peak and trough week; then the whole is scaled to a mean of 1. With no trough the other weeks stand at 1; with
+    neither (Decaf) the curve is a cosine from its peak in week 1 to its trough in week 27."""
+    weeks = np.arange(1, 53)
+    up, down = _weeks(peak), _weeks(trough)
+    if not up and not down:
+        raw = 1 + (amplitude - 1) * (1 + np.cos(2 * np.pi * (weeks - 1) / 52)) / 2
+    elif not down:
+        raw = np.where(np.isin(weeks, up), amplitude, 1.0)
+    else:
+        raw = np.empty(52)
+        for i, week in enumerate(range(1, 53)):
+            if week in up:
+                raw[i] = amplitude
+            elif week in down:
+                raw[i] = 1.0
+            else:
+                to_peak = min(_apart(week, w) for w in up)
+                to_trough = min(_apart(week, w) for w in down)
+                raw[i] = 1 + (amplitude - 1) * to_trough / (to_peak + to_trough)
+    return np.asarray(raw / raw.mean(), dtype=float)
+
+
+def _apart(first: int, second: int) -> int:
+    gap = abs(first - second)
+    return min(gap, 52 - gap)
+
+
+@dataclass(frozen=True)
+class Seasons:
+    """S1's terms (`s1.yaml`): the season of each channel × line × ISO week, the December gift uplift, the cold
+    weather's lift and the week's shape. The null world (`enabled: false`) flattens the season, the gift and the
+    weather; the week's shape stays — it is when the trade orders and the consumers shop, not a story.
+
+    **The week**: own shops and the web sell to consumers, so their latent demand follows their week (`weekday`); the
+    trade's shops sell every day, and the trade's week is the day it orders on (`order_weekday`, read by the order
+    trigger). Each shape is scaled to a mean of 1, so the week moves demand, never its volume."""
+
+    season: Array  # (CH, L, 53) by CHANNELS × line × ISO week − 1
+    gift: Array  # (L,) the December multiplier
+    cold_pct: Array  # (L,) % more demand per °C below `cold_below_c`
+    cold_below_c: float
+    weekday: Array  # (CH, 7) the latent demand's week, Monday first
+    order_weekday: Array  # (7,) the trade's order days
+
+    @classmethod
+    def of(cls, stories: StoriesConfig, line_set: Sequence[Line]) -> Seasons:
+        story = stories.story("S1")
+        parameters = story.parameters
+        on = story.enabled
+        season = np.ones((len(CHANNELS), len(line_set), WEEKS))
+        for i, line in enumerate(line_set):
+            if line.code in parameters["curves"]:
+                spec = parameters["curves"][line.code]
+                season[:, i, :52] = curve(spec["peak_weeks"], spec["trough_weeks"], spec["amplitude"])
+            else:  # a Professional line follows its channel
+                for channel, spec in parameters["channel_seasons"].items():
+                    season[CHANNELS.index(channel), i, :52] = curve(spec["weeks"], [], spec["amplitude"])
+        season[:, :, 52] = season[:, :, 51]
+        gifts = parameters["december_gift_uplift"]
+        weekday = np.ones((len(CHANNELS), 7))
+        for channel in ("own_shops", "web"):
+            shape = np.array(parameters["weekday"][channel], dtype=float)
+            weekday[CHANNELS.index(channel)] = shape / shape.mean()
+        trade = np.array(parameters["weekday"]["trade"], dtype=float)
+        return cls(
+            season=season if on else np.ones_like(season),
+            gift=np.array([gifts.get(line.code, 1.0) if on else 1.0 for line in line_set]),
+            cold_pct=np.array(
+                [parameters["curves"].get(line.code, {}).get("cold_pct_per_c", 0) if on else 0 for line in line_set],
+                dtype=float,
+            ),
+            cold_below_c=float(parameters["cold_below_c"]),
+            weekday=weekday,
+            order_weekday=trade / trade.sum(),
+        )
+
+    def of_day(self, day: date) -> Array:
+        """(CH, L) the season × the gift × the week's shape on `day`."""
+        week = day.isocalendar().week
+        out = self.season[:, :, week - 1] * self.weekday[:, day.weekday(), None]
+        return out * self.gift if day.month == 12 else out
+
+    def cold(self, temps: Array) -> Array:
+        """(R, L) the weather term for the regions' temperatures of the day: + `cold_pct` % per °C below."""
+        below = np.maximum(self.cold_below_c - temps, 0.0)
+        return np.asarray(1 + below[:, None] * self.cold_pct / 100)
