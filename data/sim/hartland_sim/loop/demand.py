@@ -277,8 +277,16 @@ class Demand:
 
     @property
     def base(self) -> Array:
-        """(P, L) cases a day at flat terms: the base × the scale (module docstring)."""
-        return self.units * self.scale[:, None]
+        """(P, L) cases a day at flat terms: the base × the scale (module docstring), kept until `rebase`."""
+        found = self.__dict__.get("_base")
+        if found is None:
+            found = self.__dict__["_base"] = self.units * self.scale[:, None]
+        return np.asarray(found)
+
+    def __getstate__(self) -> dict[str, object]:
+        state = dict(self.__dict__)
+        state.pop("_base", None)
+        return state
 
     def rebase(self, changed: Mapping[int, Spot], affluence: Mapping[str, float]) -> None:
         """Stores changed: the base of each changed point (by its index) again. The scale stays, so a bigger store
@@ -288,6 +296,7 @@ class Demand:
             spots[p] = spot
             self.units[p] = base([spot], self.lines, self.terms, affluence)[0]
         self.spots = tuple(spots)
+        self.__dict__.pop("_base", None)
 
 
 def spots(customers: Sequence[Customer], made: Customers, geography: Geography) -> list[Spot]:
@@ -917,22 +926,24 @@ def _orders(demand: Demand, day: date, ready: Array, share: Array) -> list[Baske
     amount = np.where(pieces[:, None], wanted * goods.units, wanted)
     draw = uniforms("basket", day, ids=pairs(demand.point_ids[ready][:, None], goods.sku_ids[None, :]))
     whole = np.floor(amount) + (draw < amount - np.floor(amount))
-    out = []
     ordered = np.flatnonzero(whole.sum(axis=1) > 0)
-    for t in ordered:
-        p = int(ready[t])
-        skus = np.flatnonzero(whole[t])
-        units = whole[t, skus]
-        cases, each = (units / goods.units[skus], units) if pieces[t] else (units, units * goods.units[skus])
-        out.append(
-            BasketReady(
-                day,
-                int(demand.customer_ids[demand.point_customer[p]]),
-                int(demand.point_ids[p]),
-                CHANNELS[int(demand.point_channel[p])],
-                tuple((int(goods.sku_ids[s]), float(c), float(n)) for s, c, n in zip(skus, cases, each, strict=True)),
-            )
-        )
+    rows, skus = np.nonzero(whole[ordered])  # row-major: each order's SKUs in the catalogue's order
+    units = whole[ordered][rows, skus]
+    per_case = goods.units[skus]
+    in_pieces = pieces[ordered][rows]
+    sku_ids = goods.sku_ids[skus].tolist()
+    cases = np.where(in_pieces, units / per_case, units).tolist()
+    each = np.where(in_pieces, units, units * per_case).astype(float).tolist()
+    ends = np.searchsorted(rows, np.arange(1, len(ordered) + 1)).tolist()
+    points = ready[ordered]
+    customers = demand.customer_ids[demand.point_customer[points]].tolist()
+    channels = demand.point_channel[points].tolist()
+    out = []
+    start = 0
+    for t, end in enumerate(ends):
+        lines = tuple(zip(sku_ids[start:end], cases[start:end], each[start:end], strict=True))
+        out.append(BasketReady(day, customers[t], int(demand.point_ids[points[t]]), CHANNELS[channels[t]], lines))
+        start = end
     emptied = ready[ordered]
     demand.basket[emptied] = 0.0
     for sku in list(demand.extras):

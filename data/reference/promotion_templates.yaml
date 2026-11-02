@@ -238,8 +238,8 @@ templates:
     goal_cs: Letáková akce dvou řetězců na klasickou kávu v letním útlumu.
   - line: NUDLE
     tag: LETO
-    month: 7
-    start_week: 28
+    month: 8 # weeks 33–38, after the noodles' trough (28–32, s1.yaml): a price-off inside it would flatten S1's curve
+    start_week: 33
     weeks: 6
     mechanic: price_off
     discount_pct: 15

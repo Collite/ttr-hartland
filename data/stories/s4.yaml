@@ -24,6 +24,10 @@ parameters:
   affluence_exponent: { premium: 0.5, other: 0.0 }
   # The line each street type should lead by share (the demo's detector).
   leading_line: { transport_hub: SMESI, village: POLEVKY, high_street: GOLD }
+  # 04's other check, the pandas twin's own (it has no SQL): k-means over the stores' line-mix shares in 2025 against
+  # street_type, as the adjusted Rand index (checks/stories.py s4_kmeans). Reported, not judged: 04's 0.6 is no
+  # detector's threshold yet (the stories README).
+  kmeans: { clusters: 5 }
 detector:
   sql: detectors/s4.sql
   metric: min_share_led_by_the_expected_line

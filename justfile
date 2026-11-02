@@ -12,7 +12,7 @@ default:
 
 # ── the generator ─────────────────────────────────────────────────────────────
 
-# ruff · mypy --strict · pytest — the unit tier; `just test -m component` runs the Postgres tier instead.
+# ruff · mypy --strict · pytest — the unit tier; `just test -m component` runs the Postgres tier, `-m build` the builds.
 test *ARGS:
     uv run ruff check .
     uv run ruff format --check .
@@ -48,7 +48,7 @@ load-world *ARGS:
 prolong *ARGS:
     uv run hartland-sim prolong "$@"
 
-# The answer key: every detector and probe [--null] [--csv RUN] [--dry] (G0 S0.4 --dry · G5 S5.2).
+# The answer key: every detector and probe [--null] [--csv RUN] [--dry] (G0 S0.4 --dry · G1 S1.2 --csv · G5 S5.2).
 stories-check *ARGS:
     uv run hartland-sim stories-check "$@"
 

@@ -1,6 +1,6 @@
 # The data gate (contracts §7): the generator's lint, types and unit tests, the reference data and the DDL drift on
-# every pull request and every push to master; the Postgres tier (the DDL applied on Postgres 16) as its own job. The
-# model gate arrives at M0.
+# every pull request and every push to master; the Postgres tier (the DDL applied on Postgres 16) and the build tier
+# (CSV builds of the world, the stories' pandas twins on them) as jobs of their own.
 name: data-gate
 
 on:
@@ -67,3 +67,17 @@ jobs:
 
       - name: pytest -m component (Postgres 16)
         run: uv run pytest -m component
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: uv sync (Python 3.13, the lock)
+        run: uv sync --locked
+
+      - name: pytest -m build (the world built to 2025 twice, the stories checked on CSV)
+        run: uv run pytest -m build

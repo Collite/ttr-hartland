@@ -127,11 +127,14 @@ def _prolong_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def stories_check(args: argparse.Namespace) -> int:
-    """`--dry` lists the answer key; running the detectors and probes arrives with the runner (G5 S5.2)."""
+    """`--dry` lists the answer key; `--csv RUN` runs the pandas twins over a CSV build (G1 S1.2); the database
+    runner arrives with G5 S5.2."""
+    if args.csv and not args.dry:
+        return _stories_check_csv(args)
     if not args.dry:
         print(
-            "hartland-sim stories-check: not implemented yet — running the detectors arrives at G5 S5.2"
-            " (--dry lists them)",
+            "hartland-sim stories-check: not implemented yet — running the detectors on Postgres arrives at G5 S5.2"
+            " (--csv RUN reads a CSV build, --dry lists them)",
             file=sys.stderr,
         )
         return 1
@@ -162,6 +165,38 @@ def stories_check(args: argparse.Namespace) -> int:
     return 0
 
 
+BUILD_DIR = REFERENCE_DIR.parent / "build"
+
+
+def _stories_check_csv(args: argparse.Namespace) -> int:
+    """The twins over `data/build/<RUN>/` (or a folder path; bare `--csv` = the latest build): `stories.md` written
+    beside the CSVs, the report printed; exit 1 when a judged check fails."""
+    from hartland_sim.checks.stories import check, report
+    from hartland_sim.config import ConfigError, StoriesConfig
+
+    if args.csv == "latest":
+        runs = sorted((p for p in BUILD_DIR.glob("*") if p.is_dir()), key=lambda p: p.stat().st_mtime)
+        if not runs:
+            print(f"hartland-sim stories-check: no build under {BUILD_DIR}", file=sys.stderr)
+            return 1
+        run = runs[-1]
+    else:
+        run = Path(args.csv) if Path(args.csv).is_dir() else BUILD_DIR / args.csv
+    if not run.is_dir():
+        print(f"hartland-sim stories-check: no build {run}", file=sys.stderr)
+        return 1
+    try:
+        stories = StoriesConfig.load()
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+    verdicts = check(run, stories, null=args.null)
+    text = report(verdicts, run, args.null)
+    (run / "stories.md").write_text(text, encoding="utf-8")
+    print(text, end="")
+    return 1 if any(v.passed is False for v in verdicts) else 0
+
+
 def _stories_check_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--null", action="store_true", help="expect the null world's opposite direction")
     parser.add_argument(
@@ -169,7 +204,7 @@ def _stories_check_arguments(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const="latest",
         metavar="RUN",
-        help="read a CSV build (data/build/<run>/; bare --csv = the latest) instead of Postgres",
+        help="read a CSV build (data/build/<run>/ or a folder; bare --csv = the latest) instead of Postgres",
     )
     parser.add_argument("--dry", action="store_true", help="list the detectors and probes, run nothing")
 
@@ -209,7 +244,7 @@ VERBS: dict[str, Verb] = {
     "prolong": Verb("from the last checkpoint: the world reacts, appends", "G5 S5.3", _prolong_arguments),
     "stories-check": Verb(
         "the answer key: every detector and probe",
-        "G0 S0.4 (--dry) · G5 S5.2",
+        "G0 S0.4 (--dry) · G1 S1.2 (--csv) · G5 S5.2",
         _stories_check_arguments,
         stories_check,
     ),

@@ -98,12 +98,15 @@ def test_stories_check_csv_is_a_flag_with_an_optional_run() -> None:
     assert parser.parse_args(["stories-check", "--csv", "r1"]).csv == "r1"
 
 
-@pytest.mark.parametrize("argv", [["stories-check"], ["stories-check", "--csv", "r1"], ["stories-check", "--null"]])
-def test_stories_check_runs_nothing_yet_without_dry(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("argv", [["stories-check"], ["stories-check", "--null"]])
+def test_stories_check_runs_nothing_on_postgres_yet(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     assert main(argv) == 1
-    assert "hartland-sim stories-check: not implemented yet — running the detectors arrives at G5 S5.2" in (
-        capsys.readouterr().err
-    )
+    assert "running the detectors on Postgres arrives at G5 S5.2" in capsys.readouterr().err
+
+
+def test_stories_check_csv_refuses_a_build_that_is_not_there(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["stories-check", "--csv", "no-such-run-r1"]) == 1
+    assert "no build" in capsys.readouterr().err
 
 
 def test_a_not_implemented_error_inside_a_real_handler_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
