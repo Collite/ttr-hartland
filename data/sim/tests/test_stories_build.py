@@ -186,7 +186,7 @@ def test_the_s1_s2_and_s4_twins_pass_on_the_story_world(story_world: Built, caps
     text = capsys.readouterr().out
     for check_sql in JUDGED:
         (row,) = [line for line in text.splitlines() if f"`{check_sql}`" in line]
-        assert row.endswith("| pass |"), row
+        assert row.split(" | ")[-1].startswith("pass"), row  # the result, and a note after it (S1: each line's ratio)
     assert "| S4 | `kmeans` |" in text and (story_world.run / "stories.md").read_text(encoding="utf-8") == text
 
 
