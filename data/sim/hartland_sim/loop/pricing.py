@@ -53,6 +53,13 @@ price-offs: an order gets one). Then each mechanic, from Marketing's budget:
   free, a line of their own.
 A free line carries the channel list and one row of 100 % (kind free_goods), so revenue and trade spend stay honest.
 A mandatory promotion's code is flagged on the lines it touches, for the rep prompts (S2.2).
+
+**The order** (`price_order`, contracts §4, `05` §3 step 4): each line at its channel's list in force on the day
+(`World.channel_lists`; one of another month is refused — the month-end rolls it), then in the pricing order: the
+volume tier → the cross-sell tier → the agreed discount → the individual price → the promotions, each on the price
+the one before left (`apply`); a free line has its 100 % alone. The `Priced` line holds `sales_order_line`'s pricing
+columns — `discount_total_case` the Σ of its rows' `amount_case`, `discount_total` that × its cases, the invoice
+price the list less the former — and its discount list.
 """
 
 from __future__ import annotations
@@ -67,7 +74,7 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, Tiers, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
-from hartland_sim.loop.demand import Spot, elasticity
+from hartland_sim.loop.demand import BasketReady, Spot, elasticity
 from hartland_sim.rng import rng
 from hartland_sim.setup.portfolio import Sku
 from hartland_sim.setup.rows import row
@@ -644,3 +651,79 @@ def _split(
         gift_cases, gift_pieces = float(given), float(given * units)
     gift = Term("free_goods", promotion.code, MARKETING, pct=100.0, promotion_id=promotion_id)
     return kept, Draft(draft.sku_id, gift_cases, gift_pieces, True, (gift,), mandatory)
+
+
+# ── the order (T6) ───────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Priced:
+    """A priced order line: `sales_order_line`'s quantity and pricing columns, its discount list, the mandatory
+    promotions it carries."""
+
+    sku_id: int
+    cases: float  # qty_cases, to three decimals
+    pieces: float
+    list_price_case: float
+    discount_total_case: float
+    discount_total: float
+    invoice_price_case: float
+    is_free_goods: bool
+    discounts: tuple[Discount, ...]
+    mandatory: tuple[str, ...] = ()
+
+
+def price_line(list_price_case: float, draft: Draft, terms: Sequence[Term]) -> Priced:
+    """`draft` at `list_price_case`: `terms` (the tiers, the agreed discount, the individual price) then its
+    promotions, each on the price the one before left; a free line its free-goods term alone."""
+    cases = milli(draft.cases) / 1000
+    applied = draft.promotions if draft.is_free_goods else (*terms, *draft.promotions)
+    discounts = apply(list_price_case, cases, applied)
+    per_case = sum(halere(discount.amount_case) for discount in discounts)
+    return Priced(
+        draft.sku_id,
+        cases,
+        draft.pieces,
+        list_price_case,
+        per_case / 100,
+        times(per_case, milli(cases)) / 100,
+        (halere(list_price_case) - per_case) / 100,
+        draft.is_free_goods,
+        discounts,
+        draft.mandatory,
+    )
+
+
+def list_in_force(world: World, channel: str, day: date) -> PriceList:
+    """`channel`'s list in force on `day`; `ValueError` when the `World` holds another month's (not rolled)."""
+    found = world.channel_lists.get(channel)
+    if found is None or not found.valid_from <= day <= found.valid_to:
+        held = f"{found.valid_from}–{found.valid_to}" if found else "none"
+        raise ValueError(f"the {channel} list in force on {day} is not in the World (it holds {held}): roll it")
+    return found
+
+
+def price_order(world: World, rules: Rules, basket: BasketReady) -> list[Priced]:
+    """`basket`'s lines priced (module docstring): its own lines, then the free lines its promotions add."""
+    customer = world.customers[basket.customer_id]
+    day = basket.day
+    prices = list_in_force(world, basket.channel, day).prices
+    drafts = promotions(world, rules, customer, basket.delivery_point_id, day, basket.lines)
+    tiered = tiers(customer, day.replace(day=1))
+    out = []
+    for draft in drafts:
+        price = prices.get(draft.sku_id)
+        if price is None:
+            raise ValueError(f"SKU {draft.sku_id} is not on the {basket.channel} list of {day}")
+        terms: list[Term] = []
+        if not draft.is_free_goods:
+            line = rules.sku_line[draft.sku_id]
+            terms = [*tiered]
+            for found in (
+                agreed(world, rules, customer, line, day),
+                individual(world, customer, draft.sku_id, line, price.case, day),
+            ):
+                if found is not None:
+                    terms.append(found)
+        out.append(price_line(price.case, draft, terms))
+    return out
