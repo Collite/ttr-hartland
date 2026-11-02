@@ -2,17 +2,19 @@
 
 Each twin computes what its detector's SQL (`data/stories/detectors/*.sql`) computes, over the same tables, with the
 same windows and the thresholds of its story's YAML; the weeks, lines and street types it reads come from the YAML,
-as the SQL's copies do (a test keeps the two equal). A twin whose tables are not in the build yet is **not run**, and
-says which stage writes them. The runner judges each metric as the database runner will (G5 S5.2): a story passes
-when `metric direction threshold` holds; a NULL (NaN) metric fails; with `--null` the build is a null world and each
-metric must give the opposite (`null_world`).
+as the SQL's copies do (a test keeps the two equal), and a NaN where the SQL gives a NULL. A twin whose tables are not
+in the build yet is **not run**, and says which stage writes them; a story switched off (`enabled: false`) is not
+planted, so its checks are not run either. The runner judges each enabled metric as the database runner will
+(G5 S5.2): a story passes when `metric direction threshold` holds; a NULL (NaN) metric fails; with `--null` the build
+is a null world and each metric must give the opposite (`null_world`).
 
 **Built here (G1 S1.2):** S1 (`s1`, `s1_weather`), S2 (`s2` — not run until `promotion_result` exists, G4 S4.3 —
 and `s2_affluence`), S4 (`s4`, and 04's k-means check `s4_kmeans`, which has no SQL: s4.yaml `kmeans`).
 S2-affluence counts an order only where the promotion names its channel (ttr-hartland#8 item 1, the twin's default
 until the SQL takes it). The others (S3, S5, S6, the probes) arrive with their stages.
 
-The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result.
+The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result, and a note where a twin
+has more to say (S1: each line's ratio, so the line that sets the margin shows).
 """
 
 from __future__ import annotations
@@ -117,27 +119,48 @@ def _weeks(ranges: Any) -> list[int]:
 # ── S1 ─────────────────────────────────────────────────────────────────────────
 
 
-def s1(build: Build, stories: StoriesConfig) -> float:
-    """s1.sql: per line with a curve, the mean weekly cases of its peak weeks ÷ its trough weeks, ISO years 2024–2025,
-    free goods left out; the smallest ratio. A range that wraps the new year takes week 53 too, as the SQL's arrays."""
-    curves = stories.story("S1").parameters["curves"]
+def _weekly(build: Build) -> Frame:
+    """Each line's cases by ISO year and week, 2024–2025, free goods left out."""
+    return build.joined("weekly", _join_weekly)
+
+
+def _join_weekly(build: Build) -> Frame:
     lines = _lines(build)
     lines = lines[~lines["is_free_goods"].astype(bool)]
     iso = lines["ordered_on"].dt.isocalendar()
     lines = lines.assign(iso_year=iso["year"].astype(int), week=iso["week"].astype(int))
     lines = lines[lines["iso_year"].between(2024, 2025)]
-    weekly = lines.groupby(["line", "iso_year", "week"], as_index=False)["qty_cases"].sum()
-    ratios = []
-    for code, spec in curves.items():
+    return lines.groupby(["line", "iso_year", "week"])["qty_cases"].sum().reset_index()
+
+
+def s1_ratios(build: Build, stories: StoriesConfig) -> dict[str, float]:
+    """s1.sql's per-line ratios: for each line with a curve's peak, in the YAML's order, the mean weekly cases of its
+    peak weeks ÷ its trough weeks (NaN where the SQL's is NULL). A range that wraps the new year takes week 53 too, as
+    the SQL's arrays."""
+    weekly = _weekly(build)
+    out = {}
+    for code, spec in stories.story("S1").parameters["curves"].items():
         peak = _weeks(spec["peak_weeks"])
         if not peak:
             continue
         mine = weekly[weekly["line"] == code]
         up = mine.loc[mine["week"].isin(peak), "qty_cases"].mean()
         down = mine.loc[mine["week"].isin(_weeks(spec["trough_weeks"])), "qty_cases"].mean()
-        ratios.append(up / down if down else math.nan)
-    found = [ratio for ratio in ratios if not math.isnan(ratio)]  # SQL's MIN skips a line's NULL
+        out[code] = float(up / down) if down else math.nan
+    return out
+
+
+def s1(build: Build, stories: StoriesConfig) -> float:
+    """s1.sql: the smallest of `s1_ratios`, a line's NULL skipped as SQL's MIN does."""
+    found = [ratio for ratio in s1_ratios(build, stories).values() if not math.isnan(ratio)]
     return float(min(found)) if found else math.nan
+
+
+def s1_note(build: Build, stories: StoriesConfig) -> str:
+    """Each line's ratio, so the report shows which line sets S1's margin."""
+    return " · ".join(
+        f"{code} {'—' if math.isnan(ratio) else f'{ratio:.3f}'}" for code, ratio in s1_ratios(build, stories).items()
+    )
 
 
 def _placed(build: Build) -> Frame:
@@ -208,12 +231,18 @@ def _ntile(values: Frame, column: str, n: int) -> pd.Series[int]:
 def s2_affluence(build: Build, stories: StoriesConfig) -> float:
     """s2_affluence.sql: within the TV-supported promotions, the promoted line's lift (its daily cases during the
     promotion ÷ in the 8 weeks before, clean days only) in the richest quarter of the leaf okresy ÷ the poorest's.
-    The cases are those delivered where they are sold, of the channels the promotion names (ttr-hartland#8)."""
+    The cases are those delivered where they are sold, of the channels the promotion names (ttr-hartland#8).
+
+    As the SQL: the history ends on the last order's day, whatever its place; a day is clean when no other promotion
+    of the line runs, with a campaign or without; a quarter's lift is NULL — skipped — without orders both during and
+    before, or with no cases before."""
     lines = _placed(build)
-    as_of = lines["ordered_on"].max() if len(lines) else pd.NaT
+    orders = build["sales_order"]["ordered_on"]
+    as_of = orders.max() if len(orders) else pd.NaT
     if pd.isna(as_of):
         return math.nan
-    promotions = build["promotion"].merge(build["campaign"][["campaign_id", "has_tv"]], on="campaign_id")
+    every = build["promotion"]
+    promotions = every.merge(build["campaign"][["campaign_id", "has_tv"]], on="campaign_id")
     tv = promotions[promotions["has_tv"].astype(bool) & promotions["valid_from"].between(pd.Timestamp(S2_FROM), as_of)]
     okres = build["okres"]
     leaves = okres[~okres["okres_id"].isin(okres["parent_okres_id"].dropna())].copy()
@@ -225,7 +254,7 @@ def s2_affluence(build: Build, stories: StoriesConfig) -> float:
     for row in tv.to_dict("records"):
         start, line, promotion = pd.Timestamp(row["valid_from"]), row["target_product_line_id"], row["promotion_id"]
         days = pd.date_range(start - pd.Timedelta(days=WEEK_DAYS), min(pd.Timestamp(row["valid_to"]), as_of))
-        others = promotions[(promotions["target_product_line_id"] == line) & (promotions["promotion_id"] != promotion)]
+        others = every[(every["target_product_line_id"] == line) & (every["promotion_id"] != promotion)]
         clean = np.ones(len(days), dtype=bool)
         for other in others.to_dict("records"):
             clean &= ~((days >= pd.Timestamp(other["valid_from"])) & (days <= pd.Timestamp(other["valid_to"])))
@@ -237,6 +266,8 @@ def s2_affluence(build: Build, stories: StoriesConfig) -> float:
         is_during = (mine["ordered_on"] >= start).to_numpy()
         for q, group in mine.groupby("q"):
             in_q = is_during[mine.index.get_indexer(group.index)]
+            if not (in_q.any() and (~in_q).any()):  # SUM … FILTER over no rows is NULL
+                continue
             during_cases = float(group.loc[in_q, "qty_cases"].sum())
             before_cases = float(group.loc[~in_q, "qty_cases"].sum())
             if during and before and before_cases:
@@ -268,7 +299,8 @@ def _join_store_mix(build: Build) -> Frame:
 
 def s4(build: Build, stories: StoriesConfig) -> float:
     """s4.sql: per store the line with the most cases in 2025 (a tie to the first line by code); per street type of
-    `leading_line`, the share of its ordering stores that line leads; the smallest share."""
+    `leading_line`, the share of its ordering stores that line leads; the smallest share — NaN (the SQL's NULL) when a
+    street type has no ordering store, as a detector blind to a type proves nothing of it."""
     mix = _store_mix(build)
     if mix.empty:
         return math.nan
@@ -337,6 +369,7 @@ TWINS: Mapping[str, Twin] = {
     "detectors/s2_affluence.sql": s2_affluence,
     "detectors/s4.sql": s4,
 }
+NOTES: Mapping[str, Callable[[Build, StoriesConfig], str]] = {"detectors/s1.sql": s1_note}
 
 
 @dataclass(frozen=True)
@@ -380,11 +413,28 @@ def judge(story: str, detector: Detector, value: float, null: bool, note: str = 
 
 
 def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict]:
-    """Every detector of every story over the CSV build in `run` (module docstring), in the stories' order, and S4's
-    k-means, reported."""
+    """Every detector of every enabled story over the CSV build in `run` (module docstring), in the stories' order,
+    and S4's k-means, reported; a disabled story's rows say so."""
     build = Build(run)
     out = []
     for story in stories.stories:
+        if not story.enabled:
+            for detector in story.detectors:
+                out.append(
+                    Verdict(
+                        story.story,
+                        detector.sql,
+                        detector.metric,
+                        None,
+                        detector.direction,
+                        detector.threshold,
+                        None,
+                        "disabled",
+                    )
+                )
+            if story.story == "S4":
+                out.append(Verdict("S4", "kmeans", "adjusted_rand_index", None, ">=", KMEANS_BAR, None, "disabled"))
+            continue
         for detector in story.detectors:
             twin = TWINS.get(detector.sql)
             if twin is None:
@@ -403,6 +453,7 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
                 continue
             try:
                 value = twin(build, stories)
+                note = NOTES[detector.sql](build, stories) if detector.sql in NOTES else ""
             except Missing as missing:
                 out.append(
                     Verdict(
@@ -417,7 +468,7 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
                     )
                 )
                 continue
-            out.append(judge(story.story, detector, value, null))
+            out.append(judge(story.story, detector, value, null, note))
         if story.story == "S4":
             note = "04's bar, no detector's threshold yet"
             try:

@@ -169,13 +169,15 @@ BUILD_DIR = REFERENCE_DIR.parent / "build"
 
 
 def _stories_check_csv(args: argparse.Namespace) -> int:
-    """The twins over `data/build/<RUN>/` (or a folder path; bare `--csv` = the latest build): `stories.md` written
-    beside the CSVs, the report printed; exit 1 when a judged check fails."""
+    """The twins over `data/build/<RUN>/` (or a folder path; bare `--csv` = the latest build, the one whose newest CSV
+    is the newest — a folder's own time moves when `stories.md` is first written into it): `stories.md` written beside
+    the CSVs, the report printed; exit 1 when a judged check fails."""
     from hartland_sim.checks.stories import check, report
     from hartland_sim.config import ConfigError, StoriesConfig
 
     if args.csv == "latest":
-        runs = sorted((p for p in BUILD_DIR.glob("*") if p.is_dir()), key=lambda p: p.stat().st_mtime)
+        written = {p: [f.stat().st_mtime for f in p.glob("*.csv")] for p in BUILD_DIR.glob("*") if p.is_dir()}
+        runs = sorted((p for p, times in written.items() if times), key=lambda p: max(written[p]))
         if not runs:
             print(f"hartland-sim stories-check: no build under {BUILD_DIR}", file=sys.stderr)
             return 1

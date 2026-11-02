@@ -1,7 +1,8 @@
 -- S4 — the shops cluster (design 04 §S4), the demo's detector: per store, the line with the most cases in 2025; per
 -- street type of s4.yaml `leading_line`, the share of its ordering stores led by that line. The metric is the
--- smallest share over the three types (≥ 0.8 with the story on). The k-means detector of 04 (adjusted Rand index
--- ≥ 0.6 against street_type) is the pandas twin's, G1 S1.2. The pairs below are s4.yaml's (a test keeps them so).
+-- smallest share over the three types (≥ 0.8 with the story on), NULL when a type has no ordering store: a detector
+-- blind to a type proves nothing of it. The k-means detector of 04 (adjusted Rand index ≥ 0.6 against street_type)
+-- is the pandas twin's, G1 S1.2. The pairs below are s4.yaml's (a test keeps them so).
 WITH expected (street_type, line) AS (
     VALUES ('transport_hub', 'SMESI'), ('village', 'POLEVKY'), ('high_street', 'GOLD')
 ),
@@ -22,7 +23,7 @@ leader AS (
     FROM store_line
     ORDER BY store_id, cases DESC, line
 )
-SELECT MIN(share) AS metric
+SELECT CASE WHEN COUNT(*) = (SELECT COUNT(*) FROM expected) THEN MIN(share) END AS metric
 FROM (
     SELECT e.street_type, AVG(CASE WHEN leader.line = e.line THEN 1.0 ELSE 0.0 END) AS share
     FROM expected e

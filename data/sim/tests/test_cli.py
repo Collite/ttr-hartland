@@ -104,6 +104,27 @@ def test_stories_check_runs_nothing_on_postgres_yet(argv: list[str], capsys: pyt
     assert "running the detectors on Postgres arrives at G5 S5.2" in capsys.readouterr().err
 
 
+def test_bare_csv_checks_the_build_with_the_newest_csv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checking the older build writes its `stories.md`, which moves its folder's time; the newer stays the latest."""
+    import os
+
+    from hartland_sim import cli
+
+    monkeypatch.setattr(cli, "BUILD_DIR", tmp_path)
+    for name, when in (("older", 1_000_000_000), ("newer", 1_000_100_000)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "weather_daily.csv").write_text("region_id,day,temp_mean_c\n", encoding="utf-8")
+        os.utime(tmp_path / name / "weather_daily.csv", (when, when))
+    (tmp_path / "empty").mkdir()  # no CSV: never a build
+    main(["stories-check", "--csv", "older"])
+    assert (tmp_path / "older" / "stories.md").is_file()
+    capsys.readouterr()
+    main(["stories-check", "--csv"])
+    assert capsys.readouterr().out.startswith("# stories-check --csv newer\n")
+
+
 def test_stories_check_csv_refuses_a_build_that_is_not_there(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["stories-check", "--csv", "no-such-run-r1"]) == 1
     assert "no build" in capsys.readouterr().err
