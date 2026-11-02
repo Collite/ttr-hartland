@@ -97,13 +97,17 @@ class Duty:
 
 @dataclass
 class Condition:
-    """A retail customer's conditions for a month (`customer_condition`, S1.3/S1.4)."""
+    """A retail customer's conditions for a month (`customer_condition`, S1.3/S1.4): the tiers its previous month
+    reached (`loop.pricing.condition`)."""
 
     month: date
     volume_tier: str | None = None
     volume_pct: float = 0.0
     cross_sell_tier: str | None = None
     cross_sell_pct: float = 0.0
+    net_revenue: float = 0.0  # the previous month's
+    lines_bought: int = 0  # the previous month's product lines
+    both_brands: bool = False  # the previous month bought coffee and culinary
 
 
 @dataclass(frozen=True)
