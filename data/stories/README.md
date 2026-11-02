@@ -28,8 +28,11 @@ empty base, a region whose displays destroy margin) fails. Every window ends on 
 the data, so a prolonged world is judged to its new end; the fixed windows (S1's 2024–2025, S4's 2025, a case's month)
 stay.
 
-`just stories-check` runs them all against the database (the runner arrives at G5 S5.2, `--csv` reads a CSV build)
-and writes `build/<run>/stories.md`. Until then the SQL is written from the inventory, not yet against data: the
+`just stories-check` runs them all against the database (the runner arrives at G5 S5.2) and writes
+`build/<run>/stories.md`. `--csv RUN` runs each detector's pandas twin over a CSV build instead
+(`hartland_sim/checks/stories.py`, G1 S1.2): S1, S1-weather, S2, S2-affluence and S4 so far, a twin whose tables the
+build does not hold yet is "not run", and S4's k-means (04's adjusted Rand index ≥ 0.6, s4.yaml `kmeans`) is reported
+beside S4, not judged. Until then the SQL is written from the inventory, not yet against data: the
 component tests run every file on the empty schema, and G5 S5.2 tunes the parameters (never the thresholds) on the
 first full build.
 

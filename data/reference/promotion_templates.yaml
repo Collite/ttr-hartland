@@ -236,10 +236,13 @@ templates:
     eligibility: { channel: [big_retail], chain: [TESCO, ALBERT] }
     name_cs: Harcafé Classic 2+1 zdarma v řetězcích
     goal_cs: Letáková akce dvou řetězců na klasickou kávu v letním útlumu.
+  # Weeks 33–38, after the noodles' trough (28–32, s1.yaml): the noodles' amplitude (1.3) leaves ≈ 0.02 over S1's 1.25
+  # on the curve alone, and a price-off inside the trough took them to 1.218. Lines with room keep their trough
+  # promotions (SMESI-LETO, GOLD-KA): a company promotes a line in its slack season.
   - line: NUDLE
     tag: LETO
-    month: 7
-    start_week: 28
+    month: 8
+    start_week: 33
     weeks: 6
     mechanic: price_off
     discount_pct: 15

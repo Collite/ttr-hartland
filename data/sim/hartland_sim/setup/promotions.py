@@ -1,7 +1,8 @@
 """The promotion calendar from its templates (⚑NH-8): `data/reference/promotion_templates.yaml` holds ~25 shapes, one
 promotion each a year, and a year's calendar is every template instantiated for that year — so the codes are stable
 (`world.yaml promotions.code`: `PR-<year>-<month>-<line>-<tag>`) and a rebuild gives the same promotions. Setup seeds
-the history's years from it (`05` §2 step 6); `prolong` goes past the committed years the same way (G5 S5.3).
+the history's years from it into the `World` (`seeded`; `05` §2 step 6); `prolong` goes past the committed years the
+same way (G5 S5.3).
 
 A template starts on the Monday of its ISO `start_week` and runs `weeks` weeks; the start must fall in its `month`,
 which the code carries. Exclusions pair templates by `<line>-<tag>`; each year's calendar excludes the pair both ways.
@@ -12,13 +13,15 @@ other (`clashes` finds the pairs that do not).
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
 from hartland_sim.config import ConfigError, build, read_yaml, validate
+from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR
+from hartland_sim.world import Promotion
 
 TEMPLATES_FILE = REFERENCE_DIR / "promotion_templates.yaml"
 
@@ -121,3 +124,28 @@ def _may_meet(first: Template, second: Template) -> bool:
     """An order could qualify for both: on every scope kind that both restrict, their values meet."""
     kinds = first.eligibility.keys() & second.eligibility.keys()
     return all(set(first.eligibility[kind]) & set(second.eligibility[kind]) for kind in kinds)
+
+
+def seeded(templates: Templates, years: Iterable[int], code: str) -> dict[int, Promotion]:
+    """The `World`'s promotions of `years` from the calendar, by `promotion_id`, in start order within each year: what
+    the demand model lifts (S1.2) and the pricing prices (S1.3)."""
+    out = {}
+    for year in years:
+        for planned in calendar(templates, year, code):
+            template = planned.template
+            promotion_id = row_id("promotion", code=planned.code)
+            out[promotion_id] = Promotion(
+                promotion_id=promotion_id,
+                code=planned.code,
+                line=template.line,
+                mechanic=template.mechanic,
+                valid_from=planned.valid_from,
+                valid_to=planned.valid_to,
+                tv=template.tv,
+                eligibility=tuple((kind, tuple(values)) for kind, values in template.eligibility.items()),
+                discount_pct=template.discount_pct,
+                target_sku=template.target_sku,
+                condition_sku=template.condition_sku,
+                reward_sku=template.reward_sku,
+            )
+    return out

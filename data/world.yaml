@@ -286,6 +286,12 @@ delivery:
     own_shop: { opens: "06:00", closes: "09:00", unloading_minutes: 15 }
     web: { opens: null, closes: null, unloading_minutes: 2 } # a parcel to a consumer's town
 
+# The demand model's scale (G1 S1.2): a customer's expected gross a quarter at its channel's list, for the channels
+# without a rep's or a KAM's budget — the others' is pricing.budgets.opening_quarter_gross. A web consumer buys a few
+# jars a quarter; an own shop restocks its shelf and its café at the transfer list.
+demand:
+  quarter_gross: { web: 750, own_shops: 900000 }
+
 # The volume dials (03 §14): turned down first if the demo VM minds; no story depends on them.
 dials:
   receipts_per_shop_day: 150 # → 50

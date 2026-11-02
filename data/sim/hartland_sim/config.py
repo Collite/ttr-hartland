@@ -426,6 +426,11 @@ class Delivery:
 
 
 @dataclass(frozen=True)
+class DemandScale:
+    quarter_gross: Mapping[str, float]  # channel → a customer's expected gross a quarter (web, own shops)
+
+
+@dataclass(frozen=True)
 class Dials:
     receipts_per_shop_day: int
     observation_lines: Literal["all", "store_class"]
@@ -450,6 +455,7 @@ class WorldConfig:
     calendar: Calendar
     field: Field
     delivery: Delivery
+    demand: DemandScale
     dials: Dials
 
     @classmethod

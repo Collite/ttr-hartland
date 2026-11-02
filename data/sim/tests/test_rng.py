@@ -14,11 +14,12 @@ import pytest
 import hartland_sim
 from hartland_sim import rng as rng_module
 from hartland_sim.config import SCHEMA_DIR, WorldConfig
-from hartland_sim.rng import master_seed, rng, using_master_seed
+from hartland_sim.rng import master_seed, pairs, rng, uniforms, using_master_seed
 from hartland_sim.streams import STREAMS
 
 PACKAGE = Path(hartland_sim.__file__).resolve().parent
-# Contracts §2's catalogue, with the two review-196 ⚑C added (`skills` S1.1 T4, `promo` S5.3 T4) and `org` (S1.1 T4).
+# Contracts §2's catalogue, with the two review-196 ⚑C added (`skills` S1.1 T4, `promo` S5.3 T4), `org` (S1.1 T4), and
+# the two G1 S1.2's list names (`elasticity` T4, `breadth` T6).
 CONTRACT_STREAMS = {
     "demand",
     "basket",
@@ -44,6 +45,8 @@ CONTRACT_STREAMS = {
     "skills",
     "promo",
     "org",
+    "elasticity",
+    "breadth",
 }
 
 
@@ -76,6 +79,29 @@ def test_key_parts_are_canonical_before_they_seed() -> None:
     assert _first("demand", 12, 3) != _first("demand", 1, 23)
     assert _first("demand", "12") != _first("demand", 12)
     assert _first("demand", True) != _first("demand", 1)
+
+
+def test_a_vectorised_draw_is_each_id_s_own() -> None:
+    ids = np.array([-7, 3, 42, 2**62, -(2**63)], dtype=np.int64)
+    found = uniforms("demand", date(2024, 1, 1), ids=ids)
+    assert ((found >= 0) & (found < 1)).all()
+    assert np.array_equal(uniforms("demand", date(2024, 1, 1), ids=ids), found)
+    alone = [float(uniforms("demand", date(2024, 1, 1), ids=[i])[0]) for i in ids]
+    assert alone == found.tolist()  # an id's draw does not depend on who else is drawn
+    assert np.array_equal(uniforms("demand", date(2024, 1, 1), ids=ids[::-1]), found[::-1])
+    assert not np.array_equal(uniforms("demand", date(2024, 1, 2), ids=ids), found)
+    assert not np.array_equal(uniforms("basket", date(2024, 1, 1), ids=ids), found)
+    with using_master_seed(master_seed() + 1):
+        assert not np.array_equal(uniforms("demand", date(2024, 1, 1), ids=ids), found)
+
+
+def test_vectorised_draws_are_uniform_and_pairs_are_distinct() -> None:
+    draws = uniforms("demand", 1, ids=np.arange(200_000))
+    assert abs(draws.mean() - 0.5) < 0.005 and abs(np.median(draws) - 0.5) < 0.005
+    assert np.histogram(draws, bins=10, range=(0, 1))[0].min() > 19_000
+    grid = pairs(np.arange(300)[:, None], np.arange(300)[None, :])
+    assert grid.shape == (300, 300) and len(np.unique(grid)) == 300 * 300
+    assert grid[3, 5] != grid[5, 3]
 
 
 @pytest.mark.parametrize("part", [1.5, {1, 2}, object(), [1, 2], None])
@@ -160,7 +186,7 @@ def _is_numpy(node: ast.expr) -> bool:
     return isinstance(node, ast.Name) and node.id in ("np", "numpy")
 
 
-def test_every_rng_call_in_the_package_names_a_catalogued_stream_by_its_literal() -> None:
+def test_every_draw_call_in_the_package_names_a_catalogued_stream_by_its_literal() -> None:
     problems = []
     for path in _modules():
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -168,7 +194,7 @@ def test_every_rng_call_in_the_package_names_a_catalogued_stream_by_its_literal(
             if not isinstance(node, ast.Call):
                 continue
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
-            if name != "rng":
+            if name not in ("rng", "uniforms"):
                 continue
             first = node.args[0] if node.args else None
             if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):

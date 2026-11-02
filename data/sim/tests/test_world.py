@@ -39,7 +39,7 @@ def _world(day: date = date(2022, 12, 31)) -> World:
     world.customers[11] = Customer(
         11, "RT-000001", "Potraviny U Lípy", "small_retail", None, "active", date(2021, 5, 3), None, "CZ0201",
         "SJC-06", "node/1", None, [Episode("occasional", date(2021, 5, 3), "První objednávka")],
-        traits=("chronic_late_payer",), condition=Condition(date(2023, 1, 1), "VOL-T1", 2.0), basket={7: 1.5, 3: 0.25},
+        traits=("chronic_late_payer",), condition=Condition(date(2023, 1, 1), "VOL-T1", 2.0),
     )  # fmt: skip
     world.customers[12] = Customer(
         12, "RT-000002", "Čerpací stanice Lhota", "small_retail", "special_retail", "potential", None, None, "CZ0202",
@@ -222,3 +222,15 @@ def test_the_duty_on_a_day() -> None:
     assert world.duty("rep_area", "SJC-06", date(2024, 8, 31)) == world.duties[0]
     assert world.duty("rep_area", "SJC-06", date(2024, 9, 1)) == world.duties[1]
     assert world.duty("rep_area", "SJC-06", date(2022, 12, 31)) is None
+
+
+def test_a_duty_closed_in_place_and_its_successor_appended_are_seen_by_the_index() -> None:
+    """`duties` is append-only: a duty ends by setting its `valid_to` in place, and the next one is appended."""
+    world = _world()
+    world.duties[0].valid_to = date(2024, 9, 30)  # the index (built at the first look) holds the same object
+    assert world.duty("rep_area", "SJC-06", date(2024, 9, 15)) == world.duties[0]
+    world.duties[0].valid_to = date(2024, 6, 30)
+    world.duties.append(Duty(6, "rep_area", "SJC-06", date(2024, 7, 1)))
+    assert world.duty("rep_area", "SJC-06", date(2024, 6, 30)) == world.duties[0]
+    found = world.duty("rep_area", "SJC-06", date(2024, 7, 1))
+    assert found is not None and found.employee_id == 6

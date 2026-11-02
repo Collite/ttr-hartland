@@ -43,10 +43,12 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["data/sim/tests"]
-# The unit tier by default; `just test -m component` selects the Postgres tier (the later -m wins).
-addopts = ["--strict-markers", "--import-mode=importlib", "-m", "not component"]
+# The unit tier by default; `just test -m component` selects the Postgres tier, `-m build` the CSV builds of the world
+# (the later -m wins).
+addopts = ["--strict-markers", "--import-mode=importlib", "-m", "not component and not build"]
 markers = [
     "component: real Postgres 16 — testcontainers, or the server in HARTLAND_TEST_PG (CI's service container)",
+    "build: CSV builds of the world from setup through the warm-up and two years (minutes each)",
 ]
 
 [tool.ruff]

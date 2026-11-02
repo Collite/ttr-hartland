@@ -207,6 +207,35 @@ def test_s2_affluence_reads_the_own_shops_not_the_depots(db: psycopg.Connection,
     assert float(metric) == pytest.approx(1.0)
 
 
+# ── S4: every street type judged ─────────────────────────────────────────────
+
+
+def test_s4_is_null_when_a_street_type_has_no_ordering_store(db: psycopg.Connection, put: Put) -> None:
+    """The high street's one store ordered in 2024 only: the detector cannot judge the high street, so the metric is
+    NULL, not the other two types' smallest share. Its 2025 order of Gold brings the metric to 1."""
+
+    def order(store: int, line: int, day: date) -> None:
+        n = next(_ids)
+        put(db, "delivery_point", delivery_point_id=n, okres_id=1, store_id=store)
+        put(db, "sales_order", sales_order_id=n, delivery_point_id=n, ordered_on=day)
+        put(db, "sales_order_line", sales_order_line_id=n, sales_order_id=n, sku_id=line, qty_cases=5)
+
+    with db.transaction(force_rollback=True):
+        for n, code in enumerate(("SMESI", "POLEVKY", "GOLD"), start=1):
+            put(db, "product_line", product_line_id=n, code=code)
+            put(db, "product", product_id=n, product_line_id=n)
+            put(db, "sku", sku_id=n, product_id=n)
+        for store, street in ((1, "transport_hub"), (2, "village"), (3, "high_street")):
+            put(db, "store", store_id=store, street_type=street)
+        order(1, 1, date(2025, 3, 3))
+        order(2, 2, date(2025, 3, 3))
+        order(3, 3, date(2024, 3, 4))  # 2024: outside S4's window
+        assert _one(db, "detectors/s4.sql") is None
+        order(3, 3, date(2025, 3, 3))
+        metric = _one(db, "detectors/s4.sql")
+    assert float(metric) == pytest.approx(1.0)
+
+
 # ── S1: the region's weeks ───────────────────────────────────────────────────
 
 

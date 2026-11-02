@@ -19,6 +19,7 @@
     "calendar",
     "field",
     "delivery",
+    "demand",
     "dials"
   ],
   "properties": {
@@ -1622,6 +1623,33 @@
                   "minimum": 1
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "demand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quarter_gross"
+      ],
+      "properties": {
+        "quarter_gross": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "web",
+            "own_shops"
+          ],
+          "properties": {
+            "web": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "own_shops": {
+              "type": "number",
+              "exclusiveMinimum": 0
             }
           }
         }

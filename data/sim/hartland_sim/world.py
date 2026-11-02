@@ -36,6 +36,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hartland_sim.loop.demand import Demand
 
 PROTOCOL = 5
 CHECKPOINT_FILE = "_sim_checkpoint.csv"
@@ -130,7 +134,6 @@ class Customer:
     episodes: list[Episode]  # in order, the last one open
     traits: tuple[str, ...] = ()  # the planted cases' (`anomalies.yaml pins.customers`)
     condition: Condition | None = None
-    basket: dict[int, float] = field(default_factory=dict)  # product_line_id → latent cases not yet ordered
 
     def active_on(self, day: date) -> bool:
         """A customer from its `since` until its `until`, both included."""
@@ -165,6 +168,48 @@ class Budget:
     used_amount: float = 0.0
 
 
+@dataclass(frozen=True)
+class Promotion:
+    """A promotion as the loop reads it (`promotion` + its `promotion_eligibility` rows): setup seeds the committed
+    calendar (`setup.promotions.seeded`), S1.3 prices it on the order lines, a prolong reads the database's (G5)."""
+
+    promotion_id: int
+    code: str
+    line: str  # the product line's code
+    mechanic: str  # price_off · conditional_price_off · free_goods_same · free_goods_other
+    valid_from: date
+    valid_to: date
+    tv: bool  # its campaign has a TV line (S2)
+    eligibility: tuple[tuple[str, tuple[str, ...]], ...]  # (scope kind, its values), every kind must hold
+    discount_pct: float | None = None
+    target_sku: str | None = None  # catalogue sku_code; None = the whole line
+    condition_sku: str | None = None
+    reward_sku: str | None = None
+
+
+@dataclass(frozen=True)
+class Agreement:
+    """An agreed discount on a customer's line (`price_agreement`, kind agreed; S1.3 grants them)."""
+
+    customer_id: int
+    line: str
+    discount_pct: float
+    valid_from: date
+    valid_to: date
+
+
+@dataclass(frozen=True)
+class Loan:
+    """A display lent to a store (`pos_loan`, G2 S2.3): its line's demand there × (1 + `uplift`) from `lent_on` until
+    the day before `returned_on`."""
+
+    delivery_point_id: int
+    line: str
+    uplift: float  # the store's display_uplift (S5)
+    lent_on: date
+    returned_on: date | None = None
+
+
 @dataclass
 class World:
     """The state after `day`, the last simulated day (setup's world: the day before the warm-up)."""
@@ -172,7 +217,7 @@ class World:
     day: date
     customers: dict[int, Customer] = field(default_factory=dict)  # by customer_id, in setup order
     actors: dict[int, Actor] = field(default_factory=dict)  # by employee_id
-    duties: list[Duty] = field(default_factory=list)
+    duties: list[Duty] = field(default_factory=list)  # append-only; a duty closes by its `valid_to`, set in place
     stock: dict[tuple[int, int], Stock] = field(default_factory=dict)  # (sku_id, dc_site_id)
     budgets: dict[tuple[int, date], Budget] = field(default_factory=dict)  # (employee_id, the quarter's first day)
     # Filled by the loop's stages; their item types arrive with them.
@@ -180,13 +225,32 @@ class World:
     open_shipments: dict[int, object] = field(default_factory=dict)  # G3
     open_invoices: dict[int, object] = field(default_factory=dict)  # G4
     tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
-    loans: dict[int, object] = field(default_factory=dict)  # G2: by pos_asset_id
-    promotions: dict[int, object] = field(default_factory=dict)  # S1.3: the running ones, by promotion_id
+    loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
+    promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
+    agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id
+    demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
-        """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …)."""
-        held = [duty for duty in self.duties if duty.kind == kind and duty.target == target and duty.on(day)]
-        return held[0] if held else None
+        """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
+        duty in `duties`' order, found through an index by (kind, target) that is built again whenever `duties` is
+        another list or another length, and never pickled. So `duties` is append-only: a duty ends by setting its
+        `valid_to` in place (the index holds the same object), never by replacing or reordering the list's items."""
+        index = self.__dict__.get("_duty_index")
+        if index is None or index[0] is not self.duties or index[1] != len(self.duties):
+            by_target: dict[tuple[str, str], list[Duty]] = {}
+            for held in self.duties:
+                by_target.setdefault((held.kind, held.target), []).append(held)
+            index = (self.duties, len(self.duties), by_target)
+            self.__dict__["_duty_index"] = index
+        for held in index[2].get((kind, target), ()):
+            if held.on(day):
+                return held
+        return None
+
+    def __getstate__(self) -> dict[str, object]:
+        state = dict(self.__dict__)
+        state.pop("_duty_index", None)
+        return state
 
 
 def unordered_containers(value: object, path: str = "world") -> list[str]:

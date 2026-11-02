@@ -141,7 +141,8 @@ def test_the_opening_stock_sits_at_each_policy_s_midpoint(opening: Setup) -> Non
         )
         assert opening.world.stock[key].on_hand == item["on_hand_cases"]
     world = opening.world
-    assert not (world.open_orders or world.open_shipments or world.open_invoices or world.loans or world.promotions)
+    assert not (world.open_orders or world.open_shipments or world.open_invoices or world.loans or world.agreements)
+    # the promotions are the committed calendar's, not open documents (S1.2 T4)
 
 
 def test_every_setup_table_is_written_with_the_inventory_s_header(opening: Setup, written: Path) -> None:
