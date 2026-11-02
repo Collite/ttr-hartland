@@ -77,7 +77,7 @@ def demand(opening: Setup) -> Demand:
 
 def _shares(demand: Demand, day: date = DAY) -> np.ndarray:
     share, _, _ = demand.catalogue.shares(day, len(LINES))
-    return np.asarray(share[demand.point_group])
+    return np.asarray(share)
 
 
 def _world(**items: object) -> World:
@@ -139,7 +139,8 @@ def test_a_promoted_sku_lifts_itself_and_its_siblings_lose_thirty_percent_of_it(
     assert lift.uplift[1] == 0.0
     share = _shares(demand)
     ones = np.ones((len(SPOTS), len(LINES)))
-    cases, extras = lifted(ones, today.skus, share, 0.30)
+    cases, extras = lifted(ones, today.skus, share, demand.point_group, 0.30)
+    share = share[demand.point_group]
     found = sku_cases(cases, extras, share, demand.catalogue.line)
     sigma = share[0, lift.sku]
     extra = sigma * lift.uplift[0]
@@ -161,7 +162,8 @@ def test_a10_lifts_its_sku_45_and_its_named_sibling_loses_30(demand: Demand) -> 
     assert lifts[a10["sku"]].uplift[0] == pytest.approx(0.45) and not lifts[a10["sku"]].cannibalises
     assert lifts[a10["sibling"]].uplift[0] == pytest.approx(-0.30)
     share = _shares(demand)
-    cases, extras = lifted(np.ones((len(SPOTS), len(LINES))), today.skus, share, 0.30)
+    cases, extras = lifted(np.ones((len(SPOTS), len(LINES))), today.skus, share, demand.point_group, 0.30)
+    share = share[demand.point_group]
     found = sku_cases(cases, extras, share, demand.catalogue.line)
     sku, sibling = (demand.catalogue.sku_codes.index(a10[key]) for key in ("sku", "sibling"))
     assert found[0, sku] == pytest.approx(share[0, sku] * 1.45)

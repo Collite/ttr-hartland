@@ -36,7 +36,7 @@ from typing import Any
 
 import numpy as np
 
-from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.config import ChannelSettings, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row, read
 from hartland_sim.rng import pairs, uniforms
@@ -47,6 +47,9 @@ from hartland_sim.setup.reference import Geography
 from hartland_sim.world import Customer, Promotion, World
 
 QUARTER_DAYS = 365.25 / 4
+NEVER = date.max.toordinal()
+DRY_CYCLES = 1.5  # a basket this many cycles' expected demand ahead has run the shelf dry
+REFERENCE_MONDAY = date(2023, 1, 2).toordinal()
 KEY_ACCOUNTS = ("big_retail", "gas_ka")  # one customer per chain, its plan spread over its points
 CHANNELS = ("big_retail", "small_retail", "gas_ka", "own_shops", "web", "vending", "horeca")
 Array = np.ndarray[Any, Any]
@@ -150,6 +153,11 @@ def same(first: object, second: object) -> bool:
         elif is_dataclass(mine) and not isinstance(mine, type):
             if not same(mine, theirs):
                 return False
+        elif isinstance(mine, dict) and any(isinstance(item, np.ndarray) for item in mine.values()):
+            if not isinstance(theirs, dict) or list(mine) != list(theirs):
+                return False
+            if not all(np.array_equal(mine[key], theirs[key]) for key in mine):
+                return False
         elif mine != theirs:
             return False
     return True
@@ -249,6 +257,17 @@ class Demand:
     terms: StoreTerms
     units: Array  # (P, L) the base, before the scale
     scale: Array  # (P,) units → cases a day
+    # The orders (T5): when each point orders, and in what grain.
+    cycle: Array  # (P,) days between orders (world.yaml channels.<channel>.order_cycle_days)
+    offset: Array  # (P,) a point's order days are those whose ordinal ≡ offset (mod cycle)
+    pieces: Array  # (P,) bool: orders in pieces (the web, the own shops), else in cases
+    # The state the loop moves.
+    customer_since: Array  # (C,) the ordinal of `since`; NEVER while potential
+    customer_until: Array  # (C,) the ordinal of `until`; NEVER while it buys
+    basket: Array  # (P, L) the latent cases not yet ordered
+    extras: dict[int, Array]  # SKU index → (P,) its cases beyond its share of the pool (`lifted`)
+    due: Array  # (P,) bool: orders today whatever the cycle (a new customer's first order)
+    last_order: Array  # (P,) the ordinal of the last order; 0 before the first
 
     def __eq__(self, other: object) -> bool:
         return same(self, other)
@@ -360,6 +379,10 @@ def opening(
     for p, spot in enumerate(found):
         if spot.channel not in KEY_ACCOUNTS:
             scale[p] = plan[spot.channel] / QUARTER_DAYS / means[spot.channel]
+    order_weekday = Seasons.of(stories, line_set).order_weekday
+    owners = [by_id[spot.customer_id] for spot in found]
+    cycle = np.array([_settings(world, owner).order_cycle_days for owner in owners], dtype=np.int64)
+    point_ids = np.array([spot.delivery_point_id for spot in found], dtype=np.int64)
     return Demand(
         lines=line_set,
         catalogue=goods,
@@ -376,7 +399,41 @@ def opening(
         terms=terms,
         units=units,
         scale=scale,
+        cycle=cycle,
+        offset=offsets(point_ids, cycle, order_weekday),
+        pieces=np.array([_settings(world, owner).order_grain == "piece" for owner in owners], dtype=bool),
+        customer_since=np.array([_since(customer) for customer in customers], dtype=np.int64),
+        customer_until=np.array([_until(customer) for customer in customers], dtype=np.int64),
+        basket=np.zeros(units.shape),
+        extras={},
+        due=np.zeros(len(found), dtype=bool),
+        last_order=np.zeros(len(found), dtype=np.int64),
     )
+
+
+def _settings(world: WorldConfig, customer: Customer) -> ChannelSettings:
+    channel = "special_retail" if customer.sub_channel == "special_retail" else customer.channel
+    settings: ChannelSettings = getattr(world.channels, channel)
+    return settings
+
+
+def _since(customer: Customer) -> int:
+    return customer.since.toordinal() if customer.status != "potential" and customer.since else NEVER
+
+
+def _until(customer: Customer) -> int:
+    return customer.until.toordinal() if customer.until else NEVER
+
+
+def offsets(point_ids: Array, cycle: Array, order_weekday: Array) -> Array:
+    """Each point's order days (stream `basket`): a whole-week cycle (7, 14 days) orders on a weekday drawn by the
+    trade's week (Mon–Tue most) and in a week drawn evenly; any other cycle on a day of it drawn evenly."""
+    weekday = np.searchsorted(np.cumsum(order_weekday), uniforms("basket", "weekday", ids=point_ids), side="right")
+    weekday = np.minimum(weekday, 6)
+    week = np.floor(uniforms("basket", "week", ids=point_ids) * np.maximum(cycle // 7, 1)).astype(np.int64)
+    weekly = REFERENCE_MONDAY + weekday + 7 * week
+    other = np.floor(uniforms("basket", "phase", ids=point_ids) * cycle).astype(np.int64)
+    return np.asarray(np.where(cycle % 7 == 0, weekly, other) % cycle, dtype=np.int64)
 
 
 def expected_gross(demand: Demand, day: date, points: Array | None = None) -> Array:
@@ -747,10 +804,10 @@ class Terms:
 
 
 def lifted(
-    cases: Array, lifts: Sequence[SkuLift], share: Array, cannibalisation: float
+    cases: Array, lifts: Sequence[SkuLift], share: Array, point_group: Array, cannibalisation: float
 ) -> tuple[Array, dict[int, Array]]:
     """The day's line cases (P, L) with the SKU lifts on top, and each lifted SKU's cases (P,) beyond its share of
-    its line's pool. `share` is each point's SKU shares, (P, S) — `Catalogue.shares` by the points' groups.
+    its line's pool. `share` is the groups' SKU shares, (G, S) (`Catalogue.shares`); `point_group` each point's group.
 
     A lift of `u` on SKU `s` (share σ of its line's `D` cases) adds `σ·D·u` cases of `s`; when it cannibalises, its
     siblings give up `c·σ·D·u` of theirs. The line gains the difference; `s`'s extra (beyond σ of the pool) is set so
@@ -758,7 +815,7 @@ def lifted(
     out = cases.copy()
     extras: dict[int, Array] = {}
     for lift in lifts:
-        sigma = share[:, lift.sku]
+        sigma = share[point_group, lift.sku]
         extra = sigma * cases[:, lift.line] * lift.uplift
         alone = sigma >= 1.0  # no sibling to take from
         taken = np.where(lift.cannibalises & ~alone, cannibalisation * extra, 0.0)
@@ -778,3 +835,84 @@ def sku_cases(line_cases: Array, extras: Mapping[int, Array], share: Array, sku_
     for sku, extra in extras.items():
         out[:, sku] += extra
     return np.asarray(np.maximum(out, 0.0))
+
+
+# ── baskets and orders (T5) ──────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class BasketReady:
+    """A basket the customer orders today (S1.4 makes it a `sales_order`): its SKUs in the catalogue's order, each
+    with whole units of its point's grain — cases, or pieces at the web and the own shops — and the other measure."""
+
+    day: date
+    customer_id: int
+    delivery_point_id: int
+    channel: str
+    lines: tuple[tuple[int, float, float], ...]  # (sku_id, cases, pieces)
+
+
+def step(world: World, terms: Terms, day: date, temps: Array) -> list[BasketReady]:
+    """One day of demand (`05` §3 step 1), vectorised over the points × lines: each active point's latent cases —
+    the base × `day`'s terms, the SKU lifts on top — go into its basket, and the baskets that trigger become orders.
+
+    **The trigger**: a point orders on its cycle's days (`offset`), when its basket has run its shelf dry — more than
+    `DRY_CYCLES` cycles' expected demand since its last order (a promotion empties a shelf early) — or when it is
+    `due` (a new customer's first order). **The order**: the basket's cases split into SKUs by their shares
+    (`sku_cases`), in the point's grain, each rounded to a whole unit up with the chance of its fraction (stream
+    `basket`, by point, SKU and day: the same basket on the same day gives the same lines). An order of nothing
+    leaves the basket to fill on; an order empties it."""
+    demand = world.demand
+    if demand is None:
+        raise ValueError("the World has no demand state (setup makes it)")
+    today = day.toordinal()
+    active = ((demand.customer_since <= today) & (today <= demand.customer_until))[demand.point_customer]
+    share, listed, _ = demand.catalogue.shares(day, len(demand.lines))
+    terms_today = terms.today(world, day, temps)
+    cases = demand.base * terms_today.line * listed[demand.point_group] * active[:, None]
+    cases, extras = lifted(cases, terms_today.skus, share, demand.point_group, terms.promotions.cannibalisation)
+    demand.basket += cases
+    for sku, extra in extras.items():
+        demand.extras[sku] = demand.extras[sku] + extra if sku in demand.extras else extra
+    held = demand.basket.sum(axis=1)
+    on_cycle = (today - demand.offset) % demand.cycle == 0
+    dry = held >= DRY_CYCLES * demand.base.sum(axis=1) * demand.cycle
+    ready = np.flatnonzero(active & (on_cycle | dry | demand.due) & (held > 0))
+    return _orders(demand, day, ready, share)
+
+
+def _orders(demand: Demand, day: date, ready: Array, share: Array) -> list[BasketReady]:
+    if not len(ready):
+        return []
+    goods = demand.catalogue
+    extras = {sku: extra[ready] for sku, extra in demand.extras.items()}
+    wanted = sku_cases(demand.basket[ready], extras, share[demand.point_group[ready]], goods.line)
+    pieces = demand.pieces[ready]
+    amount = np.where(pieces[:, None], wanted * goods.units, wanted)
+    draw = uniforms("basket", day, ids=pairs(demand.point_ids[ready][:, None], goods.sku_ids[None, :]))
+    whole = np.floor(amount) + (draw < amount - np.floor(amount))
+    out = []
+    ordered = np.flatnonzero(whole.sum(axis=1) > 0)
+    for t in ordered:
+        p = int(ready[t])
+        skus = np.flatnonzero(whole[t])
+        units = whole[t, skus]
+        cases, each = (units / goods.units[skus], units) if pieces[t] else (units, units * goods.units[skus])
+        out.append(
+            BasketReady(
+                day,
+                int(demand.customer_ids[demand.point_customer[p]]),
+                int(demand.point_ids[p]),
+                CHANNELS[int(demand.point_channel[p])],
+                tuple((int(goods.sku_ids[s]), float(c), float(n)) for s, c, n in zip(skus, cases, each, strict=True)),
+            )
+        )
+    emptied = ready[ordered]
+    demand.basket[emptied] = 0.0
+    for sku in list(demand.extras):
+        demand.extras[sku][emptied] = 0.0
+        if not demand.extras[sku].any():
+            del demand.extras[sku]
+    demand.due[emptied] = False
+    demand.last_order[emptied] = day.toordinal()
+    return out
