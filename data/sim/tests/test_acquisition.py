@@ -193,7 +193,7 @@ def test_small_retail_opens_buying_three_to_seven_lines_its_leader_among_them(op
     customers = list(opening.world.customers.values())
     small = [c for c, customer in enumerate(customers) if customer.channel == "small_retail"]
     counts = demand.carried[small].sum(axis=1)
-    assert counts.min() == 3 and counts.max() == 7
+    assert (counts.min(), counts.max()) == tuple(S3["opening_breadth"]) == (3, 7)
     _, listed, _ = demand.catalogue.shares(date(2023, 1, 1), len(demand.lines))
     for c in small[:500]:
         p = demand.customer_start[c]

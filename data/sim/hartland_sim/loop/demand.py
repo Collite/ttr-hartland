@@ -9,16 +9,19 @@ share its demand when a basket becomes an order.
 alone for a point without one (a chain's DC, a depot, an own shop, a web consumer's town), each × the line's
 `line_base` — the cases a line sells at a residential store, relative to the other lines. `hours_factor` =
 `weekly_hours ^ elasticity × (1 + sunday_open_uplift)`; `affluence(okres, line)` = the okres's affluence index raised
-to the line's exponent (`affluence_exponent`: premium or other). The null world (`s4.yaml enabled: false`) flattens
-the street mixes to 1.0 and keeps the rest: the clusters are the mixes.
+to the line's exponent (`affluence_exponent`: premium or other). A point without a store in a channel of stores (a
+gastro wholesaler among HoReCa's venues) takes the mean store factor of that channel's stores, so it sells as an
+average one; a key account's points keep their own, as its plan is spread over them. The null world (`s4.yaml
+enabled: false`) flattens the street mixes to 1.0 and keeps the rest: the clusters are the mixes.
 
-**The scale.** The base is in units; each point's `scale` turns it into cases a day so that, at the opening's prices
-and listings, a customer's expected gross a quarter is its channel's plan (`world.yaml pricing.budgets.
-opening_quarter_gross`, and `demand.quarter_gross` for the web and the own shops, which hold no budget). A key-account
-chain's plan is spread over its points by their base; any other customer's point gets its channel's plan × its base ÷
-the mean base of the channel's points active at the opening, so a bigger store sells more and a store acquired later
-sells what its base says. The base and the scale are cached at setup (`Demand.base`) and recomputed for a point
-whose store changes (`Demand.rebase`).
+**The scale.** The base is in units; each point's `scale` turns it into cases a day so that, at the opening's prices,
+listings and breadth (the lines a customer buys, `Demand.carried`), a customer's expected gross a quarter is its
+channel's plan (`world.yaml pricing.budgets.opening_quarter_gross`, and `demand.quarter_gross` for the web and the own
+shops, which hold no budget). A key-account chain's plan is spread over its points by their base; any other
+customer's point gets its channel's plan × its gross ÷ the mean gross of the channel's points active at the opening,
+so a bigger store sells more and a store acquired later sells what its base says. A cross-sale then lifts a customer
+above its plan (S3). The base and the scale are cached at setup (`Demand.base`) and recomputed for a point whose store
+changes (`Demand.rebase`).
 
 **The listing.** A point buys what its listing group lists on the day (`channel_listing`, setup's rows): its
 customer's channel, a big-retail chain its own rows, a station shop small retail's (the listing has no sub-channel,
@@ -128,11 +131,16 @@ def base(spots: Sequence[Spot], line_set: Sequence[Line], terms: StoreTerms, aff
     )
     street = np.array([streets.index(spot.store.street_type) if spot.store else -1 for spot in spots], dtype=np.int64)
     store = np.ones(len(spots))
+    stores: dict[str, list[float]] = defaultdict(list)  # a channel's store factors
     for i, spot in enumerate(spots):
         if spot.store is not None:
             sunday = 1 + terms.sunday_open_uplift if spot.store.sunday_open else 1.0
             hours = spot.store.weekly_hours**terms.weekly_hours_elasticity
             store[i] = terms.size_base[spot.store.size_class] * hours * sunday
+            stores[spot.channel].append(float(store[i]))
+    for i, spot in enumerate(spots):
+        if spot.store is None and spot.channel not in KEY_ACCOUNTS and stores[spot.channel]:
+            store[i] = np.mean(stores[spot.channel])
     rich = np.array([affluence[spot.okres] for spot in spots])
     out = line_base * rich[:, None] ** exponent * store[:, None]
     if streets:
@@ -371,9 +379,12 @@ def opening(
     customer_index = {customer.customer_id: c for c, customer in enumerate(customers)}
     point_group = np.array([groups[spot.group] for spot in found], dtype=np.int64)
     point_customer = np.array([customer_index[spot.customer_id] for spot in found], dtype=np.int64)
+    start = starts(point_customer, len(customers))
     first = world.history.warm_up_from
     _, listed, price_line = goods.shares(first, len(line_set))
-    gross = (units * (listed * price_line)[point_group]).sum(axis=1)  # a day, at a scale of 1
+    span = stories.story("S3").parameters["opening_breadth"]
+    carried = breadth(customers, units, point_group, listed, start, (int(span[0]), int(span[1])))
+    gross = (units * (listed * price_line)[point_group] * carried[point_customer]).sum(axis=1)  # a day, at scale 1
     by_id = {customer.customer_id: customer for customer in customers}
     scale = np.zeros(len(found))
     plan = plans(world)
@@ -398,7 +409,7 @@ def opening(
         lines=line_set,
         catalogue=goods,
         spots=tuple(found),
-        point_ids=np.array([spot.delivery_point_id for spot in found], dtype=np.int64),
+        point_ids=point_ids,
         point_customer=point_customer,
         point_channel=np.array([CHANNELS.index(spot.channel) for spot in found], dtype=np.int64),
         point_group=point_group,
@@ -406,7 +417,7 @@ def opening(
         point_affluence=np.array([index[spot.okres] for spot in found]),
         regions=regions,
         customer_ids=np.array([customer.customer_id for customer in customers], dtype=np.int64),
-        customer_start=starts(point_customer, len(customers)),
+        customer_start=start,
         terms=terms,
         units=units,
         scale=scale,
@@ -415,7 +426,7 @@ def opening(
         pieces=np.array([_settings(world, owner).order_grain == "piece" for owner in owners], dtype=bool),
         customer_since=np.array([_since(customer) for customer in customers], dtype=np.int64),
         customer_until=np.array([_until(customer) for customer in customers], dtype=np.int64),
-        carried=breadth(customers, units, point_group, listed, starts(point_customer, len(customers))),
+        carried=carried,
         basket=np.zeros(units.shape),
         extras={},
         due=np.zeros(len(found), dtype=bool),
@@ -424,16 +435,18 @@ def opening(
 
 
 BREADTH_CHANNELS = ("small_retail",)  # the field reps' customers, whose breadth S3 moves
-BREADTH_LINES = (3, 7)  # a small-retail customer opens buying this many of its listed lines, both included
 
 
-def breadth(customers: Sequence[Customer], units: Array, point_group: Array, listed: Array, start: Array) -> Array:
+def breadth(
+    customers: Sequence[Customer], units: Array, point_group: Array, listed: Array, start: Array, span: tuple[int, int]
+) -> Array:
     """(C, L) the lines each customer buys at the opening. A small-retail customer buys `k` of the lines its listing
-    holds (`k` in `BREADTH_LINES`, stream `breadth`): those its store sells most of, by its base, so the line its
-    street leads with is always among them. Any other customer buys every line it is listed."""
+    holds (`k` in `span`, both included: `s3.yaml opening_breadth`; stream `breadth`): those its store sells most of,
+    by its base, so the line its street leads with is always among them. Any other customer buys every line it is
+    listed."""
     out = np.ones((len(customers), units.shape[1]), dtype=bool)
     ids = np.array([customer.customer_id for customer in customers], dtype=np.int64)
-    low, high = BREADTH_LINES
+    low, high = span
     k = low + np.floor(uniforms("breadth", "opening", ids=ids) * (high - low + 1)).astype(np.int64)
     for c, customer in enumerate(customers):
         if customer.channel not in BREADTH_CHANNELS:
@@ -470,11 +483,12 @@ def offsets(point_ids: Array, cycle: Array, order_weekday: Array) -> Array:
     return np.asarray(np.where(cycle % 7 == 0, weekly, other) % cycle, dtype=np.int64)
 
 
-def expected_gross(demand: Demand, day: date, points: Array | None = None) -> Array:
-    """(P,) the expected gross a day of each point at flat terms on `day`'s listings and prices."""
+def expected_gross(demand: Demand, day: date) -> Array:
+    """(P,) the expected gross a day of each point at flat terms on `day`'s listings and prices, over the lines its
+    customer buys (`carried`): what the point orders, not all it is listed."""
     _, listed, price_line = demand.catalogue.shares(day, len(demand.lines))
-    gross: Array = (demand.base * (listed * price_line)[demand.point_group]).sum(axis=1)
-    return gross if points is None else gross[points]
+    bought = (listed * price_line)[demand.point_group] * demand.carried[demand.point_customer]
+    return np.asarray((demand.base * bought).sum(axis=1))
 
 
 # ── season · weather · weekday (S1) ──────────────────────────────────────────

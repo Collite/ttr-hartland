@@ -11,6 +11,9 @@ parameters:
   acquisition_base: 0.03 # P(a potential store in the area becomes a customer in a month) = base × skill × appeal
   churn_base: 0.012 # the monthly churn hazard = base ÷ skill
   cross_sell_base: 0.08 # the monthly chance an active customer adds a line it never bought = base × skill
+  # A small-retail store opens buying this many of the lines its listing holds (both included), those its store
+  # sells most of: the room cross-sell grows into. 04 S3 names no figure; set at G1 S1.2.
+  opening_breadth: [3, 7]
   area_moves: 2
   # The days the reps change areas (each rep, within its region, at a quarter's start so a budget stays one rep's).
   area_move_days: [2024-10-01, 2025-10-01]

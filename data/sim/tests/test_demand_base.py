@@ -76,10 +76,26 @@ def test_sunday_opening_the_hours_and_the_affluence() -> None:
 
 
 def test_a_point_without_a_store_has_only_the_line_base_and_the_affluence() -> None:
-    depot = Spot(2, 2, "vending", ("vending", None), "CZ0201", "SJC", None)
+    depot = Spot(2, 2, "vending", ("vending", None), "CZ0201", "SJC", None)  # vending has no stores
     found = _base([depot])[0]
     line_base = STORIES.story("S4").parameters["line_base"]
     assert found.tolist() == [line_base.get(code, 1.0) for code in CODES]
+
+
+def test_a_point_without_a_store_among_its_channel_s_stores_takes_their_mean_store_factor() -> None:
+    """A wholesaler among HoReCa's venues sells as an average venue; a key account's DC keeps its own factor."""
+    venues = [
+        replace(_spot("residential"), channel="horeca", group=("horeca", None)),
+        replace(_spot("residential", size_class="L", sunday_open=True), channel="horeca", group=("horeca", None)),
+    ]
+    wholesaler = Spot(3, 3, "horeca", ("horeca", None), "CZ0201", "SJC", None)
+    dc = Spot(4, 4, "big_retail", ("big_retail", "CH1"), "CZ0201", "SJC", None, "CH1")
+    store = replace(_spot("residential"), channel="big_retail", group=("big_retail", "CH1"))
+    found = _base([*venues, wholesaler, dc, store])
+    alone = _base([Spot(5, 5, "vending", ("vending", None), "CZ0201", "SJC", None)])[0]
+    factors = found[:2, 0] / alone[0]  # residential: the mix is 1.0 on every line
+    assert np.allclose(found[2], alone * factors.mean())
+    assert np.allclose(found[3], alone)
 
 
 def test_the_null_world_flattens_the_mixes_and_keeps_the_rest() -> None:
@@ -101,6 +117,7 @@ def test_setup_caches_the_base_of_every_delivery_point(opening: Setup) -> None:
 
 
 def test_the_scale_meets_each_channel_s_plan_at_the_opening(opening: Setup) -> None:
+    """Over the lines each customer buys (`carried`): small retail's 3–7 lines meet its plan, not its full listing."""
     demand = opening.world.demand
     assert demand is not None
     world = WorldConfig.load()
@@ -119,6 +136,45 @@ def test_the_scale_meets_each_channel_s_plan_at_the_opening(opening: Setup) -> N
                 p for p, c in enumerate(owner) if customers[c].channel == channel and customers[c].active_on(first)
             ]
             assert quarter[active].mean() == pytest.approx(gross), channel
+
+
+def test_a_small_retail_point_gets_the_plan_by_its_carried_gross(opening: Setup) -> None:
+    """One point's expected gross = the plan × its gross ÷ the channel's mean gross, both over the carried lines at the
+    opening; the same point over its full listing sells more than that."""
+    demand = opening.world.demand
+    assert demand is not None
+    world = WorldConfig.load()
+    first = world.history.warm_up_from
+    customers = list(opening.world.customers.values())
+    _, listed, price_line = demand.catalogue.shares(first, len(LINES))
+    priced = (listed * price_line)[demand.point_group]
+    carried = demand.carried[demand.point_customer]
+    gross = (demand.units * priced * carried).sum(axis=1)
+    active = [
+        p
+        for p, c in enumerate(demand.point_customer)
+        if customers[c].channel == "small_retail" and customers[c].active_on(first)
+    ]
+    p = next(p for p in active if not carried[p].all())
+    plan = world.pricing.budgets.opening_quarter_gross["small_retail"]
+    quarter = expected_gross(demand, first) * QUARTER_DAYS
+    assert quarter[p] == pytest.approx(plan * gross[p] / gross[active].mean())
+    full = (demand.base[p] * priced[p]).sum() * QUARTER_DAYS
+    assert full > quarter[p]
+
+
+def test_the_gastro_wholesalers_meet_horeca_s_plan(opening: Setup) -> None:
+    """The two store-less HoReCa points sell as an average venue (the channel's mean store factor)."""
+    demand = opening.world.demand
+    assert demand is not None
+    world = WorldConfig.load()
+    first = world.history.warm_up_from
+    wholesalers = [p for p, spot in enumerate(demand.spots) if spot.channel == "horeca" and spot.store is None]
+    assert len(wholesalers) == 2
+    quarter = expected_gross(demand, first) * QUARTER_DAYS
+    plan = world.pricing.budgets.opening_quarter_gross["horeca"]
+    for p in wholesalers:
+        assert quarter[p] == pytest.approx(plan, rel=0.15)  # ≈ 110 000: its okres and no street mix
 
 
 def test_a_store_that_changes_gets_its_base_again(opening: Setup) -> None:
