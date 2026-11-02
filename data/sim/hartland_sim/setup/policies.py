@@ -1,6 +1,6 @@
 """Setup step 6 (`05` §2), the policies of the opening: stock policies, the rep-prompt and lifecycle rules, the
 discount budgets of the opening quarter, the PoS materials and the regions' asset pools, the carriers and their
-vehicles. The price lists, promotions and campaigns are S1.3's.
+vehicles, the price lists.
 
 - **`stock_policy`** per SKU × DC (`world.yaml policies.stock`): days of cover, Professional packs 15/45, the rest
   10/35, from the SKU's launch to the day before its delisting.
@@ -17,6 +17,10 @@ vehicles. The price lists, promotions and campaigns are S1.3's.
   as it ages; held by the region, lent by G2 S2.3.
 - **`carrier`** (`carrier.csv`) and **`vehicle`**: each carrier's fleet by class, the capacities of `delivery.capacity`,
   a Czech plate drawn per vehicle (stream `route`) in the region of its DC.
+- **The price lists** (`loop.pricing`): the rows are the first written versions — the standard list of the first
+  written quarter (Q1-2024) and each channel's list of its first month (Jan-2024), issued by Marketing's director.
+  The `World` gets the versions in force on the warm-up's first day (Q1-2023, Jan-2023); the month-ends roll them
+  from there (S1.4) and write the versions after these.
 """
 
 from __future__ import annotations
@@ -29,11 +33,13 @@ from pathlib import Path
 from hartland_sim.config import WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
+from hartland_sim.loop.demand import CHANNELS
+from hartland_sim.loop.pricing import channel_list, channel_rows, standard_list, standard_rows
 from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, row
-from hartland_sim.world import OPEN, Budget
+from hartland_sim.world import OPEN, Budget, PriceList
 
 ASSETS_FROM = date(2019, 1, 1)
 PLATE_REGION = {"DC-JIRNY": "S", "DC-MODRICE": "B", None: "A"}  # Středočeský, Jihomoravský, Praha
@@ -129,6 +135,25 @@ def rules(out: Tables, world: WorldConfig, owner: int) -> None:
                     document_id=None,
                 )
             )
+
+
+def price_lists(
+    out: Tables, world: WorldConfig, portfolio: Portfolio, issuer: int
+) -> tuple[PriceList, dict[str, PriceList]]:
+    """The first written versions' rows into `out`; the standard list and the channels' lists in force on the
+    warm-up's first day, for the `World`."""
+    first = world.history.first_day
+    standard = standard_list(portfolio.skus, first)
+    head, items = standard_rows(standard, issuer)
+    out["standard_price_list"].append(head)
+    out["standard_price"].extend(items)
+    for channel in CHANNELS:
+        head, items = channel_rows(channel_list(standard, portfolio.skus, world, channel, first))
+        out["channel_price_list"].append(head)
+        out["channel_price"].extend(items)
+    start = world.history.warm_up_from
+    opening = standard_list(portfolio.skus, start)
+    return opening, {channel: channel_list(opening, portfolio.skus, world, channel, start) for channel in CHANNELS}
 
 
 def budgets(world: WorldConfig, planned: Iterable[tuple[int, str, int]]) -> dict[tuple[int, date], Budget]:

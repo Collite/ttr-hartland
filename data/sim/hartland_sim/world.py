@@ -188,6 +188,31 @@ class Promotion:
 
 
 @dataclass(frozen=True)
+class Price:
+    """A SKU's price in a price list version: per case and per piece; the standard list's also the purchase price (the
+    factories' standard price), a channel list's whether Marketing's hero override set it."""
+
+    case: float
+    piece: float
+    purchase_case: float | None = None
+    is_override: bool = False
+
+
+@dataclass(frozen=True)
+class PriceList:
+    """A version of a price list (`01` §5.1; CN-D31's price-list object — prices with their validity): the standard
+    list (`channel` None, quarterly, with its `code`) or a channel's (monthly: the standard × `factor`). `prices` holds
+    the SKUs sold in the version's period, by `sku_id` in the catalogue's order."""
+
+    channel: str | None
+    code: str | None
+    valid_from: date
+    valid_to: date
+    factor: float
+    prices: dict[int, Price]
+
+
+@dataclass(frozen=True)
 class Agreement:
     """An agreed discount on a customer's line (`price_agreement`, kind agreed; S1.3 grants them)."""
 
@@ -229,6 +254,10 @@ class World:
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
     agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
+    # S1.3: the price lists in force on `day` — the standard one and each channel's; the period ends roll them (S1.4
+    # monthly, S4.3 quarterly).
+    standard_list: PriceList | None = None
+    channel_lists: dict[str, PriceList] = field(default_factory=dict)  # by channel
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
