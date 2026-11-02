@@ -25,7 +25,7 @@ from pathlib import Path
 
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, read
-from hartland_sim.rng import rng
+from hartland_sim.rng import master_seed, rng
 from hartland_sim.setup.rows import Row, row
 
 NATIONAL = "CZ"
@@ -61,7 +61,7 @@ class Climate:
     normals: Mapping[tuple[str, int], Normal]  # (region, month) → its normal
     severe: Mapping[tuple[str, date], str]  # (region, day) → the severe day's kind
     regions: tuple[str, ...]  # in weather_normals.csv's order
-    _draws: dict[tuple[str, date], tuple[float, float, float]] = field(default_factory=dict, repr=False)
+    _draws: dict[tuple[int, str, date], tuple[float, float, float]] = field(default_factory=dict, repr=False)
 
     @classmethod
     def load(cls, root: Path = REFERENCE_DIR) -> Climate:
@@ -132,8 +132,10 @@ class Climate:
         return rows
 
     def _draw(self, key: str, day: date) -> tuple[float, float, float]:
-        """(standard normal, uniform, the wet day's gamma amount ÷ its mean) of `key` on `day`."""
-        found = self._draws.get((key, day))
+        """(standard normal, uniform, the wet day's gamma amount ÷ its mean) of `key` on `day`, under the master seed
+        of the call (one `Climate` may serve two seeds)."""
+        cached = (master_seed(), key, day)
+        found = self._draws.get(cached)
         if found is None:
             draw = rng("weather", key, day)
             found = (
@@ -141,7 +143,7 @@ class Climate:
                 float(draw.random()),
                 float(draw.gamma(GAMMA_SHAPE, 1 / GAMMA_SHAPE)),
             )
-            self._draws[key, day] = found
+            self._draws[cached] = found
         return found
 
 

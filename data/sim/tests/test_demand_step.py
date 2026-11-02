@@ -54,6 +54,22 @@ def _small_retail(demand: Demand, day: date, on_cycle: bool) -> int:
     raise AssertionError("no such point")
 
 
+def test_step_refuses_the_terms_of_another_demand(opening: Setup) -> None:
+    """A restored checkpoint holds a new `Demand`: terms built before the restore would index the old one's arrays."""
+    world, demand, terms = _copy(opening)
+    restored = Checkpoint.of(world).restore()
+    with pytest.raises(ValueError, match="another Demand"):
+        step(restored, terms, FIRST, _temps(demand, FIRST))
+
+
+def test_the_day_s_shares_passed_in_give_the_same_orders(opening: Setup) -> None:
+    first, _, first_terms = _copy(opening)
+    second, demand, second_terms = _copy(opening)
+    shares = demand.catalogue.shares(FIRST, len(demand.lines))
+    temps = _temps(demand, FIRST)
+    assert step(first, first_terms, FIRST, temps) == step(second, second_terms, FIRST, temps, shares)
+
+
 @pytest.fixture(scope="module")
 def ran(opening: Setup) -> tuple[World, Demand, list[BasketReady]]:
     """A copy of the opening world run for 42 days from FIRST."""
@@ -109,7 +125,7 @@ def test_a_shelf_run_dry_orders_before_its_day(opening: Setup) -> None:
     demand.basket[p] = demand.base[p] * demand.cycle[p] * DRY_CYCLES  # more sold since the last order than shelved
     events = step(world, terms, FIRST, _temps(demand, FIRST))
     assert demand.point_ids[p] in {event.delivery_point_id for event in events}
-    assert demand.basket[p].sum() == 0 and demand.last_order[p] == FIRST.toordinal()
+    assert demand.basket[p].sum() == 0
 
 
 def test_a_due_point_orders_and_an_empty_basket_never_does(opening: Setup) -> None:

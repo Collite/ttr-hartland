@@ -69,11 +69,12 @@ def build(run: Path, stories: StoriesConfig, market: Market) -> Built:
                 snapshot = float((demand_state.basket[points].sum(axis=1) > 0).mean())
             temps = np.array([climate.day(region, day).temp_mean_c for region in state.demand.regions])
             output.append(day, "weather_daily", climate.rows(day))
-            outcome = acquisition.step(state, reps, day)
+            shares = state.demand.catalogue.shares(day, len(state.demand.lines))  # the day's, read by both steps
+            outcome = acquisition.step(state, reps, day, shares)
             if not output.writes(day):
                 gained += sum(customer in potential for customer in outcome.acquired)
                 lost += len(outcome.lost)
-            events = demand.step(state, terms, day, temps)
+            events = demand.step(state, terms, day, temps, shares)
             if output.writes(day):
                 stub.orders(events)
             state.day = day

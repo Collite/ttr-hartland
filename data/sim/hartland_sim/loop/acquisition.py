@@ -30,7 +30,7 @@ from typing import Any
 import numpy as np
 
 from hartland_sim.config import StoriesConfig
-from hartland_sim.loop.demand import BREADTH_CHANNELS, NEVER, Demand
+from hartland_sim.loop.demand import BREADTH_CHANNELS, NEVER, Demand, Shares
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.customers import FIRST_ORDER
 from hartland_sim.world import Episode, World
@@ -115,16 +115,19 @@ class Reps:
         return held, acquisition, retention, cross_sell
 
 
-def chances(world: World, demand: Demand, reps: Reps, day: date) -> tuple[Array, Array, Array]:
+def chances(
+    world: World, demand: Demand, reps: Reps, day: date, listed: Array | None = None
+) -> tuple[Array, Array, Array]:
     """(C,) each customer's monthly chance on `day` to be acquired, lost and cross-sold (module docstring); 0 where a
-    mechanism does not apply."""
+    mechanism does not apply. `listed` is the day's (G, L) listing (`Catalogue.shares`), when the caller has it."""
     today = day.toordinal()
     held, acquisition, retention, cross_sell = reps.skills(world, day)
     area, small = reps.area, reps.small
     since, until = demand.customer_since[small], demand.customer_until[small]
     potential = since == NEVER
     active = (since <= today) & (today <= until)
-    _, listed, _ = demand.catalogue.shares(day, len(demand.lines))
+    if listed is None:
+        _, listed, _ = demand.catalogue.shares(day, len(demand.lines))
     room = (listed[demand.point_group[demand.customer_start[small]]] & ~demand.carried[small]).any(axis=1)
     acquire, churn, cross = (np.zeros(len(demand.customer_ids)) for _ in range(3))
     rates = reps.rates
@@ -134,18 +137,22 @@ def chances(world: World, demand: Demand, reps: Reps, day: date) -> tuple[Array,
     return acquire, churn, cross
 
 
-def step(world: World, reps: Reps, day: date) -> Outcome:
-    """The day's acquisitions, losses and cross-sales (module docstring), applied to the `World` and its demand."""
+def step(world: World, reps: Reps, day: date, shares: Shares | None = None) -> Outcome:
+    """The day's acquisitions, losses and cross-sales (module docstring), applied to the `World` and its demand. Only
+    the reps' customers are drawn: an id's draw is its own, so leaving the others out changes none. A customer lost
+    today is not cross-sold today. `shares` are the day's `Catalogue.shares`, when the caller has them already."""
     demand = world.demand
     if demand is None:
         raise ValueError("the World has no demand state (setup makes it)")
-    acquire, churn, cross = chances(world, demand, reps, day)
+    _, listed, _ = shares or demand.catalogue.shares(day, len(demand.lines))
+    acquire, churn, cross = (chance[reps.small] for chance in chances(world, demand, reps, day, listed))
     ids = demand.customer_ids
+    small = reps.small
     customers = list(world.customers.values())
-    acquired = np.flatnonzero((acquire > 0) & (uniforms("acquire", day, ids=ids) < daily(acquire)))
-    lost = np.flatnonzero((churn > 0) & (uniforms("churn", day, ids=ids) < daily(churn)))
-    added = np.flatnonzero((cross > 0) & (uniforms("breadth", day, ids=ids) < daily(cross)))
-    _, listed, _ = demand.catalogue.shares(day, len(demand.lines))
+    acquired = small[(acquire > 0) & (uniforms("acquire", day, ids=ids[small]) < daily(acquire))]
+    lost = small[(churn > 0) & (uniforms("churn", day, ids=ids[small]) < daily(churn))]
+    added = small[(cross > 0) & (uniforms("breadth", day, ids=ids[small]) < daily(cross))]
+    added = added[~np.isin(added, lost)]
     for c in acquired:
         customer = customers[c]
         customer.status, customer.since = "active", day
@@ -163,6 +170,10 @@ def step(world: World, reps: Reps, day: date) -> Outcome:
         points = slice(int(demand.customer_start[c]), int(demand.customer_start[c + 1]))
         demand.basket[points] = 0.0
         demand.due[points] = False
+        for sku in list(demand.extras):  # a lost point never orders again to clear its extras
+            demand.extras[sku][points] = 0.0
+            if not demand.extras[sku].any():
+                del demand.extras[sku]
     sold = []
     for c in added:
         p = int(demand.customer_start[c])

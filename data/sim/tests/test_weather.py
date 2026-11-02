@@ -34,6 +34,16 @@ def test_another_master_seed_draws_other_weather(climate: Climate) -> None:
     assert other != climate.day("PHA", day)
 
 
+def test_one_climate_under_two_master_seeds_draws_each_seed_s_weather(climate: Climate) -> None:
+    """The draws' cache is keyed by the master seed: a `Climate` that served one seed serves another its own."""
+    day = date(2024, 2, 15)
+    mine = climate.day("PHA", day)
+    with using_master_seed(1):
+        other = climate.day("PHA", day)
+        assert other == Climate.load().day("PHA", day)
+    assert other != mine and climate.day("PHA", day) == mine
+
+
 def test_the_planted_severe_days_are_flagged_and_agree_with_their_kind(climate: Climate) -> None:
     planted = read("severe_days")
     assert planted

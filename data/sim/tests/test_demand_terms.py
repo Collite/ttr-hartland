@@ -202,6 +202,25 @@ def test_thirty_percent_of_the_customer_lines_are_elastic(opening: Setup) -> Non
     assert np.allclose(elasticity(opening.world.demand, null), 0.3 * 2.0 + 0.7 * 0.4)
 
 
+def test_the_elasticity_is_keyed_by_the_line_s_id_not_its_position(opening: Setup) -> None:
+    """A line added or moved in `product_line.csv` moves no customer's elasticity."""
+    assert opening.world.demand is not None
+    found = elasticity(opening.world.demand, STORIES)
+    moved = replace(opening.world.demand, lines=tuple(reversed(opening.world.demand.lines)))
+    assert np.array_equal(elasticity(moved, STORIES)[:, ::-1], found)
+
+
+def test_a_rebase_drops_the_promotions_eligible_points(opening: Setup) -> None:
+    """A store whose class changes to petrol joins a petrol promotion's eligible points from the next day on."""
+    assert opening.world.demand is not None
+    mine = tiny(opening.world.demand, SPOTS, AFFLUENCE)
+    terms = Terms.of(mine, STORIES)
+    world = _world(promotions={1: _promotion(eligibility=(("store_class", ("petrol",)),))})
+    assert _lift(terms, world)[0, GOLD] == 1.0 and _lift(terms, world)[3, GOLD] > 1.0
+    mine.rebase({0: replace(SPOTS[0], store=_store("petrol"))}, AFFLUENCE)
+    assert _lift(terms, world)[0, GOLD] > 1.0
+
+
 def test_a6_cuts_gold_twelve_percent_in_vch_for_its_weeks(demand: Demand) -> None:
     a6 = STORIES.anomaly("A-6").parameters
     terms = Terms.of(demand, STORIES)

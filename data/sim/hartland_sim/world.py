@@ -134,7 +134,6 @@ class Customer:
     episodes: list[Episode]  # in order, the last one open
     traits: tuple[str, ...] = ()  # the planted cases' (`anomalies.yaml pins.customers`)
     condition: Condition | None = None
-    basket: dict[int, float] = field(default_factory=dict)  # product_line_id → latent cases not yet ordered
 
     def active_on(self, day: date) -> bool:
         """A customer from its `since` until its `until`, both included."""
@@ -218,7 +217,7 @@ class World:
     day: date
     customers: dict[int, Customer] = field(default_factory=dict)  # by customer_id, in setup order
     actors: dict[int, Actor] = field(default_factory=dict)  # by employee_id
-    duties: list[Duty] = field(default_factory=list)
+    duties: list[Duty] = field(default_factory=list)  # append-only; a duty closes by its `valid_to`, set in place
     stock: dict[tuple[int, int], Stock] = field(default_factory=dict)  # (sku_id, dc_site_id)
     budgets: dict[tuple[int, date], Budget] = field(default_factory=dict)  # (employee_id, the quarter's first day)
     # Filled by the loop's stages; their item types arrive with them.
@@ -234,7 +233,8 @@ class World:
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
         duty in `duties`' order, found through an index by (kind, target) that is built again whenever `duties` is
-        another list or another length, and never pickled."""
+        another list or another length, and never pickled. So `duties` is append-only: a duty ends by setting its
+        `valid_to` in place (the index holds the same object), never by replacing or reordering the list's items."""
         index = self.__dict__.get("_duty_index")
         if index is None or index[0] is not self.duties or index[1] != len(self.duties):
             by_target: dict[tuple[str, str], list[Duty]] = {}

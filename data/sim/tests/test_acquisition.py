@@ -167,6 +167,31 @@ def test_a_gained_customer_orders_today_and_turns_occasional(opening: Setup) -> 
     )
 
 
+def test_a_customer_lost_today_is_not_cross_sold_and_leaves_no_extra(
+    opening: Setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both draws forced for one customer: it is lost, not cross-sold; the extra its point carried goes with it, and
+    another point's stays."""
+    world, demand, reps = _copy(opening)
+    day = date(2023, 3, 1)
+    _, churn, cross = chances(world, demand, reps, day)
+    c = int(np.flatnonzero((churn > 0) & (cross > 0))[0])
+    target = int(demand.customer_ids[c])
+    p, other = int(demand.customer_start[c]), int(demand.customer_start[c + 1])
+    demand.extras = {0: np.zeros(len(demand.point_ids)), 1: np.zeros(len(demand.point_ids))}
+    demand.extras[0][p], demand.extras[1][other] = 2.0, 3.0
+
+    def forced(stream: str, *key: object, ids: np.ndarray) -> np.ndarray:
+        return np.where(ids == target, 0.0, 1.0)
+
+    monkeypatch.setattr("hartland_sim.loop.acquisition.uniforms", forced)
+    before = demand.carried[c].copy()
+    outcome = step(world, reps, day)
+    assert outcome.lost == (target,) and outcome.cross_sold == () and not outcome.acquired
+    assert np.array_equal(demand.carried[c], before)
+    assert list(demand.extras) == [1] and demand.extras[1][other] == 3.0
+
+
 def test_a_cross_sale_adds_the_best_line_never_bought(opening: Setup) -> None:
     world, demand, reps = _copy(opening)
     before = demand.carried.copy()

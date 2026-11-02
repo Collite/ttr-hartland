@@ -71,9 +71,6 @@ class Build:
             self._frames[table] = read(path, table)
         return self._frames[table]
 
-    def __contains__(self, table: str) -> bool:
-        return (self.run / f"{table}.csv").is_file()
-
 
 def read(path: Path, table: str) -> Frame:
     """`path` as `table`'s rows (the CSV writer's format: ISO dates, `true`/`false`, empty = NULL)."""

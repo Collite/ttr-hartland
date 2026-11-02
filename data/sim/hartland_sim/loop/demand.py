@@ -276,7 +276,7 @@ class Demand:
     basket: Array  # (P, L) the latent cases not yet ordered
     extras: dict[int, Array]  # SKU index → (P,) its cases beyond its share of the pool (`lifted`)
     due: Array  # (P,) bool: orders today whatever the cycle (a new customer's first order)
-    last_order: Array  # (P,) the ordinal of the last order; 0 before the first
+    generation: int = 0  # moved by `rebase`: what a `Terms` cached of the points is stale
 
     def __eq__(self, other: object) -> bool:
         return same(self, other)
@@ -305,6 +305,7 @@ class Demand:
             self.units[p] = base([spot], self.lines, self.terms, affluence)[0]
         self.spots = tuple(spots)
         self.__dict__.pop("_base", None)
+        self.generation += 1
 
 
 def spots(customers: Sequence[Customer], made: Customers, geography: Geography) -> list[Spot]:
@@ -430,7 +431,6 @@ def opening(
         basket=np.zeros(units.shape),
         extras={},
         due=np.zeros(len(found), dtype=bool),
-        last_order=np.zeros(len(found), dtype=np.int64),
     )
 
 
@@ -733,7 +733,10 @@ def elasticity(demand: Demand, stories: StoriesConfig) -> Array:
     """(C, L) each customer × line's hidden elasticity (S6): `high` for about `high_share` of them, else `low`, drawn
     from stream `elasticity` by (customer, line). A high one is likelier where shoppers watch prices: by the street of
     the customer's first store (`street_factor`, 1.0 without a store) ÷ the mean affluence of its points, scaled so the
-    share of high ones stays `high_share`. The null world gives every customer × line the mean elasticity."""
+    share of high ones stays `high_share`. The null world gives every customer × line the mean elasticity.
+
+    The draw is keyed by the customer's and the line's ids, so a line added to the catalogue moves no one's. It is a
+    hidden trait of the customer, drawn once a run: a store's change (`Demand.rebase`) leaves it."""
     story = stories.story("S6")
     spec = story.parameters["elasticity"]
     shape = (len(demand.customer_ids), len(demand.lines))
@@ -745,15 +748,16 @@ def elasticity(demand: Demand, stories: StoriesConfig) -> Array:
     street = np.array([spec["street_factor"].get(store.street_type, 1.0) if store else 1.0 for store in streets])
     weight = street / rich
     chance = np.clip(spec["high_share"] * weight / weight.mean(), 0.0, 0.95)
-    lines_ids = np.arange(len(demand.lines), dtype=np.int64)
-    draw = uniforms("elasticity", ids=pairs(demand.customer_ids[:, None], lines_ids[None, :]))
+    line_ids = np.array([row_id("product_line", code=line.code) for line in demand.lines], dtype=np.int64)
+    draw = uniforms("elasticity", ids=pairs(demand.customer_ids[:, None], line_ids[None, :]))
     return np.asarray(np.where(draw < chance[:, None], spec["high"], spec["low"]), dtype=float)
 
 
 @dataclass
 class Terms:
-    """The terms of a run, from the configs and the `Demand` — never pickled: a prolong builds them again. Caches each
-    promotion's eligible points and the points' and customers' index by id."""
+    """The terms of a run, from the configs and the `Demand` — never pickled: a prolong builds them again, and `step`
+    refuses a `Terms` of another `Demand` (a restored checkpoint's). Caches each promotion's eligible points, dropped
+    when the `Demand` is rebased (a store's class may name it), and the points' and customers' index by id."""
 
     demand: Demand
     seasons: Seasons
@@ -761,6 +765,7 @@ class Terms:
     pushes: tuple[Push, ...]
     elasticity: Array  # (C, L)
     _eligible: dict[int, Array] = field(default_factory=dict, repr=False)
+    _generation: int = field(default=0, repr=False)  # the `Demand.generation` `_eligible` was made at
     _point: dict[int, int] = field(default_factory=dict, repr=False)
     _customer: dict[int, int] = field(default_factory=dict, repr=False)
 
@@ -812,6 +817,8 @@ class Terms:
     def _mask(self, promotion: Promotion, day: date, world: World) -> Array:
         if any(kind == "phase" for kind, _ in promotion.eligibility):
             return eligible(promotion, self.demand, [c.phase_on(day) for c in world.customers.values()])
+        if self._generation != self.demand.generation:
+            self._eligible, self._generation = {}, self.demand.generation
         found = self._eligible.get(promotion.promotion_id)
         if found is None:
             found = self._eligible[promotion.promotion_id] = eligible(promotion, self.demand)
@@ -900,7 +907,10 @@ class BasketReady:
     lines: tuple[tuple[int, float, float], ...]  # (sku_id, cases, pieces)
 
 
-def step(world: World, terms: Terms, day: date, temps: Array) -> list[BasketReady]:
+Shares = tuple[Array, Array, Array]  # `Catalogue.shares` of a day
+
+
+def step(world: World, terms: Terms, day: date, temps: Array, shares: Shares | None = None) -> list[BasketReady]:
     """One day of demand (`05` §3 step 1), vectorised over the points × lines: each active point's latent cases —
     the base × `day`'s terms, the SKU lifts on top — go into its basket, and the baskets that trigger become orders.
 
@@ -909,13 +919,16 @@ def step(world: World, terms: Terms, day: date, temps: Array) -> list[BasketRead
     `due` (a new customer's first order). **The order**: the basket's cases split into SKUs by their shares
     (`sku_cases`), in the point's grain, each rounded to a whole unit up with the chance of its fraction (stream
     `basket`, by point, SKU and day: the same basket on the same day gives the same lines). An order of nothing
-    leaves the basket to fill on; an order empties it."""
+    leaves the basket to fill on; an order empties it. `shares` are the day's `Catalogue.shares`, when the caller
+    has them already (`acquisition.step` reads the same)."""
     demand = world.demand
     if demand is None:
         raise ValueError("the World has no demand state (setup makes it)")
+    if terms.demand is not demand:
+        raise ValueError("the terms are of another Demand (a restored checkpoint's?): build them again")
     today = day.toordinal()
     active = ((demand.customer_since <= today) & (today <= demand.customer_until))[demand.point_customer]
-    share, listed, _ = demand.catalogue.shares(day, len(demand.lines))
+    share, listed, _ = shares or demand.catalogue.shares(day, len(demand.lines))
     terms_today = terms.today(world, day, temps)
     buys = listed[demand.point_group] & demand.carried[demand.point_customer]
     cases = demand.base * terms_today.line * buys * active[:, None]
@@ -965,5 +978,4 @@ def _orders(demand: Demand, day: date, ready: Array, share: Array) -> list[Baske
         if not demand.extras[sku].any():
             del demand.extras[sku]
     demand.due[emptied] = False
-    demand.last_order[emptied] = day.toordinal()
     return out
