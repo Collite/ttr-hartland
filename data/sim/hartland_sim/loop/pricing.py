@@ -20,20 +20,37 @@ cross-sell tier its product lines reached (`tiers.cross_sell`) with `cross_sell_
 both brands, up to `cross_sell_max_pct`. The bonus rides on a reached tier: two lines of two brands are no breadth.
 `tiers` reads the month's `Condition` off the customer: a volume and a cross-sell term on every line, from the sales
 budget, coded with the tier's code (the cross-sell tier's code with the bonus in its percentage).
+
+**The agreements** (`01` §5.2–5.3, `04` S6). A customer asks for a discount on a line; `grant` answers as the person
+who holds the customer that day — the rep of its area (small retail: an agreed discount) or its KAM (the other
+channels: an individual price). Their `discount_discipline` decides (`s6.yaml`): a disciplined one (at or above
+`disciplined_from`) grants with the chance (elasticity ÷ high) ^ (discipline × `disciplined_choice_exponent`), so
+mostly to the customer-lines that answer a discount, and sizes it at a share of the cap (`disciplined_share_of_max`);
+an undisciplined one grants every ask a flat `undisciplined_discount_pct`, up to the cap. The cap is the line's
+`max_agreed_discount_pct`, for a rep × the share its customer's phase allows (`policies.lifecycle.concession_share`).
+An agreement runs to the quarter's end and reserves its expected cost — its percentage of the customer-line's
+expected gross at flat terms until then (`loop.demand`) — from the granter's budget of the quarter; one the budget
+cannot hold is refused, as is an ask on a line that has one running. The draws are stream `pricing_agree`'s, by
+customer, line and day. On the order, `agreed` is the running agreed discount's term, never above the line's maximum.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
-from hartland_sim.config import Tiers, WorldConfig
+import numpy as np
+
+from hartland_sim.config import StoriesConfig, Tiers, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
+from hartland_sim.loop.demand import elasticity
+from hartland_sim.rng import rng
 from hartland_sim.setup.portfolio import Sku
 from hartland_sim.setup.rows import row
-from hartland_sim.world import Condition, Customer, Price, PriceList
+from hartland_sim.world import Agreement, Condition, Customer, Price, PriceList, World
 
 STANDARD_CODE = "SC-{year}-Q{quarter}"  # `standard_price_list.code`: SC = standardní ceník
 
@@ -285,4 +302,151 @@ def discount_row(line_id: int, discount: Discount) -> Row:
         amount_case=discount.amount_case,
         amount_line=discount.amount_line,
         budget=discount.budget,
+    )
+
+
+# ── the agreements (T3, T4) ──────────────────────────────────────────────────
+
+AGREEMENT_CODE = "AG-{year}-{n:05d}"  # `price_agreement.code`, numbered within the year
+KAM_CHANNELS = ("big_retail", "gas_ka", "vending", "horeca")  # a KAM's customers: individual prices (`01` §5.3)
+Array = np.ndarray[Any, Any]
+
+
+@dataclass(frozen=True)
+class Rules:
+    """What pricing reads beside the `World`, for a run (never pickled): `world.yaml`, S6's grant behaviour, and each
+    customer × line's hidden elasticity (`demand.elasticity`) with the customers' and lines' indices."""
+
+    world: WorldConfig
+    s6: Mapping[str, Any]
+    elasticity: Array  # (C, L)
+    customers: Mapping[int, int]  # customer_id → its row of `elasticity`
+    lines: Mapping[str, int]  # line code → its column
+
+    @classmethod
+    def of(cls, world: World, config: WorldConfig, stories: StoriesConfig) -> Rules:
+        demand = world.demand
+        if demand is None:
+            raise ValueError("the World has no demand state (setup makes it)")
+        return cls(
+            config,
+            stories.story("S6").parameters,
+            elasticity(demand, stories),
+            {int(customer): c for c, customer in enumerate(demand.customer_ids)},
+            {line.code: i for i, line in enumerate(demand.lines)},
+        )
+
+    def max_pct(self, line: str) -> float:
+        return float(self.world.pricing.max_agreed_discount_pct[line])
+
+
+@dataclass(frozen=True)
+class Refusal:
+    """An ask not granted, and why: no rep or KAM holds the customer that day (`no_granter`), its phase allows no
+    concession (`phase`), the line has an agreement running (`held`), the granter chose not to (`declined`), the
+    quarter has no budget (`no_budget`) or too little left (`budget`)."""
+
+    customer_id: int
+    line: str
+    day: date
+    reason: str
+    employee_id: int | None = None
+
+
+def granter(world: World, customer: Customer, day: date) -> int | None:
+    """Who answers `customer`'s ask on `day`: its area's rep (small retail) or its KAM; None without one."""
+    duty = None
+    if customer.channel in TIERED and customer.area:
+        duty = world.duty("rep_area", customer.area, day)
+    elif customer.channel in KAM_CHANNELS:
+        duty = world.duty("kam_customer", customer.code, day)
+    return duty.employee_id if duty else None
+
+
+def expected_gross(world: World, customer_id: int, line: str, first: date, last: date) -> float:
+    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices."""
+    demand = world.demand
+    assert demand is not None
+    c = int(np.flatnonzero(demand.customer_ids == customer_id)[0])
+    i = [known.code for known in demand.lines].index(line)
+    points = slice(int(demand.customer_start[c]), int(demand.customer_start[c + 1]))
+    _, listed, price_line = demand.catalogue.shares(first, len(demand.lines))
+    groups = demand.point_group[points]
+    daily = (demand.base[points, i] * (listed * price_line)[groups, i]).sum()
+    return float(daily) * ((last - first).days + 1)
+
+
+def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) -> Agreement | Refusal:
+    """`customer_id`'s ask for a discount on `line` on `day` (module docstring): the agreement, added to the `World`
+    with its budget reserved, or the refusal."""
+    customer = world.customers[customer_id]
+    employee = granter(world, customer, day)
+    if employee is None:
+        return Refusal(customer_id, line, day, "no_granter")
+    if world.agreements_on(customer_id, line, day):
+        return Refusal(customer_id, line, day, "held", employee)
+    retail = customer.channel in TIERED
+    cap = rules.max_pct(line)
+    if retail:
+        shares = {str(phase): share for phase, share in rules.world.policies.lifecycle.concession_share.items()}
+        cap *= shares.get(customer.phase_on(day), 0.0)  # a lost customer: none
+    if cap <= 0:
+        return Refusal(customer_id, line, day, "phase", employee)
+    s6 = rules.s6
+    discipline = world.actors[employee].skills.discount_discipline
+    draw = rng("pricing_agree", "grant", customer_id, line, day)
+    if discipline >= s6["disciplined_from"]:
+        hidden = rules.elasticity[rules.customers[customer_id], rules.lines[line]]
+        chance = (hidden / s6["elasticity"]["high"]) ** (discipline * s6["disciplined_choice_exponent"])
+        if draw.random() >= chance:
+            return Refusal(customer_id, line, day, "declined", employee)
+        pct = round(cap * draw.uniform(*s6["disciplined_share_of_max"]), 1)
+    else:
+        pct = min(round(draw.uniform(*s6["undisciplined_discount_pct"]), 1), cap)
+    last = quarter_end(day)
+    budget = world.budgets.get((employee, quarter_start(day)))
+    if budget is None:
+        return Refusal(customer_id, line, day, "no_budget", employee)
+    charge = round(pct / 100 * expected_gross(world, customer_id, line, day, last), 2)
+    if charge > budget.budget_amount - budget.used_amount - budget.reserved:
+        return Refusal(customer_id, line, day, "budget", employee)
+    budget.reserved = round(budget.reserved + charge, 2)
+    prefix = f"AG-{day.year}"
+    world.counters[prefix] = number = world.counters.get(prefix, 0) + 1
+    code = AGREEMENT_CODE.format(year=day.year, n=number)
+    kind = "agreed_discount" if retail else "individual_price"
+    agreement = Agreement(customer_id, line, pct, day, last, code, kind, employee, budget_charge=charge)
+    world.agreements[row_id("price_agreement", code=code)] = agreement
+    return agreement
+
+
+def agreed(world: World, rules: Rules, customer: Customer, line: str, day: date) -> Term | None:
+    """The agreed-discount term of `customer`'s `line` on `day`: its running agreement's, at most the line's maximum."""
+    if customer.channel not in TIERED:
+        return None
+    for agreement_id, agreement in world.agreements_on(customer.customer_id, line, day):
+        if agreement.kind == "agreed_discount":
+            pct = min(agreement.discount_pct, rules.max_pct(line))
+            return Term("agreed", agreement.code, SALES, pct=pct, price_agreement_id=agreement_id)
+    return None
+
+
+def agreement_row(agreement_id: int, agreement: Agreement) -> Row:
+    """The `price_agreement` row of an agreement."""
+    if agreement.employee_id is None:
+        raise ValueError(f"{agreement.code}: an agreement names who agreed it")
+    return row(
+        "price_agreement",
+        price_agreement_id=agreement_id,
+        code=agreement.code,
+        customer_id=agreement.customer_id,
+        sku_id=agreement.sku_id,
+        product_line_id=row_id("product_line", code=agreement.line),
+        kind=agreement.kind,
+        discount_pct=agreement.discount_pct,
+        price_case=agreement.price_case,
+        valid_from=agreement.valid_from,
+        valid_to=agreement.valid_to,
+        agreed_by_employee_id=agreement.employee_id,
+        budget_charge=agreement.budget_charge,
     )
