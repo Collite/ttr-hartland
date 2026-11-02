@@ -30,8 +30,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields, is_dataclass
-from datetime import date
+from dataclasses import dataclass, field, fields, is_dataclass
+from datetime import date, timedelta
 from typing import Any
 
 import numpy as np
@@ -39,11 +39,12 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row, read
+from hartland_sim.rng import pairs, uniforms
 from hartland_sim.setup.affluence import load as affluence_index
 from hartland_sim.setup.customers import Customers
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
-from hartland_sim.world import Customer
+from hartland_sim.world import Customer, Promotion, World
 
 QUARTER_DAYS = 365.25 / 4
 KEY_ACCOUNTS = ("big_retail", "gas_ka")  # one customer per chain, its plan spread over its points
@@ -71,6 +72,7 @@ class Store:
     street_type: str
     weekly_hours: float
     sunday_open: bool
+    store_class: str  # a promotion's eligibility may name it
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,7 @@ class Spot:
     okres: str
     region: str
     store: Store | None
+    chain: str | None = None  # the customer's chain (a key account, a franchise)
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,7 @@ class Demand:
     point_affluence: Array  # (P,) the okres's affluence index
     regions: tuple[str, ...]
     customer_ids: Array  # (C,) in the World's order
+    customer_start: Array  # (C + 1,) customer c's points are customer_start[c]:customer_start[c + 1]
     terms: StoreTerms
     units: Array  # (P, L) the base, before the scale
     scale: Array  # (P,) units → cases a day
@@ -278,7 +282,13 @@ def spots(customers: Sequence[Customer], made: Customers, geography: Geography) 
         for place in made.places[customer.code]:
             attrs = stores.get(place.store) if place.store else None
             store = (
-                Store(attrs["size_class"], attrs["street_type"], float(attrs["weekly_hours"]), attrs["sunday_open"])
+                Store(
+                    attrs["size_class"],
+                    attrs["street_type"],
+                    float(attrs["weekly_hours"]),
+                    attrs["sunday_open"],
+                    attrs["store_class"],
+                )
                 if attrs is not None
                 else None
             )
@@ -291,9 +301,17 @@ def spots(customers: Sequence[Customer], made: Customers, geography: Geography) 
                     place.okres,
                     geography.region_of[geography.area_of[place.okres]],
                     store,
+                    customer.chain,
                 )
             )
     return out
+
+
+def starts(point_customer: Array, customers: int) -> Array:
+    """(C + 1,) where each customer's points start; the points come customer by customer."""
+    if len(point_customer) and (np.diff(point_customer) < 0).any():
+        raise ValueError("the points are not in their customers' order")
+    return np.concatenate([[0], np.cumsum(np.bincount(point_customer, minlength=customers))]).astype(np.int64)
 
 
 def plans(world: WorldConfig) -> dict[str, float]:
@@ -354,6 +372,7 @@ def opening(
         point_affluence=np.array([index[spot.okres] for spot in found]),
         regions=regions,
         customer_ids=np.array([customer.customer_id for customer in customers], dtype=np.int64),
+        customer_start=starts(np.array([customer_index[spot.customer_id] for spot in found]), len(customers)),
         terms=terms,
         units=units,
         scale=scale,
@@ -471,3 +490,291 @@ class Seasons:
         """(R, L) the weather term for the regions' temperatures of the day: + `cold_pct` % per °C below."""
         below = np.maximum(self.cold_below_c - temps, 0.0)
         return np.asarray(1 + below[:, None] * self.cold_pct / 100)
+
+
+# ── promotion · display · discount · competitor (S2, S5, S6, A-6, A-10) ───────
+
+
+@dataclass(frozen=True)
+class SkuLift:
+    """A lift on one SKU, not on its whole line: `uplift` × the SKU's own cases at each point (0 where it does not
+    apply, negative for a dip); `cannibalises` = its line siblings give up s2.yaml's share of the extra cases."""
+
+    sku: int  # the catalogue's index
+    line: int
+    uplift: Array  # (P,)
+    cannibalises: bool = True
+
+
+@dataclass(frozen=True)
+class Today:
+    """The day's multiplicative terms, (P, L), and the SKU lifts on top of them."""
+
+    line: Array
+    skus: tuple[SkuLift, ...] = ()
+
+
+@dataclass(frozen=True)
+class PromotionTerms:
+    """S2's uplift model (`s2.yaml`): `uplift = base_uplift(mechanic) × premium_factor × affluence_index ^ exponent ×
+    tv_factor`, the post-promotion dip and the siblings' share. The null world keeps the mechanics' base uplift and
+    the dip and flattens the three factors: a promotion still lifts, but no more for premium, rich or TV.
+
+    A promotion with no SKU named (`price_off`, `free_goods_same`) lifts its whole line at the eligible points; one that
+    names SKUs lifts those: a target SKU by its mechanic, a condition SKU by `conditional_condition`, a conditional
+    price-off's reward SKU by `conditional_reward` (a free-goods reward is given, not bought). A lifted SKU takes
+    `cannibalisation_share` of its extra cases from its line siblings. The dip follows for `weeks` on what was lifted.
+    A-10's promotion (when enabled) lifts its SKU by the case's `uplift_pct` and takes `sibling_dip_pct` from the one
+    named sibling instead. The demand counts the cases that move: a 1+1's free half is the pricing's (S1.3)."""
+
+    base_uplift: Mapping[str, float]
+    premium_factor: Mapping[str, float]
+    affluence_exponent: Mapping[str, float]
+    tv_factor: Mapping[str, float]
+    dip: float  # the multiplier after a promotion, 1 + pct ÷ 100
+    dip_days: int
+    cannibalisation: float
+    cannibal: Mapping[str, Any] | None  # A-10's parameters when enabled
+
+    @classmethod
+    def of(cls, stories: StoriesConfig) -> PromotionTerms:
+        story = stories.story("S2")
+        parameters = story.parameters
+        flat = not story.enabled
+        a10 = stories.anomaly("A-10")
+        return cls(
+            dict(parameters["base_uplift"]),
+            {key: 1.0 for key in parameters["premium_factor"]} if flat else dict(parameters["premium_factor"]),
+            {key: 0.0 for key in parameters["affluence_exponent"]} if flat else dict(parameters["affluence_exponent"]),
+            {key: 1.0 for key in parameters["tv_factor"]} if flat else dict(parameters["tv_factor"]),
+            1 + parameters["post_promotion_dip"]["pct"] / 100,
+            7 * parameters["post_promotion_dip"]["weeks"],
+            parameters["cannibalisation_share"],
+            dict(a10.parameters) if a10.enabled else None,
+        )
+
+    def price_off(self, pct: float) -> float:
+        """The base uplift of a price-off of `pct` %: on the line through 0, s2.yaml's 10 % and its 20 % points."""
+        ten, twenty = self.base_uplift["price_off_10"], self.base_uplift["price_off_20"]
+        return ten * pct / 10 if pct <= 10 else ten + (twenty - ten) * (pct - 10) / 10
+
+    def mechanic(self, promotion: Promotion) -> float:
+        """The base uplift of a promotion's own mechanic (a whole line, or its target SKU)."""
+        if promotion.mechanic == "free_goods_same":
+            return self.base_uplift["free_goods_1_1"]
+        return self.price_off(promotion.discount_pct or 0.0)
+
+    def factor(self, promotion: Promotion, line: Line, affluence: Array) -> Array:
+        """(P,) premium × affluence × TV at each point's affluence index."""
+        tv = "tv" if promotion.tv else "no_tv"
+        premium = self.premium_factor[tv] if line.is_premium else self.premium_factor["not_premium"]
+        return np.asarray(premium * affluence ** self.affluence_exponent[tv] * self.tv_factor[tv])
+
+    def named(self, promotion: Promotion) -> list[tuple[str, float]]:
+        """The SKUs a promotion lifts by name, with their base uplift; empty = the whole line."""
+        if promotion.mechanic == "conditional_price_off":
+            out = [(promotion.condition_sku, self.base_uplift["conditional_condition"])]
+            out.append((promotion.reward_sku, self.base_uplift["conditional_reward"]))
+        elif promotion.mechanic == "free_goods_other":
+            out = [(promotion.condition_sku, self.base_uplift["conditional_condition"])]
+        else:
+            out = [(promotion.target_sku, self.mechanic(promotion))] if promotion.target_sku else []
+        return [(code, uplift) for code, uplift in out if code is not None]
+
+
+def eligible(promotion: Promotion, demand: Demand, phases: Sequence[str] | None = None) -> Array:
+    """(P,) the points a promotion's eligibility admits: every scope kind it names must hold (`promotion_eligibility`:
+    channel, chain, region, store_class, phase — the customer's phase on the day, `phases` in the customers' order)."""
+    mask = np.ones(len(demand.spots), dtype=bool)
+    for kind, values in promotion.eligibility:
+        if kind == "channel":
+            mask &= np.isin(demand.point_channel, [CHANNELS.index(value) for value in values if value in CHANNELS])
+        elif kind == "region":
+            mask &= np.isin(demand.point_region, [demand.regions.index(v) for v in values if v in demand.regions])
+        elif kind == "chain":
+            mask &= np.array([spot.chain in values for spot in demand.spots], dtype=bool)
+        elif kind == "store_class":
+            mask &= np.array([spot.store is not None and spot.store.store_class in values for spot in demand.spots])
+        elif kind == "phase":
+            if phases is None:
+                raise ValueError(f"{promotion.code}: a phase scope needs the customers' phases")
+            mask &= np.isin(np.array(phases)[demand.point_customer], values)
+        else:
+            raise ValueError(f"{promotion.code}: no scope kind {kind!r}")
+    return mask
+
+
+@dataclass(frozen=True)
+class Push:
+    """A competitor's push (A-6): the line's demand × (1 − `cut`) in the region from `first` to `last`."""
+
+    region: str
+    line: str
+    cut: float
+    first: date
+    last: date
+
+
+def pushes(stories: StoriesConfig) -> tuple[Push, ...]:
+    """The planted competitor pushes: A-6 when enabled."""
+    a6 = stories.anomaly("A-6")
+    if not a6.enabled:
+        return ()
+    p = a6.parameters
+    return (Push(p["region"], p["line"], p["dip_pct"] / 100, p["from"], p["until"]),)
+
+
+def elasticity(demand: Demand, stories: StoriesConfig) -> Array:
+    """(C, L) each customer × line's hidden elasticity (S6): `high` for about `high_share` of them, else `low`, drawn
+    from stream `elasticity` by (customer, line). A high one is likelier where shoppers watch prices: by the street of
+    the customer's first store (`street_factor`, 1.0 without a store) ÷ the mean affluence of its points, scaled so the
+    share of high ones stays `high_share`. The null world gives every customer × line the mean elasticity."""
+    story = stories.story("S6")
+    spec = story.parameters["elasticity"]
+    shape = (len(demand.customer_ids), len(demand.lines))
+    if not story.enabled:
+        return np.full(shape, float(spec["high_share"] * spec["high"] + (1 - spec["high_share"]) * spec["low"]))
+    first = demand.customer_start[:-1]
+    rich = np.add.reduceat(demand.point_affluence, first) / np.diff(demand.customer_start)
+    streets = [demand.spots[p].store for p in first]
+    street = np.array([spec["street_factor"].get(store.street_type, 1.0) if store else 1.0 for store in streets])
+    weight = street / rich
+    chance = np.clip(spec["high_share"] * weight / weight.mean(), 0.0, 0.95)
+    lines_ids = np.arange(len(demand.lines), dtype=np.int64)
+    draw = uniforms("elasticity", ids=pairs(demand.customer_ids[:, None], lines_ids[None, :]))
+    return np.asarray(np.where(draw < chance[:, None], spec["high"], spec["low"]), dtype=float)
+
+
+@dataclass
+class Terms:
+    """The terms of a run, from the configs and the `Demand` — never pickled: a prolong builds them again. Caches each
+    promotion's eligible points and the points' and customers' index by id."""
+
+    demand: Demand
+    seasons: Seasons
+    promotions: PromotionTerms
+    pushes: tuple[Push, ...]
+    elasticity: Array  # (C, L)
+    _eligible: dict[int, Array] = field(default_factory=dict, repr=False)
+    _point: dict[int, int] = field(default_factory=dict, repr=False)
+    _customer: dict[int, int] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def of(cls, demand: Demand, stories: StoriesConfig) -> Terms:
+        return cls(
+            demand,
+            Seasons.of(stories, demand.lines),
+            PromotionTerms.of(stories),
+            pushes(stories),
+            elasticity(demand, stories),
+        )
+
+    def point(self, delivery_point_id: int) -> int:
+        if not self._point:
+            self._point = {int(point): p for p, point in enumerate(self.demand.point_ids)}
+        return self._point[delivery_point_id]
+
+    def customer(self, customer_id: int) -> int:
+        if not self._customer:
+            self._customer = {int(customer): c for c, customer in enumerate(self.demand.customer_ids)}
+        return self._customer[customer_id]
+
+    def today(self, world: World, day: date, temps: Array) -> Today:
+        """`day`'s terms (`04` §8): season × gift × week and the weather (S1); promotions and their dips (S2); displays
+        while a loan runs (S5); agreed discounts × the customer-line's elasticity (S6); competitors' pushes (A-6).
+        `temps` are the regions' temperatures of the day, in `Demand.regions`' order."""
+        demand = self.demand
+        index = {line.code: i for i, line in enumerate(demand.lines)}
+        factor = self.seasons.of_day(day)[demand.point_channel] * self.seasons.cold(temps)[demand.point_region]
+        skus: list[SkuLift] = []
+        last = timedelta(days=self.promotions.dip_days)
+        for promotion in world.promotions.values():
+            if promotion.valid_from <= day <= promotion.valid_to + last:
+                skus += self._promotion(promotion, day, factor, index, world)
+        for loan in world.loans.values():
+            if loan.lent_on <= day and (loan.returned_on is None or day < loan.returned_on):
+                factor[self.point(loan.delivery_point_id), index[loan.line]] *= 1 + loan.uplift
+        for agreement in world.agreements.values():
+            if agreement.valid_from <= day <= agreement.valid_to:
+                c, i = self.customer(agreement.customer_id), index[agreement.line]
+                points = slice(int(demand.customer_start[c]), int(demand.customer_start[c + 1]))
+                factor[points, i] *= 1 + self.elasticity[c, i] * agreement.discount_pct / 100
+        for push in self.pushes:
+            if push.first <= day <= push.last and push.region in demand.regions:
+                factor[demand.point_region == demand.regions.index(push.region), index[push.line]] *= 1 - push.cut
+        return Today(factor, tuple(skus))
+
+    def _mask(self, promotion: Promotion, day: date, world: World) -> Array:
+        if any(kind == "phase" for kind, _ in promotion.eligibility):
+            return eligible(promotion, self.demand, [c.phase_on(day) for c in world.customers.values()])
+        found = self._eligible.get(promotion.promotion_id)
+        if found is None:
+            found = self._eligible[promotion.promotion_id] = eligible(promotion, self.demand)
+        return found
+
+    def _promotion(
+        self, promotion: Promotion, day: date, factor: Array, index: Mapping[str, int], world: World
+    ) -> list[SkuLift]:
+        terms, demand = self.promotions, self.demand
+        mask = self._mask(promotion, day, world)
+        line = index[promotion.line]
+        after = day > promotion.valid_to
+        named = terms.named(promotion)
+        if not named:
+            if after:
+                factor[mask, line] *= terms.dip
+            else:
+                lift = terms.mechanic(promotion) * terms.factor(promotion, demand.lines[line], demand.point_affluence)
+                factor[mask, line] *= 1 + lift[mask]
+            return []
+        codes = demand.catalogue.sku_codes
+        a10 = terms.cannibal if terms.cannibal and terms.cannibal["promotion"] == promotion.code else None
+        out = []
+        for code, base_uplift in named:
+            sku = codes.index(code)
+            own = int(demand.catalogue.line[sku])
+            if after:
+                out.append(SkuLift(sku, own, np.where(mask, terms.dip - 1, 0.0), cannibalises=False))
+            elif a10 is not None and code == a10["sku"]:
+                out.append(SkuLift(sku, own, np.where(mask, a10["uplift_pct"] / 100, 0.0), cannibalises=False))
+                sibling = codes.index(a10["sibling"])
+                dip = np.where(mask, -a10["sibling_dip_pct"] / 100, 0.0)
+                out.append(SkuLift(sibling, int(demand.catalogue.line[sibling]), dip, cannibalises=False))
+            else:
+                lift = base_uplift * terms.factor(promotion, demand.lines[own], demand.point_affluence)
+                out.append(SkuLift(sku, own, np.where(mask, lift, 0.0)))
+        return out
+
+
+def lifted(
+    cases: Array, lifts: Sequence[SkuLift], share: Array, cannibalisation: float
+) -> tuple[Array, dict[int, Array]]:
+    """The day's line cases (P, L) with the SKU lifts on top, and each lifted SKU's cases (P,) beyond its share of
+    its line's pool. `share` is each point's SKU shares, (P, S) — `Catalogue.shares` by the points' groups.
+
+    A lift of `u` on SKU `s` (share σ of its line's `D` cases) adds `σ·D·u` cases of `s`; when it cannibalises, its
+    siblings give up `c·σ·D·u` of theirs. The line gains the difference; `s`'s extra (beyond σ of the pool) is set so
+    that `sku_cases` gives `s` exactly `σ·D·(1 + u)` and the siblings their share of the rest."""
+    out = cases.copy()
+    extras: dict[int, Array] = {}
+    for lift in lifts:
+        sigma = share[:, lift.sku]
+        extra = sigma * cases[:, lift.line] * lift.uplift
+        alone = sigma >= 1.0  # no sibling to take from
+        taken = np.where(lift.cannibalises & ~alone, cannibalisation * extra, 0.0)
+        out[:, lift.line] += extra - taken
+        back = np.divide(sigma * taken, 1 - sigma, out=np.zeros_like(sigma), where=~alone)
+        extras[lift.sku] = extras.get(lift.sku, np.zeros_like(sigma)) + extra + back
+    return out, extras
+
+
+def sku_cases(line_cases: Array, extras: Mapping[int, Array], share: Array, sku_line: Array) -> Array:
+    """(P, S) each SKU's cases: its share of its line's pool (the line's cases less its SKUs' extras) plus its extra;
+    never below 0."""
+    pool = line_cases.copy()
+    for sku, extra in extras.items():
+        pool[:, sku_line[sku]] -= extra
+    out = share * pool[:, sku_line]
+    for sku, extra in extras.items():
+        out[:, sku] += extra
+    return np.asarray(np.maximum(out, 0.0))

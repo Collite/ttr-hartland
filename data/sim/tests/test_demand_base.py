@@ -21,7 +21,7 @@ AFFLUENCE = {"CZ0201": 1.0, "CZ0100": 1.3}
 
 
 def _spot(street: str, okres: str = "CZ0201", **store: object) -> Spot:
-    attrs = {"size_class": "M", "weekly_hours": 70.0, "sunday_open": False, **store}
+    attrs = {"size_class": "M", "weekly_hours": 70.0, "sunday_open": False, "store_class": "convenience", **store}
     return Spot(1, 1, "small_retail", ("small_retail", None), okres, "SJC", Store(street_type=street, **attrs))  # type: ignore[arg-type]
 
 

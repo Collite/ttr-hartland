@@ -169,6 +169,48 @@ class Budget:
     used_amount: float = 0.0
 
 
+@dataclass(frozen=True)
+class Promotion:
+    """A promotion as the loop reads it (`promotion` + its `promotion_eligibility` rows): setup seeds the committed
+    calendar (`setup.promotions.seeded`), S1.3 prices it on the order lines, a prolong reads the database's (G5)."""
+
+    promotion_id: int
+    code: str
+    line: str  # the product line's code
+    mechanic: str  # price_off · conditional_price_off · free_goods_same · free_goods_other
+    valid_from: date
+    valid_to: date
+    tv: bool  # its campaign has a TV line (S2)
+    eligibility: tuple[tuple[str, tuple[str, ...]], ...]  # (scope kind, its values), every kind must hold
+    discount_pct: float | None = None
+    target_sku: str | None = None  # catalogue sku_code; None = the whole line
+    condition_sku: str | None = None
+    reward_sku: str | None = None
+
+
+@dataclass(frozen=True)
+class Agreement:
+    """An agreed discount on a customer's line (`price_agreement`, kind agreed; S1.3 grants them)."""
+
+    customer_id: int
+    line: str
+    discount_pct: float
+    valid_from: date
+    valid_to: date
+
+
+@dataclass(frozen=True)
+class Loan:
+    """A display lent to a store (`pos_loan`, G2 S2.3): its line's demand there × (1 + `uplift`) from `lent_on` until
+    the day before `returned_on`."""
+
+    delivery_point_id: int
+    line: str
+    uplift: float  # the store's display_uplift (S5)
+    lent_on: date
+    returned_on: date | None = None
+
+
 @dataclass
 class World:
     """The state after `day`, the last simulated day (setup's world: the day before the warm-up)."""
@@ -184,8 +226,9 @@ class World:
     open_shipments: dict[int, object] = field(default_factory=dict)  # G3
     open_invoices: dict[int, object] = field(default_factory=dict)  # G4
     tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
-    loans: dict[int, object] = field(default_factory=dict)  # G2: by pos_asset_id
-    promotions: dict[int, object] = field(default_factory=dict)  # S1.3: the running ones, by promotion_id
+    loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
+    promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
+    agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:

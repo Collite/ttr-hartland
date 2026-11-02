@@ -7,7 +7,14 @@ enabled: true
 seed_stream: pricing_agree
 parameters:
   discipline_range: [0.5, 1.4]
-  elasticity: { high: 2.0, low: 0.4, high_share: 0.30 } # of the customer × lines, by store cluster and affluence
+  # Of the customer × lines, by store cluster and affluence: a high elasticity is likelier at a store on a street whose
+  # shoppers watch prices, and in a poorer okres (∝ street_factor ÷ affluence, scaled back to high_share).
+  elasticity:
+    high: 2.0
+    low: 0.4
+    high_share: 0.30
+    street_factor:
+      { village: 1.4, residential: 1.2, petrol: 1.0, transport_hub: 0.9, shopping_centre: 0.8, high_street: 0.6 }
   disciplined_choice_exponent: 2 # a disciplined rep grants ∝ elasticity ^ (discipline × 2), below the line's maximum
   undisciplined_discount_pct: [5, 8] # flat, to whoever asks
   undisciplined_target_miss_pct: [20, 40] # an undisciplined product manager's targets miss by this much
