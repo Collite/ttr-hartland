@@ -264,6 +264,7 @@ class Demand:
     # The state the loop moves.
     customer_since: Array  # (C,) the ordinal of `since`; NEVER while potential
     customer_until: Array  # (C,) the ordinal of `until`; NEVER while it buys
+    carried: Array  # (C, L) bool: the lines a customer buys (its breadth, S3); a cross-sale adds one
     basket: Array  # (P, L) the latent cases not yet ordered
     extras: dict[int, Array]  # SKU index → (P,) its cases beyond its share of the pool (`lifted`)
     due: Array  # (P,) bool: orders today whatever the cycle (a new customer's first order)
@@ -360,6 +361,7 @@ def opening(
     groups = {group: g for g, group in enumerate(goods.groups)}
     customer_index = {customer.customer_id: c for c, customer in enumerate(customers)}
     point_group = np.array([groups[spot.group] for spot in found], dtype=np.int64)
+    point_customer = np.array([customer_index[spot.customer_id] for spot in found], dtype=np.int64)
     first = world.history.warm_up_from
     _, listed, price_line = goods.shares(first, len(line_set))
     gross = (units * (listed * price_line)[point_group]).sum(axis=1)  # a day, at a scale of 1
@@ -388,14 +390,14 @@ def opening(
         catalogue=goods,
         spots=tuple(found),
         point_ids=np.array([spot.delivery_point_id for spot in found], dtype=np.int64),
-        point_customer=np.array([customer_index[spot.customer_id] for spot in found], dtype=np.int64),
+        point_customer=point_customer,
         point_channel=np.array([CHANNELS.index(spot.channel) for spot in found], dtype=np.int64),
         point_group=point_group,
         point_region=np.array([regions.index(spot.region) for spot in found], dtype=np.int64),
         point_affluence=np.array([index[spot.okres] for spot in found]),
         regions=regions,
         customer_ids=np.array([customer.customer_id for customer in customers], dtype=np.int64),
-        customer_start=starts(np.array([customer_index[spot.customer_id] for spot in found]), len(customers)),
+        customer_start=starts(point_customer, len(customers)),
         terms=terms,
         units=units,
         scale=scale,
@@ -404,11 +406,34 @@ def opening(
         pieces=np.array([_settings(world, owner).order_grain == "piece" for owner in owners], dtype=bool),
         customer_since=np.array([_since(customer) for customer in customers], dtype=np.int64),
         customer_until=np.array([_until(customer) for customer in customers], dtype=np.int64),
+        carried=breadth(customers, units, point_group, listed, starts(point_customer, len(customers))),
         basket=np.zeros(units.shape),
         extras={},
         due=np.zeros(len(found), dtype=bool),
         last_order=np.zeros(len(found), dtype=np.int64),
     )
+
+
+BREADTH_CHANNELS = ("small_retail",)  # the field reps' customers, whose breadth S3 moves
+BREADTH_LINES = (3, 7)  # a small-retail customer opens buying this many of its listed lines, both included
+
+
+def breadth(customers: Sequence[Customer], units: Array, point_group: Array, listed: Array, start: Array) -> Array:
+    """(C, L) the lines each customer buys at the opening. A small-retail customer buys `k` of the lines its listing
+    holds (`k` in `BREADTH_LINES`, stream `breadth`): those its store sells most of, by its base, so the line its
+    street leads with is always among them. Any other customer buys every line it is listed."""
+    out = np.ones((len(customers), units.shape[1]), dtype=bool)
+    ids = np.array([customer.customer_id for customer in customers], dtype=np.int64)
+    low, high = BREADTH_LINES
+    k = low + np.floor(uniforms("breadth", "opening", ids=ids) * (high - low + 1)).astype(np.int64)
+    for c, customer in enumerate(customers):
+        if customer.channel not in BREADTH_CHANNELS:
+            continue
+        p = int(start[c])
+        rank = np.argsort(-np.where(listed[point_group[p]], units[p], -1.0), kind="stable")
+        out[c] = False
+        out[c, rank[: min(int(k[c]), int(listed[point_group[p]].sum()))]] = True
+    return out
 
 
 def _settings(world: WorldConfig, customer: Customer) -> ChannelSettings:
@@ -869,14 +894,15 @@ def step(world: World, terms: Terms, day: date, temps: Array) -> list[BasketRead
     active = ((demand.customer_since <= today) & (today <= demand.customer_until))[demand.point_customer]
     share, listed, _ = demand.catalogue.shares(day, len(demand.lines))
     terms_today = terms.today(world, day, temps)
-    cases = demand.base * terms_today.line * listed[demand.point_group] * active[:, None]
+    buys = listed[demand.point_group] & demand.carried[demand.point_customer]
+    cases = demand.base * terms_today.line * buys * active[:, None]
     cases, extras = lifted(cases, terms_today.skus, share, demand.point_group, terms.promotions.cannibalisation)
     demand.basket += cases
     for sku, extra in extras.items():
         demand.extras[sku] = demand.extras[sku] + extra if sku in demand.extras else extra
     held = demand.basket.sum(axis=1)
     on_cycle = (today - demand.offset) % demand.cycle == 0
-    dry = held >= DRY_CYCLES * demand.base.sum(axis=1) * demand.cycle
+    dry = held >= DRY_CYCLES * (demand.base * buys).sum(axis=1) * demand.cycle
     ready = np.flatnonzero(active & (on_cycle | dry | demand.due) & (held > 0))
     return _orders(demand, day, ready, share)
 

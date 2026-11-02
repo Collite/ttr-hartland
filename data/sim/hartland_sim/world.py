@@ -232,9 +232,25 @@ class World:
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
-        """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …)."""
-        held = [duty for duty in self.duties if duty.kind == kind and duty.target == target and duty.on(day)]
-        return held[0] if held else None
+        """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
+        duty in `duties`' order, found through an index by (kind, target) that is built again whenever `duties` is
+        another list or another length, and never pickled."""
+        index = self.__dict__.get("_duty_index")
+        if index is None or index[0] is not self.duties or index[1] != len(self.duties):
+            by_target: dict[tuple[str, str], list[Duty]] = {}
+            for held in self.duties:
+                by_target.setdefault((held.kind, held.target), []).append(held)
+            index = (self.duties, len(self.duties), by_target)
+            self.__dict__["_duty_index"] = index
+        for held in index[2].get((kind, target), ()):
+            if held.on(day):
+                return held
+        return None
+
+    def __getstate__(self) -> dict[str, object]:
+        state = dict(self.__dict__)
+        state.pop("_duty_index", None)
+        return state
 
 
 def unordered_containers(value: object, path: str = "world") -> list[str]:

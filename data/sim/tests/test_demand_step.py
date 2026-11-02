@@ -68,10 +68,12 @@ def test_a_day_s_latent_demand_goes_into_the_basket(opening: Setup) -> None:
     temps = _temps(demand, FIRST)
     today = terms.today(world, FIRST, temps)
     _, listed, _ = demand.catalogue.shares(FIRST, len(demand.lines))
-    expected = demand.base[p] * today.line[p] * listed[demand.point_group[p]]
+    buys = listed[demand.point_group[p]] & demand.carried[demand.point_customer[p]]
+    expected = demand.base[p] * today.line[p] * buys
     events = step(world, terms, FIRST, temps)
     plain = [i for i in range(len(demand.lines)) if i not in {lift.line for lift in today.skus}]
     assert plain and np.allclose((demand.basket[p] - before)[plain], expected[plain])
+    assert (demand.basket[p] - before)[~buys].sum() == 0  # a line it does not buy waits for a cross-sale
     assert demand.point_ids[p] not in {event.delivery_point_id for event in events}
 
 
