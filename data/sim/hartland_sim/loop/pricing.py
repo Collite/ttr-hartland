@@ -32,6 +32,11 @@ An agreement runs to the quarter's end and reserves its expected cost — its pe
 expected gross at flat terms until then (`loop.demand`) — from the granter's budget of the quarter; one the budget
 cannot hold is refused, as is an ask on a line that has one running. The draws are stream `pricing_agree`'s, by
 customer, line and day. On the order, `agreed` is the running agreed discount's term, never above the line's maximum.
+
+**Individual prices** (`01` §5.3). A KAM's customer (big retail, gas KA, vending, HoReCa) buys a line at its
+individual price: a running agreement for the SKU sets its price, else one for the line sets the channel list less
+its percentage. `individual`'s term takes the price the earlier steps left down to it: the channel list less the
+individual price, from the sales budget (the trade-spend line "Sales promotions"). Small retail never has one.
 """
 
 from __future__ import annotations
@@ -429,6 +434,27 @@ def agreed(world: World, rules: Rules, customer: Customer, line: str, day: date)
             pct = min(agreement.discount_pct, rules.max_pct(line))
             return Term("agreed", agreement.code, SALES, pct=pct, price_agreement_id=agreement_id)
     return None
+
+
+def individual(
+    world: World, customer: Customer, sku_id: int, line: str, list_price_case: float, day: date
+) -> Term | None:
+    """The individual-price term of `customer`'s SKU on `day` (module docstring); None outside a KAM's channels or
+    without a running individual price."""
+    if customer.channel not in KAM_CHANNELS:
+        return None
+    running = [
+        (agreement_id, agreement)
+        for agreement_id, agreement in world.agreements_on(customer.customer_id, line, day)
+        if agreement.kind == "individual_price" and agreement.sku_id in (sku_id, None)
+    ]
+    if not running:
+        return None
+    agreement_id, agreement = min(running, key=lambda found: found[1].sku_id is None)  # the SKU's own first
+    price = agreement.price_case
+    if price is None:
+        price = round(list_price_case * (1 - agreement.discount_pct / 100), 2)
+    return Term("individual", agreement.code, SALES, price_case=price, price_agreement_id=agreement_id)
 
 
 def agreement_row(agreement_id: int, agreement: Agreement) -> Row:
