@@ -17,6 +17,11 @@ parameters:
     petrol: { SMESI: 1.8, KELIMKY: 1.5, NUDLE: 1.4, PROFIKAVA: 1.0 }
   sunday_open_uplift: 0.12
   weekly_hours_elasticity: 0.3
+  # The cases a line sells at a residential store, relative to the others (a line not named is 1.0): not a cluster, so
+  # the null world keeps it. Mixes, Gold and Dried soups sell most, so the leading lines below lead by a margin.
+  line_base: { GOLD: 1.4, ESPRESSO: 0.6, SMESI: 1.5, BEZKOFEIN: 0.5, POLEVKY: 1.4, PREMIUM: 0.5 }
+  # affluence(okres, line) = the okres's affluence index ^ this: the premium lines sell more where people earn more.
+  affluence_exponent: { premium: 0.5, other: 0.0 }
   # The line each street type should lead by share (the demo's detector).
   leading_line: { transport_hub: SMESI, village: POLEVKY, high_street: GOLD }
 detector:

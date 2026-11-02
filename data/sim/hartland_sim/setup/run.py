@@ -15,6 +15,7 @@ from datetime import timedelta
 from functools import cached_property
 
 from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.loop import demand
 from hartland_sim.rng import using_master_seed
 from hartland_sim.setup import customers, opening, policies, portfolio, reference
 from hartland_sim.setup import org as org_setup
@@ -70,6 +71,9 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
         state.customers = {customer.customer_id: customer for customer in made.customers}
         state.budgets = policies.budgets(world, planned(state))
         state.stock = opening.stock(out, world, products, covers, made, geography)
+        state.demand = demand.opening(
+            list(state.customers.values()), made, geography, products, out["channel_listing"], world, stories
+        )
     return Setup(state, out, geography, org, products, covers, made, world)
 
 

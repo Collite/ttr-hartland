@@ -36,6 +36,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hartland_sim.loop.demand import Demand
 
 PROTOCOL = 5
 CHECKPOINT_FILE = "_sim_checkpoint.csv"
@@ -182,6 +186,7 @@ class World:
     tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
     loans: dict[int, object] = field(default_factory=dict)  # G2: by pos_asset_id
     promotions: dict[int, object] = field(default_factory=dict)  # S1.3: the running ones, by promotion_id
+    demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …)."""
