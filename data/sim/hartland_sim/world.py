@@ -242,6 +242,18 @@ class Agreement:
 
 
 @dataclass(frozen=True)
+class OpenInvoice:
+    """An invoice not yet paid, as the credit check reads it (`loop.pricing.credit_check`): G4 S4.1 opens them at
+    invoicing and closes them on payment."""
+
+    invoice_id: int
+    customer_id: int
+    issued_on: date
+    due_on: date
+    open_amount: float  # CZK without VAT, as the credit limits are
+
+
+@dataclass(frozen=True)
 class Loan:
     """A display lent to a store (`pos_loan`, G2 S2.3): its line's demand there × (1 + `uplift`) from `lent_on` until
     the day before `returned_on`."""
@@ -266,7 +278,7 @@ class World:
     # Filled by the loop's stages; their item types arrive with them.
     open_orders: dict[int, object] = field(default_factory=dict)  # S1.4
     open_shipments: dict[int, object] = field(default_factory=dict)  # G3
-    open_invoices: dict[int, object] = field(default_factory=dict)  # G4
+    open_invoices: dict[int, OpenInvoice] = field(default_factory=dict)  # G4: by invoice_id
     tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
     loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)

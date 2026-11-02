@@ -60,6 +60,13 @@ volume tier → the cross-sell tier → the agreed discount → the individual p
 the one before left (`apply`); a free line has its 100 % alone. The `Priced` line holds `sales_order_line`'s pricing
 columns — `discount_total_case` the Σ of its rows' `amount_case`, `discount_total` that × its cases, the invoice
 price the list less the former — and its discount list.
+
+**The credit check** (A-14, `world.yaml finance.hold`): an order is `held` when its customer has an open invoice more
+than `overdue_days_over` days past due (`overdue`, checked first), or when its open invoices and the order's value
+would pass the credit limit of its terms (`policies.credit_limit`: a station shop has special retail's; `credit_limit`
+while `exposure_over_limit`); else `released`. It reads the `World`'s open invoices, which G4 S4.1 keeps — until
+then there are none and every order is released; A-14's customer crosses its limit when its invoices go unpaid
+(G4's payment behaviour).
 """
 
 from __future__ import annotations
@@ -727,3 +734,27 @@ def price_order(world: World, rules: Rules, basket: BasketReady) -> list[Priced]
                     terms.append(found)
         out.append(price_line(price.case, draft, terms))
     return out
+
+
+# ── the credit check (T7) ────────────────────────────────────────────────────
+
+
+def order_value(priced: Sequence[Priced]) -> float:
+    """What an order adds to its customer's exposure: Σ invoice price × cases, without VAT."""
+    return sum(times(halere(line.invoice_price_case), milli(line.cases)) for line in priced) / 100
+
+
+def credit_check(
+    world: World, config: WorldConfig, customer: Customer, day: date, value: float
+) -> tuple[str, str | None]:
+    """An order's (status, hold_reason) on `day` (module docstring); `value` is `order_value`'s."""
+    hold = config.finance.hold
+    owed = [invoice for invoice in world.open_invoices.values() if invoice.customer_id == customer.customer_id]
+    if any((day - invoice.due_on).days > hold.overdue_days_over for invoice in owed):
+        return "held", "overdue"
+    terms = "special_retail" if customer.sub_channel == "special_retail" else customer.channel
+    limit = {str(channel): limit for channel, limit in config.policies.credit_limit.items()}.get(terms)
+    exposure = sum(invoice.open_amount for invoice in owed) + value
+    if hold.exposure_over_limit and limit is not None and exposure > limit:
+        return "held", "credit_limit"
+    return "released", None
