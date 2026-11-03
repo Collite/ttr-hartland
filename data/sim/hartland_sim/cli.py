@@ -111,10 +111,45 @@ def _ddl_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ddl-dir", type=Path, default=DDL_DIR, help="the DDL folder (default: the repo's data/ddl)")
 
 
+def _run_dir(name: str) -> Path:
+    """`data/build/<name>/`, or `name` itself when it is a path (holds a `/`)."""
+    return Path(name) if "/" in name else BUILD_DIR / name
+
+
+def build_world(args: argparse.Namespace) -> int:
+    """The world built from the warm-up to `--until` into `data/build/<run>/` (`loop.build`); CSV only until G5 S5.1
+    loads it into Postgres."""
+    if not args.csv:
+        print(
+            "hartland-sim build-world: --csv only — loading a build into Postgres arrives at G5 S5.1", file=sys.stderr
+        )
+        return 1
+    from hartland_sim.config import WorldConfig
+    from hartland_sim.loop.build import build
+
+    world = WorldConfig.load()
+    until = args.until or world.history.until
+    run = _run_dir(args.run or f"{'null' if args.null else 'world'}-{until.isoformat()}")
+    try:
+        built = build(run, until, world, null=args.null)
+    except FileExistsError as error:
+        print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
+        return 1
+    quarters = built.report.quarters
+    print(
+        f"hartland-sim build-world: {run} — {sum(q['orders'] for q in quarters.values())} orders to {until}"
+        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id})"
+    )
+    return 0
+
+
 def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--until", type=date.fromisoformat, metavar="DAY", help="the last simulated day (ISO date)")
     parser.add_argument("--csv", action="store_true", help="write the CSV set to data/build/<run>/")
     parser.add_argument("--null", action="store_true", help="the null world: every story disabled (04 §9)")
+    parser.add_argument(
+        "--run", metavar="NAME", help="the folder under data/build/ (default: world-<until>), or a path"
+    )
 
 
 def _load_world_arguments(parser: argparse.ArgumentParser) -> None:
@@ -122,8 +157,27 @@ def _load_world_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--csv-dir", metavar="DIR", help="the build to load (default: the latest data/build/<run>/)")
 
 
+def prolong(args: argparse.Namespace) -> int:
+    """`--csv RUN`: a CSV build's loop resumed from its last checkpoint to DAY (`loop.build.prolong`, G1 S1.4 T5); the
+    database's prolong arrives with G5 S5.3."""
+    if not args.csv:
+        print("hartland-sim prolong: --csv RUN only — prolonging the database arrives at G5 S5.3", file=sys.stderr)
+        return 1
+    from hartland_sim.loop.build import prolong as prolong_run
+
+    run = _run_dir(args.csv)
+    try:
+        built = prolong_run(run, args.until)
+    except (FileNotFoundError, ValueError) as error:
+        print(f"hartland-sim prolong: {error}", file=sys.stderr)
+        return 1
+    print(f"hartland-sim prolong: {run} to {args.until} in {built.timings['total']:.0f} s")
+    return 0
+
+
 def _prolong_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("until", type=date.fromisoformat, metavar="DAY", help="simulate up to this day (ISO date)")
+    parser.add_argument("--csv", metavar="RUN", help="prolong the CSV build data/build/<run>/ (or a path)")
 
 
 def stories_check(args: argparse.Namespace) -> int:
@@ -241,9 +295,11 @@ VERBS: dict[str, Verb] = {
         osm_extract,
     ),
     "ddl": Verb("data/inventory.yaml → data/ddl/schema.sql + indexes.sql", "G0 S0.4", _ddl_arguments, ddl),
-    "build-world": Verb("the simulation → data/build/<run>/", "G1 S1.4", _build_world_arguments),
+    "build-world": Verb("the simulation → data/build/<run>/", "G1 S1.4", _build_world_arguments, build_world),
     "load-world": Verb("COPY in load order · views · indexes · the _sim_meta guard", "G5 S5.1", _load_world_arguments),
-    "prolong": Verb("from the last checkpoint: the world reacts, appends", "G5 S5.3", _prolong_arguments),
+    "prolong": Verb(
+        "from the last checkpoint: the world reacts, appends", "G1 S1.4 (--csv) · G5 S5.3", _prolong_arguments, prolong
+    ),
     "stories-check": Verb(
         "the answer key: every detector and probe",
         "G0 S0.4 (--dry) · G1 S1.2 (--csv) · G5 S5.2",

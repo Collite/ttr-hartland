@@ -140,13 +140,14 @@ def tracked(folder: Path) -> list[Path]:
 
 
 def meta(world: WorldConfig, stories: StoriesConfig, last_day_done: date) -> Meta:
-    """`_sim_meta` for a build of the committed inputs (`world.Meta`)."""
+    """`_sim_meta` for a build of the committed inputs (`world.Meta`): the files on disk, the seed, and the stories'
+    `sha256` — the files' own, or the null world's (`StoriesConfig.null`), so a null build has an id of its own."""
     return Meta(
         master_seed=world.master_seed,
         stories_sha256=stories.sha256,
         world_sha256=hashlib.sha256(WORLD_FILE.read_bytes()).hexdigest(),
         last_day_done=last_day_done,
-        build_id=digest(REPO_DIR, inputs(), str(world.master_seed), hartland_sim.__version__)[:16],
+        build_id=digest(REPO_DIR, inputs(), str(world.master_seed), hartland_sim.__version__, stories.sha256)[:16],
     )
 
 

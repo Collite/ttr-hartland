@@ -67,7 +67,26 @@ PENDING = sorted(name for name, verb in VERBS.items() if verb.handler is pending
 
 
 def test_the_landed_verbs_are_no_longer_pending() -> None:
-    assert set(VERBS) - set(PENDING) == {"reference-check", "osm-extract", "ddl", "stories-check"}
+    landed = {"reference-check", "osm-extract", "ddl", "stories-check", "build-world", "prolong"}
+    assert set(VERBS) - set(PENDING) == landed
+
+
+@pytest.mark.parametrize(("argv", "stage"), [(["build-world"], "G5 S5.1"), (["prolong", "2026-12-31"], "G5 S5.3")])
+def test_build_world_and_prolong_are_csv_only_until_g5(
+    argv: list[str], stage: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(argv) == 1
+    assert stage in capsys.readouterr().err
+
+
+def test_build_world_takes_a_run_name_or_a_path() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["build-world", "--until", "2024-12-31", "--csv", "--null", "--run", "r1"])
+    assert (args.until.isoformat(), args.csv, args.null, args.run) == ("2024-12-31", True, True, "r1")
+    from hartland_sim.cli import BUILD_DIR, _run_dir
+
+    assert _run_dir("r1") == BUILD_DIR / "r1" and _run_dir("/tmp/x/r1") == Path("/tmp/x/r1")
+    assert parser.parse_args(["prolong", "2024-05-09", "--csv", "r1"]).csv == "r1"
 
 
 @pytest.mark.parametrize("verb", PENDING)

@@ -20,7 +20,7 @@ import json
 import types
 import typing
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from functools import cache
 from pathlib import Path
@@ -794,6 +794,16 @@ class StoriesConfig:
     def story(self, id: str) -> Story:
         (found,) = [story for story in self.stories if story.story == id]
         return found
+
+    def null(self) -> StoriesConfig:
+        """The null world (`04` §9): every story and planted case off, with a `sha256` of its own — the files are the
+        same, the world built from them is not."""
+        return replace(
+            self,
+            stories=tuple(replace(story, enabled=False) for story in self.stories),
+            anomalies=tuple(replace(anomaly, enabled=False) for anomaly in self.anomalies),
+            sha256=hashlib.sha256(f"null\0{self.sha256}".encode()).hexdigest(),
+        )
 
     def anomaly(self, id: str) -> Anomaly:
         (found,) = [anomaly for anomaly in self.anomalies if anomaly.id == id]
