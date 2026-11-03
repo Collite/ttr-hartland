@@ -210,7 +210,10 @@ def _report(
         "git_sha": sha,
         "git_dirty": dirty,
         "timings_s": {name: round(seconds, 1) for name, seconds in timings.items()},
-        "quarters": {quarter: dict(sorted(counts.items())) for quarter, counts in report.quarters.items()},
+        "quarters": {
+            quarter: {key: round(n, 1) if isinstance(n, float) else n for key, n in sorted(counts.items())}
+            for quarter, counts in report.quarters.items()
+        },
     }
     path = run / BUILD_JSON
     held = json.loads(path.read_text(encoding="utf-8")) if prolonged and path.is_file() else None

@@ -79,5 +79,24 @@ jobs:
       - name: uv sync (Python 3.13, the lock)
         run: uv sync --locked
 
-      - name: pytest -m build (the world built to 2025 twice, the stories checked on CSV)
+      - name: pytest -m build (the story and the null world built to 2025, the stories, determinism and timing)
         run: uv run pytest -m build
+
+  # The verb end to end, as a user runs it (G1 S1.4 T7): a three-month build and the answer key.
+  build-world:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: extractions/setup-just@v2
+
+      - name: uv sync (Python 3.13, the lock)
+        run: uv sync --locked
+
+      - name: just build-world --until 2024-03-31 --csv
+        run: just build-world --until 2024-03-31 --csv --run ci-3-months
+
+      - name: just stories-check --csv --dry
+        run: just stories-check --csv --dry

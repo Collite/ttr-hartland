@@ -63,6 +63,8 @@ def _format(kind: str) -> Format:
 
 
 def _integer(value: Any) -> str | None:
+    if type(value) is int:  # the common case: an id, a count
+        return str(value)
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
@@ -155,21 +157,27 @@ _FORMATS: dict[str, Format] = {
 
 
 @cache
-def _columns(name: str) -> tuple[tuple[str, Format, bool], ...]:
-    """`name`'s columns as (name, its format, nullable), in the inventory's order."""
-    return tuple((column.name, _format(column.type), column.nullable) for column in _tables()[name].columns)
+def _columns(name: str) -> tuple[tuple[tuple[str, Format], ...], tuple[int, ...]]:
+    """`name`'s columns as (name, its format), in the inventory's order, and the indices of the NOT NULL ones."""
+    columns = _tables()[name].columns
+    required = tuple(i for i, column in enumerate(columns) if not column.nullable)
+    return tuple((column.name, _format(column.type)) for column in columns), required
 
 
 def cells(table: Table, row: Mapping[str, Any]) -> list[str | None]:
-    out = []
-    for name, form, nullable in _columns(table.name):
-        try:
-            text = form(row[name])
-        except CellError as error:
-            raise CellError(f"{table.name}.{name}: {error}") from None
-        if text is None and not nullable:
-            raise CellError(f"{table.name}.{name}: NULL in a NOT NULL column")
-        out.append(text)
+    columns, required = _columns(table.name)
+    try:
+        out = [form(row[name]) for name, form in columns]
+    except CellError:
+        for name, form in columns:  # again, to name the column
+            try:
+                form(row[name])
+            except CellError as error:
+                raise CellError(f"{table.name}.{name}: {error}") from None
+        raise
+    for i in required:
+        if out[i] is None:
+            raise CellError(f"{table.name}.{columns[i][0]}: NULL in a NOT NULL column")
     return out
 
 

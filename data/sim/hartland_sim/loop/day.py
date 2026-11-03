@@ -25,6 +25,7 @@ terms, the climate — built again from the configs for a run (never pickled), a
 
 from __future__ import annotations
 
+import time
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -70,9 +71,14 @@ def quarter(day: date) -> str:
 @dataclass
 class Report:
     """What a run did, by quarter (`2024-Q1`): its orders and lines, the asks granted and refused by reason, the orders
-    held by reason."""
+    held by reason, and its days and the seconds they took (`checks.timing`)."""
 
     quarters: dict[str, Counter[str]] = field(default_factory=dict)
+
+    def timed(self, day: date, seconds: float) -> None:
+        held = self.quarters.setdefault(quarter(day), Counter())
+        held["days"] += 1
+        held["seconds"] += seconds  # type: ignore[assignment]  # a Counter holds the float too
 
     def add(self, day: date, done: orders.Day) -> None:
         held = self.quarters.setdefault(quarter(day), Counter())
@@ -133,8 +139,10 @@ class Loop:
         """One day (module docstring): the day after the `World`'s."""
         if day != self.world.day + timedelta(days=1):
             raise ValueError(f"the World is after {self.world.day}: the next day is not {day}")
+        started = time.perf_counter()
         for step in STEPS:
             getattr(self, step)(day)
+        self.report.timed(day, time.perf_counter() - started)
 
     def until(self, last: date) -> None:
         """Every day from the `World`'s next to `last`, both included."""
