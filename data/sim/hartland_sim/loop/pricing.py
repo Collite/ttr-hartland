@@ -2,12 +2,13 @@
 
 **The price lists** (`01` §5.1). The standard list is a quarterly version: each SKU sold in the quarter at the
 catalogue's `base_price_case`, per piece ÷ `units_per_case`, with the factories' standard price (`cogs_case`) as its
-purchase price. A channel's list is a monthly version: the standard × `world.yaml pricing.channel_factor[channel]`,
-or × the factor of Marketing's hero override for that SKU in that channel. Both carry their validity; the `World`
-holds the versions in force (`World.standard_list`, `World.channel_lists`), which S1.4's period ends roll: the
-month-end the channel lists, the quarter-end the standard list with its price drift. A channel's list is made from
-the standard list of its month only. Every list is without VAT but the web's, a shelf price incl. VAT (`01` §4.4),
-and its `channel_price` rows stay so; an order line is priced without VAT on every channel (`price_order`).
+purchase price, both × its line's price index (the quarter-end's drift, S1.4). A channel's list is a monthly
+version: the standard × `world.yaml pricing.channel_factor[channel]`, or × the factor of Marketing's hero override for
+that SKU in that channel. Both carry their validity; the `World` holds the versions in force (`World.standard_list`,
+`World.channel_lists`), which S1.4's period ends roll: the month-end the channel lists, the quarter-end the standard
+list with its price drift. A channel's list is made from the standard list of its month only. Every list is without
+VAT but the web's, a shelf price incl. VAT (`01` §4.4), and its `channel_price` rows stay so; an order line is priced
+without VAT on every channel (`price_order`).
 
 **The discounts** (contracts §4). A line qualifies for `Term`s — a tier, an agreement, a promotion — and `apply` takes
 them in the pricing order, each on the price the earlier ones left: a percentage off it, or an individual price down
@@ -103,14 +104,17 @@ def _sold(sku: Sku, first: date, last: date) -> bool:
     return sku.launched_on <= last and sku.last_day >= first
 
 
-def standard_list(skus: Sequence[Sku], day: date) -> PriceList:
-    """The standard list of the quarter holding `day`: each SKU sold in the quarter at its base price."""
+def standard_list(skus: Sequence[Sku], day: date, index: Mapping[str, float] | None = None) -> PriceList:
+    """The standard list of the quarter holding `day`: each SKU sold in the quarter at its base price and its standard
+    purchase price, each × its line's price `index` (1.0 without one: the catalogue's prices), to the haléř; per piece
+    the case price ÷ its units."""
     first, last = quarter_start(day), quarter_end(day)
-    prices = {
-        sku.sku_id: Price(sku.base_price_case, round(sku.base_price_case / sku.units_per_case, 2), sku.cogs_case)
-        for sku in skus
-        if _sold(sku, first, last)
-    }
+    prices = {}
+    for sku in skus:
+        if _sold(sku, first, last):
+            factor = index[sku.line] if index is not None else 1.0
+            case = round(sku.base_price_case * factor, 2)
+            prices[sku.sku_id] = Price(case, round(case / sku.units_per_case, 2), round(sku.cogs_case * factor, 2))
     code = STANDARD_CODE.format(year=first.year, quarter=(first.month - 1) // 3 + 1)
     return PriceList(None, code, first, last, 1.0, prices)
 

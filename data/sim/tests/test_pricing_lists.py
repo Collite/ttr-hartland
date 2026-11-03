@@ -1,6 +1,7 @@
 """The price lists (G1 S1.3 T1, `01` §5.1): the standard list of Q1-2024 at the catalogue's base prices, each channel's
-list of Jan-2024 at the standard × its factor with Marketing's hero overrides, both with their validity; setup writes
-those rows and gives the `World` the versions in force on the warm-up's first day."""
+list of Jan-2024 at the standard × its factor with Marketing's hero overrides, both with their validity; setup gives the
+`World` the versions in force on the warm-up's first day. The rows are the period ends' (`test_quarter_end`,
+`test_month_end`, ⚑R213-A)."""
 
 from __future__ import annotations
 
@@ -10,10 +11,8 @@ import pytest
 
 from hartland_sim.config import WorldConfig
 from hartland_sim.dates import month_end, quarter_end, quarter_start
-from hartland_sim.ids import row_id
 from hartland_sim.loop.demand import CHANNELS
 from hartland_sim.loop.pricing import channel_list, standard_list
-from hartland_sim.setup.org import MARKETING
 from hartland_sim.setup.run import Setup
 
 WORLD = WorldConfig.load()
@@ -97,23 +96,6 @@ def test_the_hero_overrides_reach_their_channels_only(opening: Setup) -> None:
         listed = channel_list(standard, skus, WORLD, channel, date(2024, 1, 1))
         overridden |= {(codes[sku_id], channel) for sku_id, price in listed.prices.items() if price.is_override}
     assert overridden == set(HEROES)
-
-
-def test_setup_writes_the_first_written_versions(opening: Setup) -> None:
-    (head,) = opening.tables["standard_price_list"]
-    assert head["code"] == "SC-2024-Q1"
-    assert (head["valid_from"], head["valid_to"]) == (date(2024, 1, 1), date(2024, 3, 31))
-    assert head["issued_by_employee_id"] == opening.org.actors[MARKETING].employee_id
-    items = opening.tables["standard_price"]
-    assert {item["standard_price_list_id"] for item in items} == {head["standard_price_list_id"]}
-    assert len(items) == len(standard_list(opening.portfolio.skus, date(2024, 1, 1)).prices)
-    heads = opening.tables["channel_price_list"]
-    assert [h["channel"] for h in heads] == list(CHANNELS)
-    assert {(h["valid_from"], h["valid_to"]) for h in heads} == {(date(2024, 1, 1), date(2024, 1, 31))}
-    ids = {h["channel_price_list_id"] for h in heads}
-    assert ids == {row_id("channel_price_list", channel=channel, valid_from=date(2024, 1, 1)) for channel in CHANNELS}
-    assert {item["channel_price_list_id"] for item in opening.tables["channel_price"]} == ids
-    assert sum(item["is_override"] for item in opening.tables["channel_price"]) == len(HEROES)
 
 
 def test_the_world_holds_the_versions_in_force_on_the_warm_up_s_first_day(opening: Setup) -> None:

@@ -296,9 +296,10 @@ class World:
     agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id (`add_agreement`)
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
     # S1.3: the price lists in force on `day` — the standard one and each channel's; S1.4's period ends roll them
-    # (the month-end the channel lists, the quarter-end the standard list).
+    # (the month-end the channel lists, the quarter-end the standard list by `price_index`).
     standard_list: PriceList | None = None
     channel_lists: dict[str, PriceList] = field(default_factory=dict)  # by channel
+    price_index: dict[str, float] = field(default_factory=dict)  # S1.4: each line's standard price ÷ its base price
     # S1.4: what the tiered customers bought, by month (its first day) and customer_id, for the month-ends — the
     # last `policies.lifecycle.lookback_months`; and the planned gross of the quarter ahead by budget target (a rep
     # area's code, a KAM's account's), which a quarter's last month-end sets for the quarter-end's budgets.

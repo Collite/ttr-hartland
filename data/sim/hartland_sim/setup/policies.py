@@ -17,10 +17,10 @@ vehicles, the price lists.
   as it ages; held by the region, lent by G2 S2.3.
 - **`carrier`** (`carrier.csv`) and **`vehicle`**: each carrier's fleet by class, the capacities of `delivery.capacity`,
   a Czech plate drawn per vehicle (stream `route`) in the region of its DC.
-- **The price lists** (`loop.pricing`): the rows are the first written versions — the standard list of the first
-  written quarter (Q1-2024) and each channel's list of its first month (Jan-2024), issued by Marketing's director.
-  The `World` gets the versions in force on the warm-up's first day (Q1-2023, Jan-2023); the month-ends roll them
-  from there (S1.4) and write the versions after these.
+- **The price lists** (`loop.pricing`): the `World` gets the versions in force on the warm-up's first day — the
+  standard list of Q1-2023 at the catalogue's prices (every line's price index 1.0) and each channel's of Jan-2023.
+  Setup writes no price-list row: the period ends roll the lists from there and write every version from the first
+  written period on, so 2023-12-31's quarter-end and month-end write SC-2024-Q1 and Jan-2024's (S1.4, ⚑R213-A).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from hartland_sim.dates import quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
 from hartland_sim.loop.demand import CHANNELS
-from hartland_sim.loop.pricing import channel_list, channel_rows, standard_list, standard_rows
+from hartland_sim.loop.pricing import channel_list, standard_list
 from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
@@ -138,20 +138,8 @@ def rules(out: Tables, world: WorldConfig, owner: int) -> None:
             )
 
 
-def price_lists(
-    out: Tables, world: WorldConfig, portfolio: Portfolio, issuer: int
-) -> tuple[PriceList, dict[str, PriceList]]:
-    """The first written versions' rows into `out`; the standard list and the channels' lists in force on the
-    warm-up's first day, for the `World`."""
-    first = world.history.first_day
-    standard = standard_list(portfolio.skus, first)
-    head, items = standard_rows(standard, issuer)
-    out["standard_price_list"].append(head)
-    out["standard_price"].extend(items)
-    for channel in CHANNELS:
-        head, items = channel_rows(channel_list(standard, portfolio.skus, world, channel, first))
-        out["channel_price_list"].append(head)
-        out["channel_price"].extend(items)
+def price_lists(world: WorldConfig, portfolio: Portfolio) -> tuple[PriceList, dict[str, PriceList]]:
+    """The standard list and the channels' lists in force on the warm-up's first day, for the `World`; no rows."""
     start = world.history.warm_up_from
     opening = standard_list(portfolio.skus, start)
     return opening, {channel: channel_list(opening, portfolio.skus, world, channel, start) for channel in CHANNELS}
