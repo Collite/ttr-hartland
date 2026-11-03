@@ -23,7 +23,7 @@ new phase episode) and the five state tables render it at the build's end (⚑R2
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
@@ -68,17 +68,19 @@ def daily(monthly: Array) -> Array:
     return np.asarray(1 - (1 - np.clip(monthly, 0.0, 1.0)) ** (1 / DAYS_A_MONTH))
 
 
-@dataclass(frozen=True)
+@dataclass(eq=False)
 class Reps:
     """The small-retail customers as the reps see them, for a run (never pickled): which customers (`small`, by their
-    index in the `World`'s order), their areas, whether a planted case pins them, and each store's appeal."""
+    index in the `World`'s order), their areas, whether a planted case pins them, and each store's appeal (`appeal`,
+    made again when the `Demand` is rebased)."""
 
     rates: Rates
     small: Array  # (n,) customer indices
     area: Array  # (n,) index into `areas`
     areas: tuple[str, ...]
     pinned: Array  # (n,) bool
-    appeal: Array  # (n,)
+    _appeal: Array = field(repr=False)  # (n,)
+    _generation: int = field(repr=False)  # the `Demand.generation` `_appeal` was made at
 
     @classmethod
     def of(cls, world: World, stories: StoriesConfig) -> Reps:
@@ -92,15 +94,21 @@ class Reps:
         )
         codes = [customers[c].area or "" for c in small]
         areas = tuple(dict.fromkeys(codes))
-        size = np.sqrt(demand.units[demand.customer_start[small]].sum(axis=1))
         return cls(
             Rates.of(stories),
             small,
             np.array([areas.index(code) for code in codes], dtype=np.int64),
             areas,
             np.array([bool(customers[c].traits) for c in small], dtype=bool),
-            size / size.mean(),
+            store_appeal(demand, small),
+            demand.generation,
         )
+
+    def appeal(self, demand: Demand) -> Array:
+        """(n,) each store's appeal (module docstring), made again when `demand` has been rebased since."""
+        if self._generation != demand.generation:
+            self._appeal, self._generation = store_appeal(demand, self.small), demand.generation
+        return self._appeal
 
     def skills(self, world: World, day: date) -> tuple[Array, Array, Array, Array]:
         """(A,) per area on `day`: whether a rep holds it, and the rep's acquisition, retention and cross-sell."""
@@ -113,6 +121,12 @@ class Reps:
                 held[a] = True
                 acquisition[a], retention[a], cross_sell[a] = skills.acquisition, skills.retention, skills.cross_sell
         return held, acquisition, retention, cross_sell
+
+
+def store_appeal(demand: Demand, small: Array) -> Array:
+    """(n,) the stores of customers `small` by their base, as a square root scaled to a mean of 1 (module docstring)."""
+    size = np.sqrt(demand.units[demand.customer_start[small]].sum(axis=1))
+    return np.asarray(size / size.mean())
 
 
 def chances(
@@ -131,7 +145,7 @@ def chances(
     room = (listed[demand.point_group[demand.customer_start[small]]] & ~demand.carried[small]).any(axis=1)
     acquire, churn, cross = (np.zeros(len(demand.customer_ids)) for _ in range(3))
     rates = reps.rates
-    acquire[small] = np.where(potential & held[area], rates.acquisition * acquisition[area] * reps.appeal, 0.0)
+    acquire[small] = np.where(potential & held[area], rates.acquisition * acquisition[area] * reps.appeal(demand), 0.0)
     churn[small] = np.where(active & ~reps.pinned, rates.churn / retention[area], 0.0)
     cross[small] = np.where(active & room, rates.cross_sell * cross_sell[area], 0.0)
     return acquire, churn, cross

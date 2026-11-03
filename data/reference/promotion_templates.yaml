@@ -237,8 +237,10 @@ templates:
     name_cs: Harcafé Classic 2+1 zdarma v řetězcích
     goal_cs: Letáková akce dvou řetězců na klasickou kávu v letním útlumu.
   # Weeks 33–38, after the noodles' trough (28–32, s1.yaml): the noodles' amplitude (1.3) leaves ≈ 0.02 over S1's 1.25
-  # on the curve alone, and a price-off inside the trough took them to 1.218. Lines with room keep their trough
-  # promotions (SMESI-LETO, GOLD-KA): a company promotes a line in its slack season.
+  # on the curve alone, and a price-off inside the trough took them to 1.218. A company promotes a line in its slack
+  # season: SMESI-LETO and GOLD-KA sit in their lines' troughs with room to spare. CLASSIC-KA's week 27 and its dip
+  # (28–29) fall in Classic's trough, and CLASSIC-200's dip in its peak (45–46): Classic sets S1's minimum, and G5 S5.2
+  # watches it (⚑R207-E).
   - line: NUDLE
     tag: LETO
     month: 8

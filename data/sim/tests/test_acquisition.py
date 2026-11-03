@@ -4,6 +4,7 @@ day; a year of them applied to the world; what a gained, a lost and a cross-sold
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from datetime import date, timedelta
 
 import numpy as np
@@ -43,7 +44,7 @@ def test_each_pinned_rep_s_chances_carry_its_skill(opening: Setup) -> None:
     world, demand, reps = _copy(opening)
     day = date(2023, 6, 1)  # every rep on the area it opened with
     acquire, churn, cross = chances(world, demand, reps, day)
-    appeal = dict(zip(reps.small.tolist(), reps.appeal.tolist(), strict=True))
+    appeal = dict(zip(reps.small.tolist(), reps.appeal(demand).tolist(), strict=True))
     for profile, (kind, found, base) in {
         "hunter": ("acquisition", acquire, S3["acquisition_base"]),
         "farmer": ("retention", churn, S3["churn_base"]),
@@ -63,6 +64,29 @@ def test_each_pinned_rep_s_chances_carry_its_skill(opening: Setup) -> None:
                 assert found[c] == pytest.approx(base * skill)
 
 
+def test_a_store_rebased_to_a_bigger_size_moves_its_appeal(opening: Setup) -> None:
+    """The reps read the store as it is after a rebase, not as the opening made it (review-207 RR1)."""
+    world, demand, reps = _copy(opening)
+    before = reps.appeal(demand).copy()
+    n = next(
+        n
+        for n, c in enumerate(reps.small)
+        if (spot := demand.spots[int(demand.customer_start[c])]).store and spot.store.size_class == "S"
+    )
+    p = int(demand.customer_start[reps.small[n]])
+    spot = demand.spots[p]
+    assert spot.store is not None
+    demand.rebase(
+        {p: replace(spot, store=replace(spot.store, size_class="L"))}, {spot.okres: float(demand.point_affluence[p])}
+    )
+    after = reps.appeal(demand)
+    others = np.arange(len(before)) != n
+    rescaled = after[others][0] / before[others][0]  # the mean of 1 moved with the bigger store
+    assert np.allclose(after[others] / before[others], rescaled)
+    size = STORIES.story("S4").parameters["size_base"]
+    assert after[n] / before[n] == pytest.approx((size["L"] / size["S"]) ** 0.5 * rescaled)
+
+
 def test_the_chance_follows_the_rep_on_the_day_through_an_area_move(opening: Setup) -> None:
     world, demand, reps = _copy(opening)
     hunter = PINS["hunter"]
@@ -78,7 +102,7 @@ def test_the_chance_follows_the_rep_on_the_day_through_an_area_move(opening: Set
     for day, area, skill in ((before, hunter.slot, 1.4), (after, hunter.slot, successor), (after, new_area, 1.4)):
         acquire, _, _ = chances(world, demand, reps, day)
         customers = [c for c in _customers_of(reps, area) if acquire[c] > 0]
-        appeal = reps.appeal[np.searchsorted(reps.small, customers)]
+        appeal = reps.appeal(demand)[np.searchsorted(reps.small, customers)]
         assert np.allclose(acquire[customers], S3["acquisition_base"] * skill * appeal), (day, area)
 
 

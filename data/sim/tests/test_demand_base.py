@@ -193,6 +193,18 @@ def test_a_store_that_changes_gets_its_base_again(opening: Setup) -> None:
     assert np.array_equal(np.delete(copy.units, p, axis=0), np.delete(demand.units, p, axis=0))
 
 
+def test_a_store_less_point_rebased_unchanged_keeps_its_channel_s_mean_store_factor(opening: Setup) -> None:
+    """A gastro wholesaler rebased alone keeps the factor the opening gave it from HoReCa's stores (review-207 RR1)."""
+    demand = opening.world.demand
+    assert demand is not None
+    copy = replace(demand, units=demand.units.copy(), spots=demand.spots)
+    wholesalers = [p for p, spot in enumerate(demand.spots) if spot.channel == "horeca" and spot.store is None]
+    affluence = {demand.spots[p].okres: float(demand.point_affluence[p]) for p in wholesalers}
+    copy.rebase({p: demand.spots[p] for p in wholesalers}, affluence)
+    assert copy.store_means["horeca"] > 1.0
+    assert np.array_equal(copy.units[wholesalers], demand.units[wholesalers])
+
+
 def test_the_listing_group_lists_what_channel_listing_lists(opening: Setup) -> None:
     demand = opening.world.demand
     assert demand is not None
