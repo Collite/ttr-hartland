@@ -1019,6 +1019,7 @@
         "stock",
         "credit_limit",
         "lifecycle",
+        "sales_plan",
         "prompt_caps",
         "seasonal_exclusion",
         "prompt_rules"
@@ -1209,6 +1210,24 @@
                     "pattern": "^[A-Z]+$"
                   }
                 }
+              }
+            }
+          }
+        },
+        "sales_plan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "error_pct"
+          ],
+          "properties": {
+            "error_pct": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
               }
             }
           }

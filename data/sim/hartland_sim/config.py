@@ -333,6 +333,11 @@ class Lifecycle:
 
 
 @dataclass(frozen=True)
+class SalesPlan:
+    error_pct: tuple[float, ...]  # the planning error, ± %, by months ahead (1, 2, …): the months the roll plans
+
+
+@dataclass(frozen=True)
 class PromptRule:
     code: str
     kind: str
@@ -347,6 +352,7 @@ class Policies:
     stock: Mapping[str, Cover]  # "default" · "professional"
     credit_limit: Mapping[Channel, int]
     lifecycle: Lifecycle
+    sales_plan: SalesPlan
     prompt_caps: Mapping[Phase, int]
     seasonal_exclusion: Mapping[str, tuple[int, ...]]  # product line code → months
     prompt_rules: tuple[PromptRule, ...]

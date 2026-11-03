@@ -19,7 +19,7 @@ from hartland_sim.streams import STREAMS
 
 PACKAGE = Path(hartland_sim.__file__).resolve().parent
 # Contracts §2's catalogue, with the two review-196 ⚑C added (`skills` S1.1 T4, `promo` S5.3 T4), `org` (S1.1 T4), and
-# the two G1 S1.2's list names (`elasticity` T4, `breadth` T6), and G1 S1.4's (`order` T1).
+# the two G1 S1.2's list names (`elasticity` T4, `breadth` T6), and G1 S1.4's (`order` T1, `plan` T3).
 CONTRACT_STREAMS = {
     "demand",
     "basket",
@@ -48,6 +48,7 @@ CONTRACT_STREAMS = {
     "elasticity",
     "breadth",
     "order",
+    "plan",
 }
 
 

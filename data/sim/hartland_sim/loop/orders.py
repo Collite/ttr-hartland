@@ -25,7 +25,9 @@ before its orders, so an order of that day carries what was agreed; the demand l
 `price_agreement` row; one of the warm-up runs to its quarter's end and is never cited after 2024-01-01.
 
 **One day** (`step`): the asks, then each basket's order in the events' order, written through `Output` (nothing
-before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day).
+before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day). A
+tiered customer's order is booked on its month (`book`, `World.bought`): its net revenue, its product lines — what
+the month-end reads the next month's tiers and the phases from.
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ from hartland_sim.rng import uniforms
 from hartland_sim.setup.calendar import holidays
 from hartland_sim.setup.customers import terms
 from hartland_sim.setup.rows import row
-from hartland_sim.world import Agreement, World
+from hartland_sim.world import Agreement, Bought, Customer, World
 
 ORDER_NO = "{day:%Y%m%d}-{code}-{n}"
 TAKEN = ("visit", "phone")  # the sources a person takes: the customer's rep or KAM
@@ -211,6 +213,19 @@ def order(world: World, desk: Desk, basket: BasketReady, n: int, draw: float) ->
     return Order(head, lines, discounts, priced, value)
 
 
+def book(world: World, rules: Rules, customer: Customer, day: date, made: Order) -> None:
+    """`made` on its customer's month (module docstring): only a tiered customer's, the one with monthly
+    conditions and phase rows."""
+    if customer.channel not in TIERED:
+        return
+    held = world.bought.setdefault(day.replace(day=1), {}).setdefault(customer.customer_id, Bought())
+    held.net_revenue = round(held.net_revenue + made.value, 2)
+    held.orders += 1
+    for line in made.priced:
+        if not line.is_free_goods:
+            held.lines |= 1 << rules.lines[rules.sku_line[line.sku_id]]
+
+
 def asks(world: World, desk: Desk, day: date) -> list[Agreement | Refusal]:
     """The day's asks (module docstring), each answered by `pricing.grant`, in the World's order of the customers."""
     by_day, line_draws = desk.plan(world, day)
@@ -267,6 +282,7 @@ def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], out
     heads, lines, discounts = [], [], []
     for event, n, draw in zip(events, counts, draws, strict=True):
         made = order(world, desk, event, n, draw)
+        book(world, desk.rules, world.customers[event.customer_id], day, made)
         heads.append(made.head)
         lines += made.lines
         discounts += made.discounts

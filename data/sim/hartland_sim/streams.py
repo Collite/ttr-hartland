@@ -4,8 +4,8 @@ One name per kind of draw; `rng()` refuses a name not listed here, and a test as
 package names one by its literal. Contracts §2 lists the first twenty-one; `skills` (the actors' hidden skills, S1.1
 T4) and `promo` (prolong's promotions, S5.3 T4) are review-196 ⚑C's, `org` (the people's names and dates, S1.1 T4)
 is S1.1's, `elasticity` (the customer × line elasticities, S1.2 T4) and `breadth` (the lines a customer buys, S1.2
-T6) are G1 S1.2's list's, `order` (an order's source, S1.4 T1) is G1 S1.4's. A stage that needs a new kind of draw
-adds its name here — adding one never shifts another's draws.
+T6) are G1 S1.2's list's, `order` (an order's source, S1.4 T1) and `plan` (the sales plan's error, S1.4 T3) are G1
+S1.4's. A stage that needs a new kind of draw adds its name here — adding one never shifts another's draws.
 """
 
 from __future__ import annotations
@@ -39,5 +39,6 @@ STREAMS: frozenset[str] = frozenset(
         "elasticity",  # each customer × line's hidden elasticity (S1.2)
         "breadth",  # the lines a customer buys, and cross-selling one more (S1.2)
         "order",  # an order's source: visit, phone, portal, … by the channel's mix (S1.4)
+        "plan",  # the sales plan's planning error (S1.4)
     }
 )

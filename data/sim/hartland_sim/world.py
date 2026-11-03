@@ -174,6 +174,17 @@ class Budget:
     reserved: float = 0.0
 
 
+@dataclass
+class Bought:
+    """What a customer bought in a month, as its orders book it (`loop.orders.book`, S1.4): its net revenue without
+    VAT, its orders, and the product lines of its paid lines, a bit each in `Demand.lines`' order. The month-end reads
+    the next month's tiers and the phases from it."""
+
+    net_revenue: float = 0.0
+    orders: int = 0
+    lines: int = 0
+
+
 @dataclass(frozen=True)
 class Promotion:
     """A promotion as the loop reads it (`promotion` + its `promotion_eligibility` rows): setup seeds the committed
@@ -288,6 +299,11 @@ class World:
     # (the month-end the channel lists, the quarter-end the standard list).
     standard_list: PriceList | None = None
     channel_lists: dict[str, PriceList] = field(default_factory=dict)  # by channel
+    # S1.4: what the tiered customers bought, by month (its first day) and customer_id, for the month-ends — the
+    # last `policies.lifecycle.lookback_months`; and the planned gross of the quarter ahead by budget target (a rep
+    # area's code, a KAM's account's), which a quarter's last month-end sets for the quarter-end's budgets.
+    bought: dict[date, dict[int, Bought]] = field(default_factory=dict)
+    planned_gross: dict[str, float] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:

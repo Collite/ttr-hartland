@@ -17,8 +17,9 @@ Without a rep the churn and breadth act at skill 1. The null world needs no swit
 
 **Run first in the day** (`step` before `demand.step`): a store acquired today places its first order today — its
 basket opens with one cycle of its demand and it is `due` — and a customer lost today buys nothing today: its `until`
-is yesterday and its phase `lost` from today. The `World`'s customer carries the change (`status`, `since`/`until`, a
-new phase episode) and the five state tables render it at the build's end (⚑R201-A); the `Demand` its arrays.
+is yesterday and its phase `lost` from today (in place of the phase yesterday's month-end gave it from today, so one
+episode starts a day). The `World`'s customer carries the change (`status`, `since`/`until`, a new phase episode) and
+the five state tables render it at the build's end (⚑R201-A); the `Demand` its arrays.
 """
 
 from __future__ import annotations
@@ -179,6 +180,8 @@ def step(world: World, reps: Reps, day: date, shares: Shares | None = None) -> O
     for c in lost:
         customer = customers[c]
         customer.status, customer.until = "lost", day - timedelta(days=1)
+        if customer.episodes and customer.episodes[-1].valid_from == day:
+            customer.episodes.pop()  # yesterday's month-end phased it from today: the loss replaces that
         customer.episodes.append(Episode("lost", day, LOST))
         demand.customer_until[c] = (day - timedelta(days=1)).toordinal()
         points = slice(int(demand.customer_start[c]), int(demand.customer_start[c + 1]))

@@ -196,6 +196,8 @@ policies:
       occasional: [GOLD, KELIMKY, NUDLE]
       regular: [ESPRESSO, PREMIUM, BEZKOFEIN]
       vip: [ESPRESSO, PREMIUM, GOLD]
+  sales_plan: # the month-end's rolling plan of M+1…M+3 (S1.4): the demand's expectation × a planning error
+    error_pct: [4, 6, 8] # ± %, uniform, one, two and three months ahead
   prompt_caps: { potential: 3, occasional: 4, regular: 5, vip: 6 } # prompts per visit, by phase (G2 S2.2)
   # The rep-prompt rules (R-5…R-7, R-12; prompt_rule): priority 1 first; a mandatory rule cannot be hidden, an
   # adaptable one an agent may tune. The sales director owns them. G2 S2.2 applies the parameters.
