@@ -11,7 +11,13 @@ is a null world and each metric must give the opposite (`null_world`).
 **Built here (G1 S1.2):** S1 (`s1`, `s1_weather`), S2 (`s2` — not run until `promotion_result` exists, G4 S4.3 —
 and `s2_affluence`), S4 (`s4`, and 04's k-means check `s4_kmeans`, which has no SQL: s4.yaml `kmeans`).
 S2-affluence counts an order only where the promotion names its channel (ttr-hartland#8 item 1, the twin's default
-until the SQL takes it). The others (S3, S5, S6, the probes) arrive with their stages.
+until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists). The
+others (S3, S5, the probes) arrive with their stages.
+
+**`sales_pl` before G4** (S6): the view's customer margin is net revenue less the cost to serve (contracts §4); a G1
+build has the lines' net revenue and purchase prices only, so the twin's margin is net revenue less the purchase price
+× cases (a free line's goods counted as a cost) — the report says "pre-G4" — and its agreed discount the line's
+`agreed` rows.
 
 The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result, and a note where a twin
 has more to say (S1: each line's ratio, so the line that sets the margin shows).
@@ -32,6 +38,8 @@ import pandas as pd
 from hartland_sim.config import Detector, StoriesConfig, inventory
 
 S2_FROM = date(2024, 2, 26)  # s2_affluence.sql: promotions whose 8 weeks before lie inside the history
+S6_FROM = date(2024, 2, 26)  # s6.sql: agreements whose 8 weeks before lie inside the history
+S6_SLOT_DAY = date(2023, 1, 1)  # s6.sql: a pinned rep is the one holding its area on the warm-up's first day
 WEEK_DAYS = 56  # s2_affluence.sql's 8 weeks before
 KMEANS_BAR = 0.6  # 04 §S4's adjusted Rand index, reported beside S4 (s4.yaml `kmeans`), never judged
 PLACED_CHANNELS = ("web", "own_shops")  # sold where delivered without a store (s1_weather.sql, s2_affluence.sql)
@@ -42,7 +50,13 @@ class Missing(Exception):
     """A table the twin needs is not in the build; the message names the stage that writes it."""
 
 
-WRITERS = {"promotion_result": "G4 S4.3", "sales_order": "G1 S1.4", "sales_order_line": "G1 S1.4"}
+WRITERS = {
+    "promotion_result": "G4 S4.3",
+    "sales_order": "G1 S1.4",
+    "sales_order_line": "G1 S1.4",
+    "sales_order_line_discount": "G1 S1.4",
+    "price_agreement": "G1 S1.4",
+}
 
 
 @dataclass
@@ -359,14 +373,141 @@ def s4_kmeans(build: Build, stories: StoriesConfig) -> float:
 
 
 Twin = Callable[[Build, StoriesConfig], float]
+# ── S6 ─────────────────────────────────────────────────────────────────────────
+
+
+def _sales_pl(build: Build) -> Frame:
+    """`sales_pl` (contracts §4) as a G1 build has it (module docstring)."""
+    return build.joined("sales_pl", _join_sales_pl)
+
+
+def _join_sales_pl(build: Build) -> Frame:
+    lines = build["sales_order_line"][
+        ["sales_order_line_id", "sales_order_id", "sku_id", "qty_cases", "invoice_price_case", "purchase_price_case"]
+    ]
+    orders = build["sales_order"][["sales_order_id", "customer_id", "ordered_on"]]
+    sku = build["sku"][["sku_id", "product_id"]]
+    product = build["product"][["product_id", "product_line_id"]]
+    out = lines.merge(orders, on="sales_order_id").merge(sku, on="sku_id").merge(product, on="product_id")
+    out["customer_margin"] = (out["invoice_price_case"] - out["purchase_price_case"]) * out["qty_cases"]
+    discounts = build["sales_order_line_discount"]
+    agreed = discounts[discounts["kind"] == "agreed"].groupby("sales_order_line_id")["amount_line"].sum()
+    out["discount_agreed"] = out["sales_order_line_id"].map(agreed).fillna(0.0)
+    return out[["customer_id", "product_line_id", "ordered_on", "customer_margin", "discount_agreed"]]
+
+
+def gains(build: Build, since: date) -> Frame:
+    """s6.sql's agreements — the agreed discounts from `since` to the last order day, each to its end or that day —
+    by `price_agreement_id`: who agreed it, its margin gain (the margin a day during it less the margin a day in the
+    8 weeks before, × its days) and its discount crowns (the agreed discounts of the customer-line during it)."""
+    as_of = build["sales_order"]["ordered_on"].max()
+    agreements = build["price_agreement"]
+    found = agreements[
+        (agreements["kind"] == "agreed_discount")
+        & agreements["product_line_id"].notna()
+        & agreements["valid_from"].between(pd.Timestamp(since), as_of)
+    ].copy()
+    found["valid_to"] = found["valid_to"].clip(upper=as_of)
+    found["days"] = (found["valid_to"] - found["valid_from"]).dt.days + 1
+    keys = ["price_agreement_id", "customer_id", "product_line_id", "valid_from", "valid_to"]
+    joined = _sales_pl(build).merge(found[keys], on=["customer_id", "product_line_id"])
+    start = joined["valid_from"]
+    joined = joined[
+        (joined["ordered_on"] >= start - pd.Timedelta(days=WEEK_DAYS)) & (joined["ordered_on"] <= joined["valid_to"])
+    ]
+    during = (joined["ordered_on"] >= joined["valid_from"]).to_numpy()
+    sums = (
+        pd.DataFrame(
+            {
+                "price_agreement_id": joined["price_agreement_id"].to_numpy(),
+                "during": np.where(during, joined["customer_margin"], 0.0),
+                "before": np.where(during, 0.0, joined["customer_margin"]),
+                "discount": np.where(during, joined["discount_agreed"], 0.0),
+            }
+        )
+        .groupby("price_agreement_id")
+        .sum()
+    )
+    out = found.set_index("price_agreement_id")[["agreed_by_employee_id", "days"]].join(sums).fillna(0.0)
+    out["gain"] = (out["during"] / out["days"] - out["before"] / WEEK_DAYS) * out["days"]
+    return out[["agreed_by_employee_id", "gain", "discount"]]
+
+
+def _pinned_reps(build: Build, stories: StoriesConfig) -> dict[int, bool]:
+    """s6.yaml's pinned reps by employee_id — the reps holding the pinned areas on the warm-up's first day — each
+    whether it is disciplined (`disciplined_from`)."""
+    parameters = stories.story("S6").parameters
+    assignment = build["assignment"]
+    held = assignment[
+        (assignment["kind"] == "rep_area")
+        & (assignment["valid_from"] <= pd.Timestamp(S6_SLOT_DAY))
+        & (assignment["valid_to"] >= pd.Timestamp(S6_SLOT_DAY))
+    ].merge(build["area"][["area_id", "code"]], on="area_id")
+    pinned = parameters["pinned_reps"]
+    return {
+        int(row["employee_id"]): pinned[row["code"]] >= parameters["disciplined_from"]
+        for row in held.to_dict("records")
+        if row["code"] in pinned
+    }
+
+
+def s6_reps(build: Build, stories: StoriesConfig) -> dict[bool, float]:
+    """The pinned reps' margin gained per discount crown, disciplined (True) and not (False)."""
+    pinned = _pinned_reps(build, stories)
+    found = gains(build, S6_FROM)
+    found = found[found["agreed_by_employee_id"].isin(list(pinned))]
+    disciplined = found["agreed_by_employee_id"].map(pinned).astype(bool)
+    out = {}
+    for side in (True, False):
+        mine = found[disciplined == side]
+        crowns = float(mine["discount"].sum())
+        out[side] = float(mine["gain"].sum()) / crowns if crowns else math.nan
+    return out
+
+
+def s6(build: Build, stories: StoriesConfig) -> float:
+    """s6.sql: the disciplined pinned reps' margin gained per discount crown minus the undisciplined ones' (a
+    difference: the undisciplined gain is negative by design). The margin is G1's (`_sales_pl`): net revenue less the
+    purchase price, before G4's costs."""
+    ratios = s6_reps(build, stories)
+    return ratios[True] - ratios[False]
+
+
+def s6_note(build: Build, stories: StoriesConfig) -> str:
+    ratios = s6_reps(build, stories)
+    return f"disciplined {ratios[True]:.2f}, undisciplined {ratios[False]:.2f} a crown; pre-G4 margin"
+
+
+def s6_targets(build: Build, stories: StoriesConfig) -> float:
+    """s6_targets.sql: the share of the disciplined product manager's promotions whose uplift lands within ±10 % of
+    its target, minus the undisciplined one's (s6.yaml `pinned_product_managers`)."""
+    results = build["promotion_result"]
+    parameters = stories.story("S6").parameters
+    lines = build["product_line"][["product_line_id", "code"]]
+    promotions = build["promotion"][["promotion_id", "target_product_line_id", "target_uplift_pct"]].merge(
+        lines, left_on="target_product_line_id", right_on="product_line_id"
+    )
+    pinned = parameters["pinned_product_managers"]
+    promotions = promotions[promotions["code"].isin(list(pinned))]
+    uplift = results.groupby("promotion_id")["uplift_pct"].mean()
+    promotions = promotions.join(uplift, on="promotion_id", how="inner")
+    on_target = (promotions["uplift_pct"] - promotions["target_uplift_pct"]).abs() <= 0.10 * promotions[
+        "target_uplift_pct"
+    ]
+    disciplined = promotions["code"].map(lambda code: pinned[code] >= parameters["disciplined_from"])
+    return float(on_target[disciplined].mean() - on_target[~disciplined].mean())
+
+
 TWINS: Mapping[str, Twin] = {
     "detectors/s1.sql": s1,
     "detectors/s1_weather.sql": s1_weather,
     "detectors/s2.sql": s2,
     "detectors/s2_affluence.sql": s2_affluence,
     "detectors/s4.sql": s4,
+    "detectors/s6.sql": s6,
+    "detectors/s6_targets.sql": s6_targets,
 }
-NOTES: Mapping[str, Callable[[Build, StoriesConfig], str]] = {"detectors/s1.sql": s1_note}
+NOTES: Mapping[str, Callable[[Build, StoriesConfig], str]] = {"detectors/s1.sql": s1_note, "detectors/s6.sql": s6_note}
 
 
 @dataclass(frozen=True)
