@@ -325,7 +325,8 @@ templates:
     name_cs: Prémiové polévky – sváteční sleva
     goal_cs: Sváteční stůl – prémiové krémové polévky jako předkrm.
 
-# Pairs that may not combine on one line, by `<line>-<tag>`; each year's calendar excludes them both ways.
+# Pairs that may not combine on one order, by `<line>-<tag>` (the earlier-issued stays); each year's calendar
+# excludes them both ways.
 exclusions:
   - [GOLD-TV, CLASSIC-TV]
   - [GOLD-11, SMESI-11]

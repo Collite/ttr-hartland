@@ -74,6 +74,19 @@ def test_a_channel_list_is_the_standard_times_its_factor_with_the_hero_overrides
         assert price.is_override == ((sku.code, channel) in HEROES)
 
 
+def test_a_channel_list_needs_the_standard_list_of_its_month(opening: Setup) -> None:
+    skus = opening.portfolio.skus
+    stale = opening.world.standard_list
+    assert stale is not None and stale.code == "SC-2023-Q1"
+    day = date(2024, 4, 2)
+    with pytest.raises(ValueError, match="roll the standard list first"):
+        channel_list(stale, skus, WORLD, "small_retail", day)
+    launched = [sku.sku_id for sku in skus if sku.launched_on == day]
+    assert len(launched) == 3
+    listed = channel_list(standard_list(skus, day), skus, WORLD, "small_retail", day)
+    assert set(launched) <= set(listed.prices)
+
+
 def test_the_hero_overrides_reach_their_channels_only(opening: Setup) -> None:
     skus = opening.portfolio.skus
     standard = standard_list(skus, date(2024, 1, 1))

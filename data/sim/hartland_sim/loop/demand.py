@@ -689,7 +689,9 @@ class PromotionTerms:
 
 def eligible(promotion: Promotion, demand: Demand, phases: Sequence[str] | None = None) -> Array:
     """(P,) the points a promotion's eligibility admits: every scope kind it names must hold (`promotion_eligibility`:
-    channel, chain, region, store_class, phase — the customer's phase on the day, `phases` in the customers' order)."""
+    channel, chain, region, store_class, phase — the customer's phase on the day, `phases` in the customers' order).
+    Pricing's `admits` reads the same rules per order, to discount the orders of the points lifted here (a test ties
+    the two)."""
     mask = np.ones(len(demand.spots), dtype=bool)
     for kind, values in promotion.eligibility:
         if kind == "channel":

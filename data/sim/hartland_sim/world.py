@@ -284,8 +284,8 @@ class World:
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
     agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
-    # S1.3: the price lists in force on `day` — the standard one and each channel's; the period ends roll them (S1.4
-    # monthly, S4.3 quarterly).
+    # S1.3: the price lists in force on `day` — the standard one and each channel's; S1.4's period ends roll them
+    # (the month-end the channel lists, the quarter-end the standard list).
     standard_list: PriceList | None = None
     channel_lists: dict[str, PriceList] = field(default_factory=dict)  # by channel
     counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)

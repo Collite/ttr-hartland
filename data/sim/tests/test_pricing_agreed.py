@@ -132,7 +132,7 @@ def test_a_grant_reserves_its_expected_cost_and_one_past_the_budget_is_refused(w
 def test_an_ask_without_a_budget_a_phase_or_a_granter_is_refused(world: World, rules: Rules) -> None:
     employee = _rep(world, "SMS-02")
     customer, line = _asks(world, "SMS-02")[0]
-    later = date(2023, 4, 3)  # the quarters after the opening have no budget until S4.3 rolls them
+    later = date(2023, 4, 3)  # the quarters after the opening have no budget until S1.4's quarter-end rolls them
     no_budget = Refusal(customer.customer_id, line, later, "no_budget", employee)
     assert grant(world, rules, customer.customer_id, line, later) == no_budget
     potential = next(c for c in world.customers.values() if c.area == "SMS-02" and c.status == "potential")

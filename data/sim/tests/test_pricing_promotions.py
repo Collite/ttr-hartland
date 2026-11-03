@@ -1,7 +1,7 @@
 """Promotions (G1 S1.3 T5, `01` §5.4, ⚑NH-8): one golden per mechanic on the committed calendar's promotions — price
 off, conditional price off, 1 + 1 (and 2 + 1, and in pieces), free goods of another SKU — then eligibility (channel,
-chain, region, store class, phase, validity), the `not_with` rule (the earlier-issued promotion stays), the mandatory
-flag, and the calendar's rows setup writes."""
+chain, region, store class, phase, validity) and its parity with demand's, the `not_with` rule (the earlier-issued
+promotion stays; one that gives nothing excludes nothing), the mandatory flag, and the calendar's rows setup writes."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ import pytest
 
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
-from hartland_sim.loop.demand import Spot
-from hartland_sim.loop.pricing import Draft, Rules, Term, apply, promotions, taken
+from hartland_sim.loop.demand import Spot, eligible
+from hartland_sim.loop.pricing import Draft, Rules, Term, admits, apply, promotions, taken
 from hartland_sim.setup.promotions import status
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import Checkpoint, Customer, Promotion, World
@@ -197,6 +197,31 @@ def test_a_promotion_runs_from_its_first_day_to_its_last(opening: Setup, world: 
         assert ("PR-2025-03-GOLD-TV" in [term.code for term in draft.promotions]) is applies, day
 
 
+def test_admits_and_demand_s_eligible_admit_the_same_points(world: World) -> None:
+    """Demand lifts the points `eligible` admits and pricing discounts the orders `admits` admits: on each 2024–2025
+    promotion's first day, and for a fixture of every scope kind the calendar does not use, they agree point by
+    point."""
+    demand = world.demand
+    assert demand is not None
+    calendar = [p for p in world.promotions.values() if p.valid_from.year in (2024, 2025)]
+    day = date(2025, 7, 20)
+    scopes = [("region", (demand.regions[0],)), ("phase", ("regular",)), ("phase", ("occasional", "vip"))]
+    fixtures = [
+        Promotion(-n, f"PR-2025-07-TEST-{n}", "GOLD", "price_off", day, day, False, (scope,), 5)
+        for n, scope in enumerate(scopes, start=1)
+    ]
+    owners = [world.customers[spot.customer_id] for spot in demand.spots]
+    kinds = set()
+    for promotion in [*calendar, *fixtures]:
+        on = promotion.valid_from
+        mask = eligible(promotion, demand, [world.customers[int(c)].phase_on(on) for c in demand.customer_ids])
+        admitted = [admits(promotion, spot, owner, on) for spot, owner in zip(demand.spots, owners, strict=True)]
+        assert admitted == mask.tolist(), promotion.code
+        if 0 < mask.sum() < len(mask):
+            kinds |= {kind for kind, _ in promotion.eligibility}
+    assert kinds == {"channel", "chain", "region", "store_class", "phase"}
+
+
 # ── the exclusions ───────────────────────────────────────────────────────────
 
 
@@ -228,6 +253,29 @@ def test_a_line_with_two_excluded_promotions_keeps_the_earlier_issued(
     unexcluded = {1: replace(first, excludes=()), 2: replace(second, excludes=())}
     (stacked,) = promotions(replace(world, promotions=unexcluded), rules, shop, point, day, [_line(gold, 2)])
     assert [term.code for term in stacked.promotions] == ["PR-2025-07-GOLD-B", "PR-2025-07-GOLD-A"]
+
+
+def test_a_one_plus_one_that_frees_nothing_excludes_nothing(opening: Setup, world: World, rules: Rules) -> None:
+    shop, point = _shop(world, rules)
+    gold, mixes = _sku(opening, "GOLD"), _sku(opening, "SMESI")
+    day = date(2025, 9, 15)  # GOLD-11 (from 09-08) and SMESI-11 (from 09-15): both 1 + 1, excluding each other
+    assert "PR-2025-09-SMESI-11" in world.promotions[_id("PR-2025-09-GOLD-11")].excludes
+
+    def priced(gold_cases: int) -> list[tuple[int, float, bool, list[str]]]:
+        lines = [_line(gold, gold_cases, rules.units[gold]), _line(mixes, 4, rules.units[mixes])]
+        drafts = promotions(world, rules, shop, point, day, lines)
+        return [(d.sku_id, d.cases, d.is_free_goods, [t.code for t in d.promotions]) for d in drafts]
+
+    assert priced(1) == [  # one Gold case frees nothing: SMESI-11 runs
+        (gold, 1, False, []),
+        (mixes, 2, False, []),
+        (mixes, 2, True, ["PR-2025-09-SMESI-11"]),
+    ]
+    assert priced(2) == [  # two do: the earlier-issued GOLD-11 stays
+        (gold, 1, False, []),
+        (mixes, 4, False, []),
+        (gold, 1, True, ["PR-2025-09-GOLD-11"]),
+    ]
 
 
 def test_taken_goes_in_issue_order_and_ties_by_code() -> None:

@@ -4,8 +4,9 @@
 catalogue's `base_price_case`, per piece ÷ `units_per_case`, with the factories' standard price (`cogs_case`) as its
 purchase price. A channel's list is a monthly version: the standard × `world.yaml pricing.channel_factor[channel]`,
 or × the factor of Marketing's hero override for that SKU in that channel. Both carry their validity; the `World`
-holds the versions in force (`World.standard_list`, `World.channel_lists`), which the period ends roll (S1.4 the
-channel lists monthly, S4.3 the standard list quarterly with its price drift).
+holds the versions in force (`World.standard_list`, `World.channel_lists`), which S1.4's period ends roll: the
+month-end the channel lists, the quarter-end the standard list with its price drift. A channel's list is made from
+the standard list of its month only.
 
 **The discounts** (contracts §4). A line qualifies for `Term`s — a tier, an agreement, a promotion — and `apply` takes
 them in the pricing order, each on the price the earlier ones left: a percentage off it, or an individual price down
@@ -43,7 +44,8 @@ admits — every scope kind it names holds: channel, chain, region, store class,
 one of its lines are the order's candidates. Exclusions (`not_with`) act on the order: taken in the order they were
 issued (`valid_from`, then the code), a candidate that excludes, or is excluded by, one already taken is dropped from
 the whole order, so the earlier-issued one stays (the calendar's pairs are of two lines, e.g. Gold's and Classic's TV
-price-offs: an order gets one). Then each mechanic, from Marketing's budget:
+price-offs: an order gets one). A promotion touches the order only when it gives it something — a 1 + 1 needs n + m
+units of its line — so one that gives nothing excludes nothing. Then each mechanic, from Marketing's budget:
 - `price_off`: the promotion's line (or its target SKU) gets `discount_pct` off (kind promotion);
 - `conditional_price_off`: when the order holds `condition_qty` cases of the condition SKU, the reward SKU gets
   `discount_pct` off;
@@ -122,7 +124,13 @@ def standard_list(skus: Sequence[Sku], day: date) -> PriceList:
 
 def channel_list(standard: PriceList, skus: Sequence[Sku], world: WorldConfig, channel: str, day: date) -> PriceList:
     """`channel`'s list of the month holding `day`: the standard's SKUs sold in the month × the channel's factor, a
-    hero override's factor for its SKU."""
+    hero override's factor for its SKU. `ValueError` when `standard` is not the list of `day`'s quarter (a SKU
+    launched since would be missing)."""
+    if not standard.valid_from <= day <= standard.valid_to:
+        raise ValueError(
+            f"the standard list {standard.code} runs {standard.valid_from}–{standard.valid_to}, not {day}: "
+            "roll the standard list first"
+        )
     first, last = day.replace(day=1), month_end(day)
     factor = {str(name): value for name, value in world.pricing.channel_factor.items()}[channel]
     heroes = {hero.sku: hero.factor for hero in world.pricing.hero_overrides if hero.channel == channel}
@@ -536,7 +544,8 @@ class Draft:
 
 
 def admits(promotion: Promotion, spot: Spot, customer: Customer, day: date) -> bool:
-    """Whether `promotion` runs on `day` and its eligibility admits the order of `customer` at `spot`."""
+    """Whether `promotion` runs on `day` and its eligibility admits the order of `customer` at `spot`: the scope
+    rules of `loop.demand.eligible`, which lifts the points this admits, read per order (a test ties the two)."""
     if not promotion.valid_from <= day <= promotion.valid_to:
         return False
     for kind, values in promotion.eligibility:
@@ -564,10 +573,24 @@ def _targets(promotion: Promotion, rules: Rules, sku_id: int) -> bool:
     return rules.sku_line[sku_id] == promotion.line
 
 
-def _touches(promotion: Promotion, rules: Rules, cases: Mapping[int, float]) -> bool:
-    """Whether `promotion` does anything to an order of `cases` by SKU."""
-    if promotion.mechanic in ("price_off", "free_goods_same"):
+def _given(promotion: Promotion, whole: int) -> int:
+    """Of `whole` units in a line's grain, how many a 1 + 1 (n + m) gives free: m of every n + m."""
+    n, m = int(promotion.condition_qty or 1), int(promotion.reward_qty or 1)
+    return whole // (n + m) * m
+
+
+def _whole(cases: float, pieces: float, pieces_grain: bool) -> int:
+    """A line's units in its point's grain: its pieces, or its cases."""
+    return round(pieces if pieces_grain else cases)
+
+
+def _touches(promotion: Promotion, rules: Rules, cases: Mapping[int, float], whole: Mapping[int, int]) -> bool:
+    """Whether `promotion` gives anything to an order of `cases` by SKU; `whole` is each SKU's units in the point's
+    grain (a 1 + 1 frees nothing below n + m)."""
+    if promotion.mechanic == "price_off":
         return any(_targets(promotion, rules, sku) for sku in cases)
+    if promotion.mechanic == "free_goods_same":
+        return any(_targets(promotion, rules, sku) and _given(promotion, held) > 0 for sku, held in whole.items())
     condition = rules.sku_ids.get(promotion.condition_sku or "")
     if cases.get(condition or 0, 0.0) < (promotion.condition_qty or 0):
         return False
@@ -602,10 +625,11 @@ def promotions(
     point = rules.points[delivery_point_id]
     spot, pieces_grain = demand.spots[point], bool(demand.pieces[point])
     cases = {sku: count for sku, count, _ in lines}
+    whole = {sku: _whole(count, each, pieces_grain) for sku, count, each in lines}
     candidates = [
         (promotion_id, promotion)
         for promotion_id, promotion in world.promotions.items()
-        if admits(promotion, spot, customer, day) and _touches(promotion, rules, cases)
+        if admits(promotion, spot, customer, day) and _touches(promotion, rules, cases, whole)
     ]
     drafts = [Draft(sku, count, each) for sku, count, each in lines]
     free: list[Draft] = []
@@ -642,9 +666,8 @@ def _split(
     draft: Draft, promotion: Promotion, promotion_id: int, pieces_grain: bool, units: int
 ) -> tuple[Draft, Draft | None]:
     """A 1 + 1 (n + m) on `draft`: of every n + m units of its grain, m free, as a free line of the same SKU."""
-    n, m = int(promotion.condition_qty or 1), int(promotion.reward_qty or 1)
-    whole = round(draft.pieces if pieces_grain else draft.cases)
-    given = whole // (n + m) * m
+    whole = _whole(draft.cases, draft.pieces, pieces_grain)
+    given = _given(promotion, whole)
     mandatory = (promotion.code,) if promotion.mandatory else ()
     flagged = (*draft.mandatory, *mandatory)
     if given == 0:
