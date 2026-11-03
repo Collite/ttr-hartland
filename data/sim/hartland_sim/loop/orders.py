@@ -43,7 +43,7 @@ import numpy as np
 
 from hartland_sim.config import WorldConfig
 from hartland_sim.dates import quarter_end, quarter_start
-from hartland_sim.ids import row_id
+from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.io.reference import Row
 from hartland_sim.loop.demand import BasketReady
 from hartland_sim.loop.pricing import (
@@ -59,13 +59,14 @@ from hartland_sim.loop.pricing import (
     granter,
     order_value,
     price_order,
+    running,
 )
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.calendar import holidays
 from hartland_sim.setup.customers import terms
 from hartland_sim.setup.rows import row
-from hartland_sim.world import Agreement, Bought, Customer, World
+from hartland_sim.world import Agreement, Bought, Customer, Promotion, World
 
 ORDER_NO = "{day:%Y%m%d}-{code}-{n}"
 TAKEN = ("visit", "phone")  # the sources a person takes: the customer's rep or KAM
@@ -134,11 +135,13 @@ class Desk:
 class Order:
     """An order as written: its `sales_order` row, its lines' rows and their discounts'."""
 
-    head: Row
+    head: Row | None  # None for an order of a day that writes nothing (the warm-up's)
     lines: list[Row]
     discounts: list[Row]
     priced: list[Priced]
     value: float  # `pricing.order_value`: net, without VAT
+    status: str
+    hold_reason: str | None
 
 
 def order_no(code: str, day: date, n: int) -> str:
@@ -151,19 +154,30 @@ def source(desk: Desk, channel: str, draw: float) -> str:
     return names[min(int(np.searchsorted(shares, draw, side="right")), len(names) - 1)]
 
 
-def order(world: World, desk: Desk, basket: BasketReady, n: int, draw: float) -> Order:
-    """`basket` as the customer's `n`-th order of its day, its source picked by `draw` (module docstring)."""
+def order(
+    world: World,
+    desk: Desk,
+    basket: BasketReady,
+    n: int,
+    draw: float,
+    write: bool = True,
+    today: Sequence[tuple[int, Promotion]] | None = None,
+) -> Order:
+    """`basket` as the customer's `n`-th order of its day, its source picked by `draw` (module docstring); its rows
+    when it is `write`n. `today` is `pricing.running`'s promotions of the day, when the caller has them."""
     rules, day = desk.rules, basket.day
     customer = world.customers[basket.customer_id]
     standard = world.standard_list
     if standard is None or not standard.valid_from <= day <= standard.valid_to:
         held = f"{standard.valid_from}–{standard.valid_to}" if standard else "none"
         raise ValueError(f"the standard list in force on {day} is not in the World (it holds {held}): roll it first")
-    priced = price_order(world, rules, basket)
+    priced = price_order(world, rules, basket, today)
     value = order_value(priced)
     status, reason = credit_check(world, desk.config, customer, day, value)
+    if not write:
+        return Order(None, [], [], priced, value, status, reason)
     number = order_no(customer.code, day, n)
-    order_id = row_id("sales_order", order_no=number)
+    order_id = business_id("sales_order", number)  # `row_id`'s: its id_key is its `order_no`
     kind = source(desk, terms(customer), draw)
     demand = world.demand
     assert demand is not None
@@ -186,7 +200,7 @@ def order(world: World, desk: Desk, basket: BasketReady, n: int, draw: float) ->
     )
     lines, discounts = [], []
     for line_no, line in enumerate(priced, start=1):
-        line_id = row_id("sales_order_line", order_no=number, line_no=line_no)
+        line_id = business_id("sales_order_line", f"{number}{SEPARATOR}{line_no}")  # `row_id`'s (order_no, line_no)
         lines.append(
             row(
                 "sales_order_line",
@@ -210,7 +224,7 @@ def order(world: World, desk: Desk, basket: BasketReady, n: int, draw: float) ->
             )
         )
         discounts += [discount_row(line_id, discount) for discount in line.discounts]
-    return Order(head, lines, discounts, priced, value)
+    return Order(head, lines, discounts, priced, value, status, reason)
 
 
 def book(world: World, rules: Rules, customer: Customer, day: date, made: Order) -> None:
@@ -277,18 +291,22 @@ def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], out
         numbers[event.customer_id] += 1
         counts.append(numbers[event.customer_id])
     codes = [world.customers[event.customer_id].code for event in events]
-    ids = np.array([row_id("sales_order", order_no=order_no(c, day, n)) for c, n in zip(codes, counts, strict=True)])
+    ids = np.array([business_id("sales_order", order_no(c, day, n)) for c, n in zip(codes, counts, strict=True)])
     draws = uniforms("order", "source", ids=ids).tolist() if len(ids) else []
+    write = output.writes(day)
+    today = running(world, day)
     heads, lines, discounts = [], [], []
     for event, n, draw in zip(events, counts, draws, strict=True):
-        made = order(world, desk, event, n, draw)
+        made = order(world, desk, event, n, draw, write, today)
         book(world, desk.rules, world.customers[event.customer_id], day, made)
-        heads.append(made.head)
+        done.lines += len(made.priced)
+        if made.head is not None:
+            heads.append(made.head)
         lines += made.lines
         discounts += made.discounts
-        if made.head["status"] == "held":
-            done.held[made.head["hold_reason"]] += 1
-    done.orders, done.lines = len(heads), len(lines)
+        if made.status == "held" and made.hold_reason:
+            done.held[made.hold_reason] += 1
+    done.orders = len(events)
     output.append(day, "sales_order", heads)
     output.append(day, "sales_order_line", lines)
     output.append(day, "sales_order_line_discount", discounts)

@@ -9,6 +9,7 @@ import csv
 from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -63,12 +64,20 @@ def _basket(world: World, customer: Customer, point: int = 0, day: date = DAY, s
     return BasketReady(day, customer.customer_id, point_id, customer.channel, lines)
 
 
+def _head(world: World, desk: Desk, basket: BasketReady, draw: float) -> dict[str, Any]:
+    """The `sales_order` row of `basket` as its customer's first order of the day."""
+    head = order(world, desk, basket, 1, draw).head
+    assert head is not None
+    return head
+
+
 def test_a_basket_becomes_one_order_with_its_lines_priced_by_s1_3(world: World, desk: Desk) -> None:
     customer = _customers(world, "small_retail")[0]
     customer.condition = condition(WORLD.pricing.tiers, QUARTER, 60_000, 5, True)  # VOL-T2 4 % + XS-T2 3 %
     basket = _basket(world, customer)
     made = order(world, desk, basket, 1, 0.99)
     number = f"20230113-{customer.code}-1"
+    assert made.head is not None
     assert made.head == {
         "sales_order_id": row_id("sales_order", order_no=number),
         "order_no": number,
@@ -153,8 +162,8 @@ def test_the_source_follows_the_channel_s_mix_and_a_station_shop_takes_special_r
     assert (source(desk, "web", 0.3), source(desk, "own_shops", 0.3)) == ("web", "replenishment")
     shop = _customers(world, "small_retail", "special_retail")[0]
     store = _customers(world, "small_retail")[0]
-    assert order(world, desk, _basket(world, shop), 1, 0.35).head["source"] == "phone"  # special retail: visit 0.30
-    assert order(world, desk, _basket(world, store), 1, 0.35).head["source"] == "visit"  # small retail: visit 0.45
+    assert _head(world, desk, _basket(world, shop), 0.35)["source"] == "phone"  # special retail: visit 0.30
+    assert _head(world, desk, _basket(world, store), 0.35)["source"] == "visit"  # small retail: visit 0.45
 
 
 def test_the_sources_of_a_day_s_orders_are_drawn_per_order(world: World, desk: Desk) -> None:
@@ -172,17 +181,17 @@ def test_a_visit_or_a_phone_order_is_taken_by_the_customer_s_rep_or_kam(world: W
     venue = _customers(world, "horeca")[0]
     rep, kam = granter(world, store, DAY), granter(world, venue, DAY)
     assert rep is not None and kam is not None
-    assert order(world, desk, _basket(world, store), 1, 0.0).head["taken_by_employee_id"] == rep  # visit
-    assert order(world, desk, _basket(world, store), 1, 0.5).head["taken_by_employee_id"] == rep  # phone
-    assert order(world, desk, _basket(world, store), 1, 0.9).head["taken_by_employee_id"] is None  # portal
-    assert order(world, desk, _basket(world, venue), 1, 0.1).head["taken_by_employee_id"] == kam  # phone
+    assert _head(world, desk, _basket(world, store), 0.0)["taken_by_employee_id"] == rep  # visit
+    assert _head(world, desk, _basket(world, store), 0.5)["taken_by_employee_id"] == rep  # phone
+    assert _head(world, desk, _basket(world, store), 0.9)["taken_by_employee_id"] is None  # portal
+    assert _head(world, desk, _basket(world, venue), 0.1)["taken_by_employee_id"] == kam  # phone
 
 
 def test_an_order_of_a_customer_with_an_invoice_overdue_is_held(world: World, desk: Desk) -> None:
     store = _customers(world, "small_retail")[0]
     due = DAY - timedelta(days=WORLD.finance.hold.overdue_days_over + 1)
     world.open_invoices = {1: OpenInvoice(1, store.customer_id, due - timedelta(days=14), due, 500.0)}
-    head = order(world, desk, _basket(world, store), 1, 0.5).head
+    head = _head(world, desk, _basket(world, store), 0.5)
     assert (head["status"], head["hold_reason"]) == ("held", "overdue")
 
 

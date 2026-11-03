@@ -619,6 +619,15 @@ def taken(candidates: Sequence[tuple[int, Promotion]]) -> list[tuple[int, Promot
     return kept
 
 
+def running(world: World, day: date) -> list[tuple[int, Promotion]]:
+    """The `World`'s promotions running on `day`, in its order: what `promotions` looks through for an order."""
+    return [
+        (pid, promotion)
+        for pid, promotion in world.promotions.items()
+        if promotion.valid_from <= day <= promotion.valid_to
+    ]
+
+
 def promotions(
     world: World,
     rules: Rules,
@@ -626,9 +635,11 @@ def promotions(
     delivery_point_id: int,
     day: date,
     lines: Sequence[tuple[int, float, float]],
+    today: Sequence[tuple[int, Promotion]] | None = None,
 ) -> list[Draft]:
     """The order's lines — (sku_id, cases, pieces) — with the day's promotions applied (module docstring): each line
-    with its promotion terms (less the free part of a 1 + 1), then the free lines the promotions add."""
+    with its promotion terms (less the free part of a 1 + 1), then the free lines the promotions add. `today` is
+    `running(world, day)`, when the caller has it for the day's orders."""
     demand = world.demand
     if demand is None:
         raise ValueError("the World has no demand state (setup makes it)")
@@ -638,7 +649,7 @@ def promotions(
     whole = {sku: _whole(count, each, pieces_grain) for sku, count, each in lines}
     candidates = [
         (promotion_id, promotion)
-        for promotion_id, promotion in world.promotions.items()
+        for promotion_id, promotion in (running(world, day) if today is None else today)
         if admits(promotion, spot, customer, day) and _touches(promotion, rules, cases, whole)
     ]
     drafts = [Draft(sku, count, each) for sku, count, each in lines]
@@ -743,12 +754,15 @@ def list_in_force(world: World, channel: str, day: date) -> PriceList:
     return found
 
 
-def price_order(world: World, rules: Rules, basket: BasketReady) -> list[Priced]:
-    """`basket`'s lines priced (module docstring): its own lines, then the free lines its promotions add."""
+def price_order(
+    world: World, rules: Rules, basket: BasketReady, today: Sequence[tuple[int, Promotion]] | None = None
+) -> list[Priced]:
+    """`basket`'s lines priced (module docstring): its own lines, then the free lines its promotions add. `today` is
+    `running(world, basket.day)`, when the caller has it."""
     customer = world.customers[basket.customer_id]
     day = basket.day
     prices = list_in_force(world, basket.channel, day).prices
-    drafts = promotions(world, rules, customer, basket.delivery_point_id, day, basket.lines)
+    drafts = promotions(world, rules, customer, basket.delivery_point_id, day, basket.lines, today)
     tiered = tiers(customer, day.replace(day=1))
     out = []
     for draft in drafts:

@@ -18,9 +18,8 @@ import csv
 import json
 import math
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date, datetime, time
-from decimal import Decimal
 from functools import cache
 from pathlib import Path
 from types import TracebackType
@@ -40,66 +39,137 @@ def _tables() -> dict[str, Table]:
     return {table.name: table for table in inventory().tables}
 
 
+Format = Callable[[Any], str | None]
+
+
 def cell(value: Any, kind: str) -> str | None:
     """The CSV text of `value` in a column of type `kind`; `None` for NULL."""
-    if value is None:
-        return None
+    return _format(kind)(value)
+
+
+@cache
+def _format(kind: str) -> Format:
+    """The function `cell(·, kind)` is, made once per type: the type's checks resolved here, not per cell."""
     if kind in ("bigint", "integer"):
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise CellError(f"{value!r} is not an integer")
-        return str(value)
+        return _integer
     numeric = _NUMERIC.fullmatch(kind)
     if numeric:
+        precision, scale = int(numeric.group(1)), int(numeric.group(2))
+        return _numeric(kind, f".{scale}f", 10 ** (precision - scale))
+    found = _FORMATS.get(kind)
+    if found is None:
+        raise CellError(f"no format for type {kind}")
+    return found
+
+
+def _integer(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CellError(f"{value!r} is not an integer")
+    return str(value)
+
+
+def _numeric(kind: str, spec: str, limit: int) -> Format:
+    safe = limit - 1  # |value| below it formats to fewer digits than p allows, whatever the rounding to s decimals
+
+    def number(value: Any) -> str | None:
+        if type(value) is float and -safe < value < safe:  # the common case, NaN excluded by the comparison
+            return format(value, spec)
+        if value is None:
+            return None
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise CellError(f"{value!r} is not a number")
         if not math.isfinite(value):
             raise CellError(f"{value!r} is not a finite number")
-        precision, scale = int(numeric.group(1)), int(numeric.group(2))
-        text = f"{value:.{scale}f}"
-        if abs(Decimal(text)) >= 10 ** (precision - scale):
+        text = format(value, spec)
+        if int(text.partition(".")[0].lstrip("-")) >= limit:  # |the text| ≥ 10^(p − s): too many digits for p
             raise CellError(f"{value!r} does not fit {kind}")
         return text
-    if kind == "boolean":
-        if not isinstance(value, bool):
-            raise CellError(f"{value!r} is not a boolean")
-        return "true" if value else "false"
-    if kind == "date":
-        if isinstance(value, datetime) or not isinstance(value, date):
-            raise CellError(f"{value!r} is not a date")
-        return value.isoformat()
-    if kind == "timestamptz":
-        if not isinstance(value, datetime) or value.tzinfo is None:
-            raise CellError(f"{value!r} is not an aware datetime")
-        return value.isoformat()
-    if kind == "time":
-        if isinstance(value, time):
-            return value.strftime("%H:%M")
-        if isinstance(value, str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value):
-            return value
-        raise CellError(f"{value!r} is not a time")
-    if kind == "jsonb":
-        try:
-            return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        except (TypeError, ValueError) as error:
-            raise CellError(f"{value!r} is not JSON: {error}") from None
-    if kind == "text":
-        if not isinstance(value, str):
-            raise CellError(f"{value!r} is not text")
-        if value == "":
-            raise CellError("an empty text, which COPY reads as NULL")
+
+    return number
+
+
+def _boolean(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise CellError(f"{value!r} is not a boolean")
+    return "true" if value else "false"
+
+
+def _date(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime) or not isinstance(value, date):
+        raise CellError(f"{value!r} is not a date")
+    return value.isoformat()
+
+
+def _timestamp(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise CellError(f"{value!r} is not an aware datetime")
+    return value.isoformat()
+
+
+def _time(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, time):
+        return value.strftime("%H:%M")
+    if isinstance(value, str) and _TIME.fullmatch(value):
         return value
-    raise CellError(f"no format for type {kind}")
+    raise CellError(f"{value!r} is not a time")
+
+
+def _json(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise CellError(f"{value!r} is not JSON: {error}") from None
+
+
+def _text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise CellError(f"{value!r} is not text")
+    if value == "":
+        raise CellError("an empty text, which COPY reads as NULL")
+    return value
+
+
+_TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+_FORMATS: dict[str, Format] = {
+    "boolean": _boolean,
+    "date": _date,
+    "timestamptz": _timestamp,
+    "time": _time,
+    "jsonb": _json,
+    "text": _text,
+}
+
+
+@cache
+def _columns(name: str) -> tuple[tuple[str, Format, bool], ...]:
+    """`name`'s columns as (name, its format, nullable), in the inventory's order."""
+    return tuple((column.name, _format(column.type), column.nullable) for column in _tables()[name].columns)
 
 
 def cells(table: Table, row: Mapping[str, Any]) -> list[str | None]:
     out = []
-    for column in table.columns:
+    for name, form, nullable in _columns(table.name):
         try:
-            out.append(cell(row[column.name], column.type))
+            text = form(row[name])
         except CellError as error:
-            raise CellError(f"{table.name}.{column.name}: {error}") from None
-        if out[-1] is None and not column.nullable:
-            raise CellError(f"{table.name}.{column.name}: NULL in a NOT NULL column")
+            raise CellError(f"{table.name}.{name}: {error}") from None
+        if text is None and not nullable:
+            raise CellError(f"{table.name}.{name}: NULL in a NOT NULL column")
+        out.append(text)
     return out
 
 
