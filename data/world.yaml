@@ -159,6 +159,9 @@ promotions: # ⚑NH-8
   exclusion_pairs_per_year: [2, 3]
   key_account_exclusive_per_year: 4
   code: "PR-{year}-{month:02d}-{line}-{tag}"
+  # Each promotion runs under its own campaign (01 §4.4: promotions hang under campaigns), coded as the promotion
+  # with KP- for PR-; its media budget, TV-supported or not (G4 S4.3 posts it month by month as campaign_cost).
+  campaign_budget: { tv: 3500000, other: 250000 }
 
 policies:
   stock: # days of cover against the supply plan, per SKU × DC (01 §4.1)

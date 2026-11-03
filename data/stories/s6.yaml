@@ -16,6 +16,11 @@ parameters:
     street_factor:
       { village: 1.4, residential: 1.2, petrol: 1.0, transport_hub: 0.9, shopping_centre: 0.8, high_street: 0.6 }
   disciplined_choice_exponent: 2 # a disciplined rep grants ∝ elasticity ^ (discipline × 2), below the line's maximum
+  # A rep, KAM or PM at or above this discipline is disciplined (1.0 is the average). Asked for a discount, a
+  # disciplined one grants with the chance (elasticity ÷ high) ^ (discipline × exponent), sized at a share of the
+  # line's maximum drawn from `disciplined_share_of_max`; an undisciplined one grants every ask, flat.
+  disciplined_from: 1.0
+  disciplined_share_of_max: [0.5, 0.9]
   undisciplined_discount_pct: [5, 8] # flat, to whoever asks
   undisciplined_target_miss_pct: [20, 40] # an undisciplined product manager's targets miss by this much
   # Pinned: two disciplined and two undisciplined reps (by the area they hold on the warm-up's first day, as in

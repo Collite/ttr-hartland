@@ -781,7 +781,8 @@
         "mechanics",
         "exclusion_pairs_per_year",
         "key_account_exclusive_per_year",
-        "code"
+        "code",
+        "campaign_budget"
       ],
       "properties": {
         "per_year": {
@@ -830,6 +831,24 @@
         "code": {
           "type": "string",
           "pattern": "^PR-\\{year\\}-"
+        },
+        "campaign_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tv",
+            "other"
+          ],
+          "properties": {
+            "tv": {
+              "type": "number",
+              "minimum": 0
+            },
+            "other": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
         }
       }
     },

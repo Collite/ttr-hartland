@@ -22,7 +22,7 @@ from hartland_sim.setup import org as org_setup
 from hartland_sim.setup.customers import Customers
 from hartland_sim.setup.market import Market
 from hartland_sim.setup.opening import STATE_TABLES, state_rows
-from hartland_sim.setup.org import KAM_TEAM, SALES, Org
+from hartland_sim.setup.org import KAM_TEAM, MARKETING, SALES, Org
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Row, Tables, tables
@@ -72,10 +72,15 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
         state.budgets = policies.budgets(world, planned(state))
         state.stock = opening.stock(out, world, products, covers, made, geography)
         years = range(world.history.warm_up_from.year, world.history.until.year + 1)
-        state.promotions = promotions.seeded(promotions.Templates.load(), years, world.promotions.code)
+        templates = promotions.Templates.load()
+        state.promotions = promotions.seeded(templates, years, world.promotions.code)
+        state.standard_list, state.channel_lists = policies.price_lists(
+            out, world, products, issuer=org.actors[MARKETING].employee_id
+        )
         state.demand = demand.opening(
             list(state.customers.values()), made, geography, products, out["channel_listing"], world, stories
         )
+        promotions.write(out, templates, state, world)
     return Setup(state, out, geography, org, products, covers, made, world)
 
 

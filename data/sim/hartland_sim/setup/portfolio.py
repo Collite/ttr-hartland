@@ -23,6 +23,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from hartland_sim.config import Channel, Listing, StoriesConfig, WorldConfig
+from hartland_sim.dates import month_end
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
 from hartland_sim.setup.rows import Tables, row
@@ -43,6 +44,7 @@ class Sku:
     units_per_case: int
     base_price_case: float
     cogs_case: float
+    vat_rate: float  # %
     suppliers: tuple[str, ...]
     launched_on: date
     delisted_on: date | None
@@ -115,6 +117,7 @@ def build(out: Tables, world: WorldConfig, stories: StoriesConfig, root: Path = 
             units_per_case=item["units_per_case"],
             base_price_case=item["base_price_case"],
             cogs_case=item["cogs_case"],
+            vat_rate=item["vat_rate"],
             suppliers=tuple(item["suppliers"].split(";")),
             launched_on=item["launched_on"],
             delisted_on=item["delisted_on"],
@@ -160,7 +163,7 @@ def listed(listing: Listing, sku: Sku) -> bool:
 def listings(world: WorldConfig, stories: StoriesConfig, portfolio: Portfolio) -> list[Row]:
     """`channel_listing`: per channel (per chain in big retail) the SKUs it may buy, in listing sequence."""
     a9 = stories.anomaly("A-9")
-    a9_end = _month_end(a9.parameters["month"]) if a9.enabled else None
+    a9_end = month_end(a9.parameters["month"]) if a9.enabled else None
     rows = []
     for channel in CHANNELS:
         chains: Sequence[str | None] = world.channels.big_retail.accounts if channel == "big_retail" else (None,)
@@ -214,8 +217,3 @@ def supplier_terms(world: WorldConfig, portfolio: Portfolio) -> list[Row]:
                 )
             )
     return rows
-
-
-def _month_end(day: date) -> date:
-    following = date(day.year + day.month // 12, day.month % 12 + 1, 1)
-    return following - timedelta(days=1)

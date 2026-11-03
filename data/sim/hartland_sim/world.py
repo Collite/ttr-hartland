@@ -97,13 +97,17 @@ class Duty:
 
 @dataclass
 class Condition:
-    """A retail customer's conditions for a month (`customer_condition`, S1.3/S1.4)."""
+    """A retail customer's conditions for a month (`customer_condition`, S1.3/S1.4): the tiers its previous month
+    reached (`loop.pricing.condition`)."""
 
     month: date
     volume_tier: str | None = None
     volume_pct: float = 0.0
     cross_sell_tier: str | None = None
     cross_sell_pct: float = 0.0
+    net_revenue: float = 0.0  # the previous month's
+    lines_bought: int = 0  # the previous month's product lines
+    both_brands: bool = False  # the previous month bought coffee and culinary
 
 
 @dataclass(frozen=True)
@@ -162,10 +166,12 @@ class Stock:
 
 @dataclass
 class Budget:
-    """A rep's or KAM's discount budget for a quarter (`discount_budget`)."""
+    """A rep's or KAM's discount budget for a quarter (`discount_budget`). `reserved` is what the quarter's agreements
+    expect to cost (`loop.pricing.grant`) and is not yet posted: invoicing moves it to `used_amount` (G4 S4.1)."""
 
     budget_amount: float
     used_amount: float = 0.0
+    reserved: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -185,17 +191,66 @@ class Promotion:
     target_sku: str | None = None  # catalogue sku_code; None = the whole line
     condition_sku: str | None = None
     reward_sku: str | None = None
+    condition_qty: float | None = None  # cases of the condition SKU (or, 1+1, of the target) a reward needs
+    reward_qty: float | None = None  # cases free per `condition_qty`
+    mandatory: bool = False  # the reps must offer it (S2.2's prompt)
+    excludes: tuple[str, ...] = ()  # the codes it may not combine with on an order (`promotion_exclusion`)
+
+
+@dataclass(frozen=True)
+class Price:
+    """A SKU's price in a price list version: per case and per piece; the standard list's also the purchase price (the
+    factories' standard price), a channel list's whether Marketing's hero override set it."""
+
+    case: float
+    piece: float
+    purchase_case: float | None = None
+    is_override: bool = False
+
+
+@dataclass(frozen=True)
+class PriceList:
+    """A version of a price list (`01` §5.1; CN-D31's price-list object — prices with their validity): the standard
+    list (`channel` None, quarterly, with its `code`) or a channel's (monthly: the standard × `factor`). `prices` holds
+    the SKUs sold in the version's period, by `sku_id` in the catalogue's order."""
+
+    channel: str | None
+    code: str | None
+    valid_from: date
+    valid_to: date
+    factor: float
+    prices: dict[int, Price]
 
 
 @dataclass(frozen=True)
 class Agreement:
-    """An agreed discount on a customer's line (`price_agreement`, kind agreed; S1.3 grants them)."""
+    """A `price_agreement` on a customer's line (`loop.pricing.grant`): a rep's agreed discount (small retail) or a
+    KAM's individual price (the other channels), a percentage off the line — or, for one SKU, its own price. The
+    demand lifts the line by `discount_pct` (S6), so an individual SKU price carries its percentage too."""
 
     customer_id: int
     line: str
     discount_pct: float
     valid_from: date
     valid_to: date
+    code: str = ""
+    kind: str = "agreed_discount"  # agreed_discount · individual_price
+    employee_id: int | None = None  # who agreed it
+    sku_id: int | None = None  # None: the whole line
+    price_case: float | None = None  # an individual SKU price
+    budget_charge: float | None = None  # what it reserved of the granter's budget
+
+
+@dataclass(frozen=True)
+class OpenInvoice:
+    """An invoice not yet paid, as the credit check reads it (`loop.pricing.credit_check`): G4 S4.1 opens them at
+    invoicing and closes them on payment."""
+
+    invoice_id: int
+    customer_id: int
+    issued_on: date
+    due_on: date
+    open_amount: float  # CZK without VAT, as the credit limits are
 
 
 @dataclass(frozen=True)
@@ -223,12 +278,17 @@ class World:
     # Filled by the loop's stages; their item types arrive with them.
     open_orders: dict[int, object] = field(default_factory=dict)  # S1.4
     open_shipments: dict[int, object] = field(default_factory=dict)  # G3
-    open_invoices: dict[int, object] = field(default_factory=dict)  # G4
+    open_invoices: dict[int, OpenInvoice] = field(default_factory=dict)  # G4: by invoice_id
     tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
     loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
-    agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id
+    agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id (`add_agreement`)
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
+    # S1.3: the price lists in force on `day` — the standard one and each channel's; S1.4's period ends roll them
+    # (the month-end the channel lists, the quarter-end the standard list).
+    standard_list: PriceList | None = None
+    channel_lists: dict[str, PriceList] = field(default_factory=dict)  # by channel
+    counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
@@ -247,9 +307,35 @@ class World:
                 return held
         return None
 
+    def add_agreement(self, agreement_id: int, agreement: Agreement) -> None:
+        """The one way an agreement comes in: never over another (`ValueError`), and never removed after — it ends by
+        its `valid_to`. The (customer, line) index of `agreements_on` takes it too, when built."""
+        if agreement_id in self.agreements:
+            raise ValueError(f"agreement {agreement_id} ({agreement.code}) is in the World already")
+        self.agreements[agreement_id] = agreement
+        index = self.__dict__.get("_agreement_index")
+        if index is not None and index[0] is self.agreements and index[1] == len(self.agreements) - 1:
+            index[2].setdefault((agreement.customer_id, agreement.line), []).append((agreement_id, agreement))
+            self.__dict__["_agreement_index"] = (self.agreements, len(self.agreements), index[2])
+
+    def agreements_on(self, customer_id: int, line: str, day: date) -> list[tuple[int, Agreement]]:
+        """The (price_agreement_id, agreement)s of `customer_id`'s `line` running on `day`, in `agreements`' order,
+        through an index by (customer, line) that `add_agreement` keeps. It is built again only for a restored `World`
+        (it is never pickled) or another `agreements` dict, or as a guard when its length is not the dict's."""
+        index = self.__dict__.get("_agreement_index")
+        if index is None or index[0] is not self.agreements or index[1] != len(self.agreements):
+            by_line: dict[tuple[int, str], list[tuple[int, Agreement]]] = {}
+            for agreement_id, agreement in self.agreements.items():
+                by_line.setdefault((agreement.customer_id, agreement.line), []).append((agreement_id, agreement))
+            index = (self.agreements, len(self.agreements), by_line)
+            self.__dict__["_agreement_index"] = index
+        found = index[2].get((customer_id, line), ())
+        return [(i, a) for i, a in found if a.valid_from <= day <= a.valid_to]
+
     def __getstate__(self) -> dict[str, object]:
         state = dict(self.__dict__)
         state.pop("_duty_index", None)
+        state.pop("_agreement_index", None)
         return state
 
 

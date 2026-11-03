@@ -4,14 +4,13 @@ year of history, and the S1, S2 and S4 detectors' pandas twins pass on it; on th
 The build tier (`pytest -m build`, its own CI job): two builds of the world from setup to 2025-12-31 — S1's window is
 2024–2025 and S4's is 2025 — each a few minutes. The day loop and the order writer are S1.4's, so the build here is a
 fixture: weather, acquisition and churn, demand, and each `BasketReady` written as an order with the columns the twins
-read (`sales_order`, `sales_order_line`), the calendar's promotions likewise (`promotion`, `campaign`,
-`promotion_eligibility`) — S1.3 and S1.4 write the real rows.
+read (`sales_order`, `sales_order_line`) — S1.4 writes the real rows. The calendar's promotions (`promotion`,
+`campaign`, `promotion_eligibility`) are setup's own rows (S1.3).
 """
 
 from __future__ import annotations
 
 import csv
-from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,7 +21,6 @@ import pytest
 from hartland_sim.checks.stories import Verdict, check
 from hartland_sim.cli import main
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import acquisition, demand
 from hartland_sim.loop.warmup import Output
@@ -79,12 +77,11 @@ def build(run: Path, stories: StoriesConfig, market: Market) -> Built:
                 stub.orders(events)
             state.day = day
             day += timedelta(days=1)
-        stub.promotions(state, made.tables["product_line"])
     return Built(run, gained, lost, snapshot)
 
 
 class _Stub:
-    """S1.4's order writer and S1.3's promotion rows, stubbed: only the columns the twins read."""
+    """S1.4's order writer, stubbed: only the columns the twins read."""
 
     def __init__(self, run: Path) -> None:
         self.run = run
@@ -110,34 +107,6 @@ class _Stub:
             self.order.writerow([self.n, event.customer_id, event.delivery_point_id, event.channel, event.day])
             for k, (sku, cases, pieces) in enumerate(event.lines, start=1):
                 self.line.writerow([self.n, k, sku, cases, pieces, "false"])
-
-    def promotions(self, state: object, lines: list[dict[str, object]]) -> None:
-        from hartland_sim.world import World
-
-        assert isinstance(state, World)
-        line_id = {row["code"]: row["product_line_id"] for row in lines}
-        rows = [
-            [p.promotion_id, row_id("campaign", code=p.code), line_id[p.line], p.valid_from, p.valid_to]
-            for p in state.promotions.values()
-        ]
-        self._table(
-            "promotion", ["promotion_id", "campaign_id", "target_product_line_id", "valid_from", "valid_to"], rows
-        )
-        tv = [[row_id("campaign", code=p.code), "true" if p.tv else "false"] for p in state.promotions.values()]
-        self._table("campaign", ["campaign_id", "has_tv"], tv)
-        scopes = [
-            [p.promotion_id, kind, v]
-            for p in state.promotions.values()
-            for kind, values in p.eligibility
-            for v in values
-        ]
-        self._table("promotion_eligibility", ["promotion_id", "scope_kind", "scope_value"], scopes)
-
-    def _table(self, name: str, header: list[str], rows: Sequence[Sequence[object]]) -> None:
-        with (self.run / f"{name}.csv").open("w", encoding="utf-8", newline="") as out:
-            writer = csv.writer(out, lineterminator="\n")
-            writer.writerow(header)
-            writer.writerows(rows)
 
 
 def _null(stories: StoriesConfig) -> StoriesConfig:
