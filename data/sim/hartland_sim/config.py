@@ -208,6 +208,7 @@ class Suppliers:
 class ChannelSettings:
     order_grain: Literal["case", "piece"]
     order_cycle_days: int
+    order_sources: Mapping[str, float]  # `order_source` code → its share of the channel's orders (S1.4)
     accounts: tuple[str, ...] = ()
     dc_level_orders: tuple[str, ...] = ()
     customers: int | None = None

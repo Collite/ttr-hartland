@@ -1,0 +1,279 @@
+"""The orders (`05` §3 step 4, `03` §6): the day's baskets as `sales_order`s with their lines priced, and the
+customers' asks for a discount.
+
+**An order** (`order`): each `BasketReady` is one `sales_order` of its customer's delivery point.
+- `order_no` is its business key — the day, the customer's code and its number among the customer's orders of the day
+  (`20240115-MO-00042-1`; a chain's stores order the same day) — so its id and its lines' (`order_no`, `line_no`)
+  never follow the generation order.
+- `source` is drawn by the channel's mix (`world.yaml channels.<channel>.order_sources`; a station shop takes special
+  retail's), stream `order` by the order's id. A visit or a phone order is taken by who holds the customer that day —
+  its area's rep, its KAM (`pricing.granter`) — the others by no one. `visit_id` stays empty: the visits are G2
+  S2.1's.
+- `requested_on` is the next working day (`setup.calendar`'s Czech days off); `dc_site_id` the DC of the point's
+  region (`world.yaml sites.dcs`); `status` the credit check's — `released`, or `held` with its reason (A-14).
+Its lines are `pricing.price_order`'s, numbered in that order (the free lines last), each with the purchase price of
+the standard list in force (the factories' standard price), its SKU's VAT rate, an inbound cost of 0 until G3 S3.1
+costs the inbound transports, and no warehouse, delivery or marketing cost yet (G3, G4 S4.3). Each applied discount
+is a `sales_order_line_discount` row.
+
+**The asks** (`asks`, S1.3's `grant`): once a quarter each customer a rep or a KAM answers for — small retail, a
+station shop, a key account, a vending operator, a HoReCa venue — asks for a discount on one of the lines it buys, on
+a day of the quarter and a line drawn from stream `pricing_agree` by its id (one ask a quarter, so about 2 500
+agreements a quarter, `03`'s ~20 k over the history). Only a customer active that day asks. The day's asks come
+before its orders, so an order of that day carries what was agreed; the demand lifts the line from the next day
+(`demand.Terms.today` reads the agreements before the asks). An agreement granted on a written day is a
+`price_agreement` row; one of the warm-up runs to its quarter's end and is never cited after 2024-01-01.
+
+**One day** (`step`): the asks, then each basket's order in the events' order, written through `Output` (nothing
+before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day).
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import date, timedelta
+from functools import cache
+from typing import Any
+
+import numpy as np
+
+from hartland_sim.config import WorldConfig
+from hartland_sim.dates import quarter_end, quarter_start
+from hartland_sim.ids import row_id
+from hartland_sim.io.reference import Row
+from hartland_sim.loop.demand import BasketReady
+from hartland_sim.loop.pricing import (
+    KAM_CHANNELS,
+    TIERED,
+    Priced,
+    Refusal,
+    Rules,
+    agreement_row,
+    credit_check,
+    discount_row,
+    grant,
+    granter,
+    order_value,
+    price_order,
+)
+from hartland_sim.loop.warmup import Output
+from hartland_sim.rng import uniforms
+from hartland_sim.setup.calendar import holidays
+from hartland_sim.setup.customers import terms
+from hartland_sim.setup.rows import row
+from hartland_sim.world import Agreement, World
+
+ORDER_NO = "{day:%Y%m%d}-{code}-{n}"
+TAKEN = ("visit", "phone")  # the sources a person takes: the customer's rep or KAM
+ASKING = (*TIERED, *KAM_CHANNELS)  # the channels whose customers a rep or a KAM answers (`pricing.granter`)
+Array = np.ndarray[Any, Any]
+
+
+@cache
+def _days_off(year: int) -> frozenset[date]:
+    return frozenset(holidays(year))
+
+
+def next_working_day(day: date) -> date:
+    """The first day after `day` that is neither a weekend nor a Czech day off."""
+    following = day + timedelta(days=1)
+    while following.weekday() >= 5 or following in _days_off(following.year):
+        following += timedelta(days=1)
+    return following
+
+
+@dataclass(frozen=True)
+class Desk:
+    """What the orders read beside the `World`, for a run (never pickled): the pricing rules, `world.yaml`, each
+    region's DC, each channel's source mix, and the asks' plan of each quarter (made when first asked for)."""
+
+    rules: Rules
+    config: WorldConfig
+    dcs: Mapping[str, int]  # region code → its DC's site_id
+    sources: Mapping[str, tuple[tuple[str, ...], Array]]  # a terms channel → its sources, their cumulative shares
+    asking: Array  # the indices (in the World's order) of the customers a rep or a KAM answers
+    _plans: dict[date, tuple[dict[int, Array], Array]] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def of(cls, world: World, rules: Rules, config: WorldConfig) -> Desk:
+        dcs = {region: row_id("site", code=dc) for dc, regions in config.sites.dcs.items() for region in regions}
+        sources = {}
+        for name in ("big_retail", "small_retail", "special_retail", "gas_ka", "own_shops", "web", "vending", "horeca"):
+            mix = getattr(config.channels, name).order_sources
+            shares = np.cumsum([float(share) for share in mix.values()])
+            if not np.isclose(shares[-1], 1.0):
+                raise ValueError(f"world.yaml channels.{name}.order_sources sum to {shares[-1]}, not 1")
+            sources[name] = (tuple(mix), shares)
+        customers = list(world.customers.values())
+        asking = np.array([c for c, customer in enumerate(customers) if customer.channel in ASKING], dtype=np.int64)
+        return cls(rules, config, dcs, sources, asking)
+
+    def plan(self, world: World, day: date) -> tuple[dict[int, Array], Array]:
+        """The asks of `day`'s quarter: the asking customers by the day they ask (its ordinal), and each one's draw of
+        the line (by its index in `asking`)."""
+        first = quarter_start(day)
+        found = self._plans.get(first)
+        if found is None:
+            demand = world.demand
+            assert demand is not None
+            ids = demand.customer_ids[self.asking]
+            days = (quarter_end(day) - first).days + 1
+            offset = np.floor(uniforms("pricing_agree", "ask", first, ids=ids) * days).astype(np.int64)
+            by_day: dict[int, Array] = {}
+            for k in np.unique(offset):
+                by_day[first.toordinal() + int(k)] = np.flatnonzero(offset == k)
+            found = self._plans[first] = (by_day, uniforms("pricing_agree", "ask_line", first, ids=ids))
+        return found
+
+
+@dataclass(frozen=True)
+class Order:
+    """An order as written: its `sales_order` row, its lines' rows and their discounts'."""
+
+    head: Row
+    lines: list[Row]
+    discounts: list[Row]
+    priced: list[Priced]
+    value: float  # `pricing.order_value`: net, without VAT
+
+
+def order_no(code: str, day: date, n: int) -> str:
+    return ORDER_NO.format(day=day, code=code, n=n)
+
+
+def source(desk: Desk, channel: str, draw: float) -> str:
+    """The source a uniform `draw` picks from `channel`'s mix (a terms channel: a station shop's is special retail)."""
+    names, shares = desk.sources[channel]
+    return names[min(int(np.searchsorted(shares, draw, side="right")), len(names) - 1)]
+
+
+def order(world: World, desk: Desk, basket: BasketReady, n: int, draw: float) -> Order:
+    """`basket` as the customer's `n`-th order of its day, its source picked by `draw` (module docstring)."""
+    rules, day = desk.rules, basket.day
+    customer = world.customers[basket.customer_id]
+    standard = world.standard_list
+    if standard is None or not standard.valid_from <= day <= standard.valid_to:
+        held = f"{standard.valid_from}–{standard.valid_to}" if standard else "none"
+        raise ValueError(f"the standard list in force on {day} is not in the World (it holds {held}): roll it first")
+    priced = price_order(world, rules, basket)
+    value = order_value(priced)
+    status, reason = credit_check(world, desk.config, customer, day, value)
+    number = order_no(customer.code, day, n)
+    order_id = row_id("sales_order", order_no=number)
+    kind = source(desk, terms(customer), draw)
+    demand = world.demand
+    assert demand is not None
+    spot = demand.spots[rules.points[basket.delivery_point_id]]
+    head = row(
+        "sales_order",
+        sales_order_id=order_id,
+        order_no=number,
+        customer_id=customer.customer_id,
+        delivery_point_id=basket.delivery_point_id,
+        channel=basket.channel,
+        ordered_on=day,
+        requested_on=next_working_day(day),
+        source=kind,
+        taken_by_employee_id=granter(world, customer, day) if kind in TAKEN else None,
+        visit_id=None,
+        status=status,
+        hold_reason=reason,
+        dc_site_id=desk.dcs[spot.region],
+    )
+    lines, discounts = [], []
+    for line_no, line in enumerate(priced, start=1):
+        line_id = row_id("sales_order_line", order_no=number, line_no=line_no)
+        lines.append(
+            row(
+                "sales_order_line",
+                sales_order_line_id=line_id,
+                sales_order_id=order_id,
+                line_no=line_no,
+                sku_id=line.sku_id,
+                qty_cases=line.cases,
+                qty_pieces=line.pieces,
+                list_price_case=line.list_price_case,
+                discount_total_case=line.discount_total_case,
+                discount_total=line.discount_total,
+                invoice_price_case=line.invoice_price_case,
+                is_free_goods=line.is_free_goods,
+                purchase_price_case=standard.prices[line.sku_id].purchase_case,
+                inbound_cost_case=0.0,
+                warehouse_cost_case=None,
+                delivery_cost_case=None,
+                marketing_cost_case=None,
+                vat_rate=rules.vat[line.sku_id],
+            )
+        )
+        discounts += [discount_row(line_id, discount) for discount in line.discounts]
+    return Order(head, lines, discounts, priced, value)
+
+
+def asks(world: World, desk: Desk, day: date) -> list[Agreement | Refusal]:
+    """The day's asks (module docstring), each answered by `pricing.grant`, in the World's order of the customers."""
+    by_day, line_draws = desk.plan(world, day)
+    today = by_day.get(day.toordinal())
+    if today is None:
+        return []
+    demand = world.demand
+    assert demand is not None
+    customers = list(world.customers.values())
+    out: list[Agreement | Refusal] = []
+    for k in today:
+        c = int(desk.asking[k])
+        customer = customers[c]
+        if not customer.active_on(day):
+            continue
+        bought = np.flatnonzero(demand.carried[c])
+        if not len(bought):
+            continue
+        line = demand.lines[int(bought[min(int(line_draws[k] * len(bought)), len(bought) - 1)])].code
+        out.append(grant(world, desk.rules, customer.customer_id, line, day))
+    return out
+
+
+@dataclass
+class Day:
+    """What a day's orders did: the orders and lines made, the asks' answers."""
+
+    orders: int = 0
+    lines: int = 0
+    granted: int = 0
+    refused: Counter[str] = field(default_factory=Counter)  # by `Refusal.reason`
+    held: Counter[str] = field(default_factory=Counter)  # the held orders by `hold_reason`
+
+
+def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], output: Output) -> Day:
+    """The day's asks, then its baskets' orders (module docstring), the rows written through `output`."""
+    done = Day()
+    agreements = []
+    for answer in asks(world, desk, day):
+        if isinstance(answer, Refusal):
+            done.refused[answer.reason] += 1
+        else:
+            done.granted += 1
+            agreements.append(agreement_row(row_id("price_agreement", code=answer.code), answer))
+    output.append(day, "price_agreement", agreements)
+    numbers: Counter[int] = Counter()
+    counts = []
+    for event in events:
+        numbers[event.customer_id] += 1
+        counts.append(numbers[event.customer_id])
+    codes = [world.customers[event.customer_id].code for event in events]
+    ids = np.array([row_id("sales_order", order_no=order_no(c, day, n)) for c, n in zip(codes, counts, strict=True)])
+    draws = uniforms("order", "source", ids=ids).tolist() if len(ids) else []
+    heads, lines, discounts = [], [], []
+    for event, n, draw in zip(events, counts, draws, strict=True):
+        made = order(world, desk, event, n, draw)
+        heads.append(made.head)
+        lines += made.lines
+        discounts += made.discounts
+        if made.head["status"] == "held":
+            done.held[made.head["hold_reason"]] += 1
+    done.orders, done.lines = len(heads), len(lines)
+    output.append(day, "sales_order", heads)
+    output.append(day, "sales_order_line", lines)
+    output.append(day, "sales_order_line_discount", discounts)
+    return done

@@ -150,6 +150,8 @@ def test_the_codes_name_reference_rows(world: WorldConfig, ref: Path) -> None:
 def test_the_shares_add_up(world: WorldConfig) -> None:
     assert sum(dataclasses.astuple(world.finance.payment_behaviour)) == pytest.approx(1)
     assert sum(world.suppliers.coffee_split.values()) == pytest.approx(1)
+    for name in ("big_retail", "small_retail", "special_retail", "gas_ka", "own_shops", "web", "vending", "horeca"):
+        assert sum(getattr(world.channels, name).order_sources.values()) == pytest.approx(1), name
 
 
 def test_the_history_runs_in_order(world: WorldConfig) -> None:

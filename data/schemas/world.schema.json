@@ -194,7 +194,8 @@
             "accounts",
             "dc_level_orders",
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "accounts": {
@@ -222,6 +223,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -234,7 +254,8 @@
             "since_from",
             "since_until",
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "customers": {
@@ -263,6 +284,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -271,7 +311,8 @@
           "additionalProperties": false,
           "required": [
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "order_grain": {
@@ -283,6 +324,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -292,7 +352,8 @@
           "required": [
             "accounts",
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "accounts": {
@@ -312,6 +373,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -320,7 +400,8 @@
           "additionalProperties": false,
           "required": [
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "order_grain": {
@@ -332,6 +413,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -341,7 +441,8 @@
           "required": [
             "consumers",
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "consumers": {
@@ -357,6 +458,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -366,7 +486,8 @@
           "required": [
             "operators",
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "operators": {
@@ -382,6 +503,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
@@ -393,7 +533,8 @@
             "wholesalers",
             "potential",
             "order_grain",
-            "order_cycle_days"
+            "order_cycle_days",
+            "order_sources"
           ],
           "properties": {
             "direct_customers": {
@@ -417,6 +558,25 @@
             "order_cycle_days": {
               "type": "integer",
               "minimum": 1
+            },
+            "order_sources": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "propertyNames": {
+                "enum": [
+                  "visit",
+                  "phone",
+                  "portal",
+                  "edi",
+                  "web",
+                  "replenishment"
+                ]
+              }
             }
           }
         },
