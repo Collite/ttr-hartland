@@ -30,14 +30,17 @@ mostly to the customer-lines that answer a discount, and sizes it at a share of 
 an undisciplined one grants every ask a flat `undisciplined_discount_pct`, up to the cap. The cap is the line's
 `max_agreed_discount_pct`, for a rep × the share its customer's phase allows (`policies.lifecycle.concession_share`).
 An agreement runs to the quarter's end and reserves its expected cost — its percentage of the customer-line's
-expected gross at flat terms until then (`loop.demand`) — from the granter's budget of the quarter; one the budget
-cannot hold is refused, as is an ask on a line that has one running. The draws are stream `pricing_agree`'s, by
-customer, line and day. On the order, `agreed` is the running agreed discount's term, never above the line's maximum.
+expected gross until then (`loop.demand`'s base at flat terms, lifted by the discount itself through the line's
+elasticity) — from the granter's budget of the quarter; one the budget cannot hold is refused. So is an ask of a
+customer not active on the day, on a line it does not buy (`Demand.carried`: S1.4 asks for the lines bought), or on a
+line that has one running. The draws are stream `pricing_agree`'s, by customer, line and day. On the order, `agreed`
+is the running agreed discount's term and `individual` a line's percentage, never above the line's maximum.
 
 **Individual prices** (`01` §5.3). A KAM's customer (big retail, gas KA, vending, HoReCa) buys a line at its
-individual price: a running agreement for the SKU sets its price, else one for the line sets the channel list less
-its percentage. `individual`'s term takes the price the earlier steps left down to it: the channel list less the
-individual price, from the sales budget (the trade-spend line "Sales promotions"). Small retail never has one.
+individual price: a running agreement for the SKU sets its price (a negotiated price, as agreed), else one for the
+line sets the channel list less its percentage (at most the line's maximum). `individual`'s term takes the price the
+earlier steps left down to it: the channel list less the individual price, from the sales budget (the trade-spend
+line "Sales promotions"). Small retail never has one.
 
 **Promotions** (`01` §5.4, ⚑NH-8). The `World`'s promotions running on the day whose eligibility the order's point
 admits — every scope kind it names holds: channel, chain, region, store class, the customer's phase — and that touch
@@ -396,9 +399,10 @@ class Rules:
 
 @dataclass(frozen=True)
 class Refusal:
-    """An ask not granted, and why: no rep or KAM holds the customer that day (`no_granter`), its phase allows no
-    concession (`phase`), the line has an agreement running (`held`), the granter chose not to (`declined`), the
-    quarter has no budget (`no_budget`) or too little left (`budget`)."""
+    """An ask not granted, and why: no rep or KAM holds the customer that day (`no_granter`), it is not active that
+    day (`inactive`), it does not buy the line (`not_bought`), the line has an agreement running (`held`), its phase
+    allows no concession (`phase`), the granter chose not to (`declined`), the quarter has no budget (`no_budget`) or
+    too little left (`budget`)."""
 
     customer_id: int
     line: str
@@ -417,16 +421,16 @@ def granter(world: World, customer: Customer, day: date) -> int | None:
     return duty.employee_id if duty else None
 
 
-def expected_gross(world: World, customer_id: int, line: str, first: date, last: date) -> float:
-    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices."""
+def expected_gross(world: World, rules: Rules, customer_id: int, line: str, first: date, last: date) -> float:
+    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices: what
+    its points order (`loop.demand.expected_gross`'s rule), so 0 on a line it does not buy."""
     demand = world.demand
     assert demand is not None
-    c = int(np.flatnonzero(demand.customer_ids == customer_id)[0])
-    i = [known.code for known in demand.lines].index(line)
+    c, i = rules.customers[customer_id], rules.lines[line]
     points = slice(int(demand.customer_start[c]), int(demand.customer_start[c + 1]))
     _, listed, price_line = demand.catalogue.shares(first, len(demand.lines))
     groups = demand.point_group[points]
-    daily = (demand.base[points, i] * (listed * price_line)[groups, i]).sum()
+    daily = (demand.base[points, i] * (listed * price_line)[groups, i]).sum() * demand.carried[c, i]
     return float(daily) * ((last - first).days + 1)
 
 
@@ -437,6 +441,13 @@ def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) ->
     employee = granter(world, customer, day)
     if employee is None:
         return Refusal(customer_id, line, day, "no_granter")
+    if not customer.active_on(day):
+        return Refusal(customer_id, line, day, "inactive", employee)
+    demand = world.demand
+    assert demand is not None
+    c, i = rules.customers[customer_id], rules.lines[line]
+    if not demand.carried[c, i]:
+        return Refusal(customer_id, line, day, "not_bought", employee)
     if world.agreements_on(customer_id, line, day):
         return Refusal(customer_id, line, day, "held", employee)
     retail = customer.channel in TIERED
@@ -450,7 +461,7 @@ def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) ->
     discipline = world.actors[employee].skills.discount_discipline
     draw = rng("pricing_agree", "grant", customer_id, line, day)
     if discipline >= s6["disciplined_from"]:
-        hidden = rules.elasticity[rules.customers[customer_id], rules.lines[line]]
+        hidden = rules.elasticity[c, i]
         chance = (hidden / s6["elasticity"]["high"]) ** (discipline * s6["disciplined_choice_exponent"])
         if draw.random() >= chance:
             return Refusal(customer_id, line, day, "declined", employee)
@@ -461,7 +472,8 @@ def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) ->
     budget = world.budgets.get((employee, quarter_start(day)))
     if budget is None:
         return Refusal(customer_id, line, day, "no_budget", employee)
-    charge = round(pct / 100 * expected_gross(world, customer_id, line, day, last), 2)
+    lift = 1 + rules.elasticity[c, i] * pct / 100  # the discount's own lift (S6), as `loop.demand` applies it
+    charge = round(pct / 100 * expected_gross(world, rules, customer_id, line, day, last) * lift, 2)
     if charge > budget.budget_amount - budget.used_amount - budget.reserved:
         return Refusal(customer_id, line, day, "budget", employee)
     budget.reserved = round(budget.reserved + charge, 2)
@@ -470,7 +482,7 @@ def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) ->
     code = AGREEMENT_CODE.format(year=day.year, n=number)
     kind = "agreed_discount" if retail else "individual_price"
     agreement = Agreement(customer_id, line, pct, day, last, code, kind, employee, budget_charge=charge)
-    world.agreements[row_id("price_agreement", code=code)] = agreement
+    world.add_agreement(row_id("price_agreement", code=code), agreement)
     return agreement
 
 
@@ -486,10 +498,10 @@ def agreed(world: World, rules: Rules, customer: Customer, line: str, day: date)
 
 
 def individual(
-    world: World, customer: Customer, sku_id: int, line: str, list_price_case: float, day: date
+    world: World, rules: Rules, customer: Customer, sku_id: int, line: str, list_price_case: float, day: date
 ) -> Term | None:
     """The individual-price term of `customer`'s SKU on `day` (module docstring); None outside a KAM's channels or
-    without a running individual price."""
+    without a running individual price. A line's percentage is at most the line's maximum, as `agreed`'s."""
     if customer.channel not in KAM_CHANNELS:
         return None
     running = [
@@ -502,7 +514,8 @@ def individual(
     agreement_id, agreement = min(running, key=lambda found: found[1].sku_id is None)  # the SKU's own first
     price = agreement.price_case
     if price is None:
-        price = round(list_price_case * (1 - agreement.discount_pct / 100), 2)
+        pct = min(agreement.discount_pct, rules.max_pct(line))
+        price = round(list_price_case * (1 - pct / 100), 2)
     return Term("individual", agreement.code, SALES, price_case=price, price_agreement_id=agreement_id)
 
 
@@ -751,7 +764,7 @@ def price_order(world: World, rules: Rules, basket: BasketReady) -> list[Priced]
             terms = [*tiered]
             for found in (
                 agreed(world, rules, customer, line, day),
-                individual(world, customer, draft.sku_id, line, price.case, day),
+                individual(world, rules, customer, draft.sku_id, line, price.case, day),
             ):
                 if found is not None:
                     terms.append(found)

@@ -130,15 +130,17 @@ def _generated(opening: Setup, rules: Rules) -> list[tuple[BasketReady, list[Pri
         for line in draw.choice(list(rules.lines), size=3, replace=False):
             code = f"AG-2025-{n:03d}{line}"
             pct = float(round(draw.uniform(2, 14), 1))
-            world.agreements[row_id("price_agreement", code=code)] = Agreement(
-                customer.customer_id, str(line), pct, *year, code, kind, employee
+            world.add_agreement(
+                row_id("price_agreement", code=code),
+                Agreement(customer.customer_id, str(line), pct, *year, code, kind, employee),
             )
         if kind == "individual_price":
             sku = int(draw.choice(list(lists[1]["big_retail"].prices)))
             code = f"AG-2025-{n:03d}SKU"
             price = float(round(lists[1]["big_retail"].prices[sku].case * draw.uniform(0.8, 1.05), 2))
-            world.agreements[row_id("price_agreement", code=code)] = Agreement(
-                customer.customer_id, rules.sku_line[sku], 5.0, *year, code, kind, employee, sku, price
+            world.add_agreement(
+                row_id("price_agreement", code=code),
+                Agreement(customer.customer_id, rules.sku_line[sku], 5.0, *year, code, kind, employee, sku, price),
             )
     out: list[tuple[BasketReady, list[Priced], World]] = []
     lines = 0

@@ -282,7 +282,7 @@ class World:
     tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
     loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
-    agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id
+    agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id (`add_agreement`)
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
     # S1.3: the price lists in force on `day` — the standard one and each channel's; S1.4's period ends roll them
     # (the month-end the channel lists, the quarter-end the standard list).
@@ -307,10 +307,21 @@ class World:
                 return held
         return None
 
+    def add_agreement(self, agreement_id: int, agreement: Agreement) -> None:
+        """The one way an agreement comes in: never over another (`ValueError`), and never removed after — it ends by
+        its `valid_to`. The (customer, line) index of `agreements_on` takes it too, when built."""
+        if agreement_id in self.agreements:
+            raise ValueError(f"agreement {agreement_id} ({agreement.code}) is in the World already")
+        self.agreements[agreement_id] = agreement
+        index = self.__dict__.get("_agreement_index")
+        if index is not None and index[0] is self.agreements and index[1] == len(self.agreements) - 1:
+            index[2].setdefault((agreement.customer_id, agreement.line), []).append((agreement_id, agreement))
+            self.__dict__["_agreement_index"] = (self.agreements, len(self.agreements), index[2])
+
     def agreements_on(self, customer_id: int, line: str, day: date) -> list[tuple[int, Agreement]]:
         """The (price_agreement_id, agreement)s of `customer_id`'s `line` running on `day`, in `agreements`' order,
-        through an index by (customer, line) built again whenever `agreements` is another dict or another length — so
-        an agreement is added, never replaced or removed (it ends by its `valid_to`)."""
+        through an index by (customer, line) that `add_agreement` keeps. It is built again only for a restored `World`
+        (it is never pickled) or another `agreements` dict, or as a guard when its length is not the dict's."""
         index = self.__dict__.get("_agreement_index")
         if index is None or index[0] is not self.agreements or index[1] != len(self.agreements):
             by_line: dict[tuple[int, str], list[tuple[int, Agreement]]] = {}
