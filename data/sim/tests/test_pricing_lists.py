@@ -9,9 +9,10 @@ from datetime import date
 import pytest
 
 from hartland_sim.config import WorldConfig
+from hartland_sim.dates import month_end, quarter_end, quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.loop.demand import CHANNELS
-from hartland_sim.loop.pricing import channel_list, month_end, quarter_end, quarter_start, standard_list
+from hartland_sim.loop.pricing import channel_list, standard_list
 from hartland_sim.setup.org import MARKETING
 from hartland_sim.setup.run import Setup
 

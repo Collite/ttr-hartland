@@ -31,6 +31,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from hartland_sim.config import WorldConfig
+from hartland_sim.dates import quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
 from hartland_sim.loop.demand import CHANNELS
@@ -159,7 +160,7 @@ def price_lists(
 def budgets(world: WorldConfig, planned: Iterable[tuple[int, str, int]]) -> dict[tuple[int, date], Budget]:
     """The opening quarter's budgets by (employee_id, quarter): for each (employee_id, channel, customers) of
     `planned`, the reps' or KAMs' share of `opening_quarter_gross` × customers."""
-    quarter = _quarter(world.history.warm_up_from)
+    quarter = quarter_start(world.history.warm_up_from)
     shares = world.pricing.budgets
     gross = shares.opening_quarter_gross
     totals: dict[int, float] = {}
@@ -183,10 +184,6 @@ def budget_row(employee: int, quarter: date, budget: Budget) -> Row:
         budget_amount=budget.budget_amount,
         used_amount=budget.used_amount,
     )
-
-
-def _quarter(day: date) -> date:
-    return date(day.year, 3 * ((day.month - 1) // 3) + 1, 1)
 
 
 def pos(out: Tables, world: WorldConfig, geography: Geography, root: Path = REFERENCE_DIR) -> None:

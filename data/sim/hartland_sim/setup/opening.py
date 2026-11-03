@@ -36,6 +36,7 @@ from pathlib import Path
 
 import hartland_sim
 from hartland_sim.config import DATA_DIR, INVENTORY_FILE, STORIES_DIR, WORLD_FILE, StoriesConfig, WorldConfig
+from hartland_sim.dates import quarter_end
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import REFERENCE_DIR
@@ -56,7 +57,7 @@ def rates(
 ) -> dict[tuple[int, int], float]:
     """Cases a day per (sku_id, dc_site_id) at the opening (module docstring)."""
     gross = world.pricing.budgets.opening_quarter_gross
-    quarter_days = (_next_quarter(day) - day).days
+    quarter_days = (quarter_end(day) - day).days + 1
     by_key: dict[tuple[str, str], float] = defaultdict(float)  # (channel, DC) → gross a day
     for customer in made.customers:
         if customer.channel not in gross or not customer.active_on(day):
@@ -77,11 +78,6 @@ def rates(
             price = sku.base_price_case * factors[key]
             out[sku.sku_id, row_id("site", code=dc)] += daily * (sku.importance + 1) / weight / price
     return dict(out)
-
-
-def _next_quarter(day: date) -> date:
-    first = date(day.year, 3 * ((day.month - 1) // 3) + 1, 1)
-    return date(first.year + (first.month + 3) // 13, (first.month + 2) % 12 + 1, 1)
 
 
 def stock(

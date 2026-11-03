@@ -11,6 +11,7 @@ from datetime import date
 import pytest
 
 from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.dates import quarter_end
 from hartland_sim.ids import row_id
 from hartland_sim.loop.pricing import (
     Refusal,
@@ -20,7 +21,6 @@ from hartland_sim.loop.pricing import (
     agreement_row,
     expected_gross,
     grant,
-    quarter_end,
 )
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import Agreement, Budget, Checkpoint, Customer, World

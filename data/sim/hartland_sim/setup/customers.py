@@ -521,10 +521,19 @@ def _store_row(store: Row) -> Row:
     )
 
 
+def terms(customer: Customer) -> str:
+    """The channel whose terms `customer` takes (`world.yaml`'s payment days and credit limits): a station shop takes
+    special retail's, every other customer its channel's."""
+    return "special_retail" if customer.sub_channel == "special_retail" else customer.channel
+
+
+def credit_limit(customer: Customer, world: WorldConfig) -> float | None:
+    """`customer`'s credit limit by its terms; None on a channel without one (the web)."""
+    return {str(channel): limit for channel, limit in world.policies.credit_limit.items()}.get(terms(customer))
+
+
 def customer_row(customer: Customer, world: WorldConfig) -> Row:
     """The `customer` row of `customer`: its terms and credit limit by channel (`world.yaml`)."""
-    terms = "special_retail" if customer.sub_channel == "special_retail" else customer.channel
-    limits = {str(channel): limit for channel, limit in world.policies.credit_limit.items()}
     days = {str(channel): days for channel, days in world.finance.payment_terms_days.items()}
     return row(
         "customer",
@@ -538,8 +547,8 @@ def customer_row(customer: Customer, world: WorldConfig) -> Row:
         okres_id=row_id("okres", code=customer.okres) if customer.okres else None,
         legal_form="s.r.o." if customer.name.endswith(" s.r.o.") else None,
         vat_id=None,
-        payment_terms_days=days[terms],
-        credit_limit=limits.get(terms),
+        payment_terms_days=days[terms(customer)],
+        credit_limit=credit_limit(customer, world),
         price_list_channel=customer.channel,
         since=customer.since,
         until=customer.until,

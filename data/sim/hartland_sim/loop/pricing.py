@@ -6,7 +6,8 @@ purchase price. A channel's list is a monthly version: the standard × `world.ya
 or × the factor of Marketing's hero override for that SKU in that channel. Both carry their validity; the `World`
 holds the versions in force (`World.standard_list`, `World.channel_lists`), which S1.4's period ends roll: the
 month-end the channel lists, the quarter-end the standard list with its price drift. A channel's list is made from
-the standard list of its month only.
+the standard list of its month only. Every list is without VAT but the web's, a shelf price incl. VAT (`01` §4.4),
+and its `channel_price` rows stay so; an order line is priced without VAT on every channel (`price_order`).
 
 **The discounts** (contracts §4). A line qualifies for `Term`s — a tier, an agreement, a promotion — and `apply` takes
 them in the pricing order, each on the price the earlier ones left: a percentage off it, or an individual price down
@@ -60,11 +61,12 @@ A free line carries the channel list and one row of 100 % (kind free_goods), so 
 A mandatory promotion's code is flagged on the lines it touches, for the rep prompts (S2.2).
 
 **The order** (`price_order`, contracts §4, `05` §3 step 4): each line at its channel's list in force on the day
-(`World.channel_lists`; one of another month is refused — the month-end rolls it), then in the pricing order: the
-volume tier → the cross-sell tier → the agreed discount → the individual price → the promotions, each on the price
-the one before left (`apply`); a free line has its 100 % alone. The `Priced` line holds `sales_order_line`'s pricing
-columns — `discount_total_case` the Σ of its rows' `amount_case`, `discount_total` that × its cases, the invoice
-price the list less the former — and its discount list.
+(`World.channel_lists`; one of another month is refused — the month-end rolls it), without VAT (a web line at its
+list ÷ (1 + the SKU's VAT rate), to the haléř, so S4.1 adds VAT one way on every channel), then in the pricing
+order: the volume tier → the cross-sell tier → the agreed discount → the individual price → the promotions, each on
+the price the one before left (`apply`); a free line has its 100 % alone. The `Priced` line holds
+`sales_order_line`'s pricing columns — `discount_total_case` the Σ of its rows' `amount_case`, `discount_total` that
+× its cases, the invoice price the list less the former — and its discount list.
 
 **The credit check** (A-14, `world.yaml finance.hold`): an order is `held` when its customer has an open invoice more
 than `overdue_days_over` days past due (`overdue`, checked first), or when its open invoices and the order's value
@@ -78,35 +80,23 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import numpy as np
 
 from hartland_sim.config import StoriesConfig, Tiers, WorldConfig
+from hartland_sim.dates import month_end, quarter_end, quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
 from hartland_sim.loop.demand import BasketReady, Spot, elasticity
 from hartland_sim.rng import rng
+from hartland_sim.setup.customers import credit_limit
 from hartland_sim.setup.portfolio import Sku
 from hartland_sim.setup.rows import row
 from hartland_sim.world import Agreement, Condition, Customer, Price, PriceList, Promotion, World
 
 STANDARD_CODE = "SC-{year}-Q{quarter}"  # `standard_price_list.code`: SC = standardní ceník
-
-
-def quarter_start(day: date) -> date:
-    return date(day.year, 3 * ((day.month - 1) // 3) + 1, 1)
-
-
-def month_end(day: date) -> date:
-    following = date(day.year + day.month // 12, day.month % 12 + 1, 1)
-    return following - timedelta(days=1)
-
-
-def quarter_end(day: date) -> date:
-    first = quarter_start(day)
-    return month_end(date(first.year, first.month + 2, 1))
 
 
 def _sold(sku: Sku, first: date, last: date) -> bool:
@@ -355,6 +345,7 @@ def discount_row(line_id: int, discount: Discount) -> Row:
 
 AGREEMENT_CODE = "AG-{year}-{n:05d}"  # `price_agreement.code`, numbered within the year
 KAM_CHANNELS = ("big_retail", "gas_ka", "vending", "horeca")  # a KAM's customers: individual prices (`01` §5.3)
+INCL_VAT = ("web",)  # the channels whose list is a shelf price incl. VAT (`01` §4.4)
 Array = np.ndarray[Any, Any]
 
 
@@ -373,6 +364,7 @@ class Rules:
     sku_line: Mapping[int, str]  # sku_id → its line's code
     sku_ids: Mapping[str, int]  # catalogue sku_code → sku_id
     units: Mapping[int, int]  # sku_id → units per case
+    vat: Mapping[int, float]  # sku_id → its VAT rate, %
 
     @classmethod
     def of(cls, world: World, config: WorldConfig, stories: StoriesConfig) -> Rules:
@@ -391,6 +383,7 @@ class Rules:
             {sku: demand.lines[int(line)].code for sku, line in zip(sku_ids, goods.line, strict=True)},
             dict(zip(goods.sku_codes, sku_ids, strict=True)),
             {sku: int(units) for sku, units in zip(sku_ids, goods.units, strict=True)},
+            {sku: float(rate) for sku, rate in zip(sku_ids, goods.vat, strict=True)},
         )
 
     def max_pct(self, line: str) -> float:
@@ -758,17 +751,20 @@ def price_order(world: World, rules: Rules, basket: BasketReady) -> list[Priced]
         price = prices.get(draft.sku_id)
         if price is None:
             raise ValueError(f"SKU {draft.sku_id} is not on the {basket.channel} list of {day}")
+        listed = price.case
+        if basket.channel in INCL_VAT:
+            listed = round(listed / (1 + rules.vat[draft.sku_id] / 100), 2)
         terms: list[Term] = []
         if not draft.is_free_goods:
             line = rules.sku_line[draft.sku_id]
             terms = [*tiered]
             for found in (
                 agreed(world, rules, customer, line, day),
-                individual(world, rules, customer, draft.sku_id, line, price.case, day),
+                individual(world, rules, customer, draft.sku_id, line, listed, day),
             ):
                 if found is not None:
                     terms.append(found)
-        out.append(price_line(price.case, draft, terms))
+        out.append(price_line(listed, draft, terms))
     return out
 
 
@@ -788,8 +784,7 @@ def credit_check(
     owed = [invoice for invoice in world.open_invoices.values() if invoice.customer_id == customer.customer_id]
     if any((day - invoice.due_on).days > hold.overdue_days_over for invoice in owed):
         return "held", "overdue"
-    terms = "special_retail" if customer.sub_channel == "special_retail" else customer.channel
-    limit = {str(channel): limit for channel, limit in config.policies.credit_limit.items()}.get(terms)
+    limit = credit_limit(customer, config)
     exposure = sum(invoice.open_amount for invoice in owed) + value
     if hold.exposure_over_limit and limit is not None and exposure > limit:
         return "held", "credit_limit"

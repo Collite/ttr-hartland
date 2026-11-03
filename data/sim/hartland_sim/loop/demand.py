@@ -180,6 +180,7 @@ class Catalogue:
     line: Array  # (S,) the line's index
     weight: Array  # (S,) importance + 1
     units: Array  # (S,) units per case
+    vat: Array  # (S,) the VAT rate, %
     price: Array  # (G, S) the case price at the group's channel factor
     groups: tuple[tuple[str, str | None], ...]
     listed_from: Array  # (G, S) the first day listed, as an ordinal (0: never)
@@ -238,6 +239,7 @@ def catalogue(
         line=np.array([index[sku.line] for sku in skus], dtype=np.int64),
         weight=np.array([sku.importance + 1 for sku in skus], dtype=float),
         units=np.array([sku.units_per_case for sku in skus], dtype=np.int64),
+        vat=np.array([sku.vat_rate for sku in skus], dtype=float),
         price=np.array([base_price * factors[channel] for channel, _ in groups]),
         groups=tuple(groups),
         listed_from=listed_from,

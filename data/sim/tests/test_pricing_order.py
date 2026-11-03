@@ -104,6 +104,22 @@ def test_an_order_is_priced_on_the_list_in_force(opening: Setup, rules: Rules) -
     assert free.discounts[0].code == "PR-2025-09-GOLD-11"
 
 
+def test_a_web_line_is_priced_without_the_vat_its_list_holds(opening: Setup, rules: Rules) -> None:
+    world = Checkpoint.of(opening.world).restore()
+    day = date(2025, 5, 12)
+    world.channel_lists = _lists(opening, day)
+    assert world.demand is not None
+    sku = next(s for s in opening.portfolio.skus if s.line == "CLASSIC" and s.launched_on < date(2023, 1, 1))
+    assert sku.vat_rate == 12
+    units = sku.units_per_case
+    for channel, line in (("web", (sku.sku_id, 2 / units, 2.0)), ("small_retail", (sku.sku_id, 2.0, 2.0 * units))):
+        spot = next(s for s in world.demand.spots if world.customers[s.customer_id].channel == channel)
+        basket = BasketReady(day, spot.customer_id, spot.delivery_point_id, channel, (line,))
+        (priced,) = price_order(world, rules, basket)
+        listed = world.channel_lists[channel].prices[sku.sku_id].case
+        assert priced.list_price_case == (round(listed / 1.12, 2) if channel == "web" else listed), channel
+
+
 # ── 10 000 generated lines ───────────────────────────────────────────────────
 
 
