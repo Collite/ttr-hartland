@@ -11,13 +11,12 @@ is a null world and each metric must give the opposite (`null_world`).
 **Built here (G1 S1.2):** S1 (`s1`, `s1_weather`), S2 (`s2` — not run until `promotion_result` exists, G4 S4.3 —
 and `s2_affluence`), S4 (`s4`, and 04's k-means check `s4_kmeans`, which has no SQL: s4.yaml `kmeans`).
 S2-affluence counts an order only where the promotion names its channel (ttr-hartland#8 item 1, the twin's default
-until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists). The
-others (S3, S5, the probes) arrive with their stages.
+until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists), its
+measure re-cut in S1.5 (`measured`). The others (S3, S5, the probes) arrive with their stages.
 
-**`sales_pl` before G4** (S6): the view's customer margin is net revenue less the cost to serve (contracts §4); a G1
-build has the lines' net revenue and purchase prices only, so the twin's margin is net revenue less the purchase price
-× cases (a free line's goods counted as a cost) — the report says "pre-G4" — and its agreed discount the line's
-`agreed` rows.
+**`sales_pl`** (S6): the view's columns the twin reads, as the view makes them — the cases, the Customer Margin (gross
+revenue less every discount, the delivery and the warehouse cost, a NULL cost as 0; no COGS, contracts §4) and the
+agreed discount. Before G3/G4 write the costs, the Customer Margin is the net revenue.
 
 The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result, and a note where a twin
 has more to say (S1: each line's ratio, so the line that sets the margin shows).
@@ -39,6 +38,7 @@ from hartland_sim.config import Detector, StoriesConfig, inventory
 
 S2_FROM = date(2024, 2, 26)  # s2_affluence.sql: promotions whose 8 weeks before lie inside the history
 S6_FROM = date(2024, 2, 26)  # s6.sql: agreements whose 8 weeks before lie inside the history
+S6_AFTER = 14  # s6.sql: the window runs a fortnight past the agreement, the small-retail cadence
 S6_SLOT_DAY = date(2023, 1, 1)  # s6.sql: a pinned rep is the one holding its area on the warm-up's first day
 WEEK_DAYS = 56  # s2_affluence.sql's 8 weeks before
 KMEANS_BAR = 0.6  # 04 §S4's adjusted Rand index, reported beside S4 (s4.yaml `kmeans`), never judged
@@ -377,60 +377,130 @@ Twin = Callable[[Build, StoriesConfig], float]
 
 
 def _sales_pl(build: Build) -> Frame:
-    """`sales_pl` (contracts §4) as a G1 build has it (module docstring)."""
+    """`sales_pl` (contracts §4): the columns S6 reads (module docstring)."""
     return build.joined("sales_pl", _join_sales_pl)
 
 
 def _join_sales_pl(build: Build) -> Frame:
-    lines = build["sales_order_line"][
-        ["sales_order_line_id", "sales_order_id", "sku_id", "qty_cases", "invoice_price_case", "purchase_price_case"]
-    ]
+    columns = ["sales_order_line_id", "sales_order_id", "sku_id", "qty_cases", "list_price_case"]
+    lines = build["sales_order_line"][[*columns, "delivery_cost_case", "warehouse_cost_case"]]
     orders = build["sales_order"][["sales_order_id", "customer_id", "ordered_on"]]
     sku = build["sku"][["sku_id", "product_id"]]
     product = build["product"][["product_id", "product_line_id"]]
     out = lines.merge(orders, on="sales_order_id").merge(sku, on="sku_id").merge(product, on="product_id")
-    out["customer_margin"] = (out["invoice_price_case"] - out["purchase_price_case"]) * out["qty_cases"]
     discounts = build["sales_order_line_discount"]
+    total = discounts.groupby("sales_order_line_id")["amount_line"].sum()
     agreed = discounts[discounts["kind"] == "agreed"].groupby("sales_order_line_id")["amount_line"].sum()
+
+    def money(per_case: pd.Series[float]) -> pd.Series[float]:
+        return (per_case.fillna(0.0) * out["qty_cases"]).round(2)
+
+    out["customer_margin"] = (
+        money(out["list_price_case"])
+        - out["sales_order_line_id"].map(total).fillna(0.0)
+        - money(out["delivery_cost_case"])
+        - money(out["warehouse_cost_case"])
+    )
     out["discount_agreed"] = out["sales_order_line_id"].map(agreed).fillna(0.0)
-    return out[["customer_id", "product_line_id", "ordered_on", "customer_margin", "discount_agreed"]]
+    out = out.rename(columns={"qty_cases": "cases"})
+    return out[["customer_id", "product_line_id", "ordered_on", "cases", "customer_margin", "discount_agreed"]]
+
+
+# Why `measured` leaves an agreement out (s6.sql's agreement and gain CTEs), each a label for the note, in the order
+# they are judged: its window runs past the last order day; another agreement of the customer-line ends in its 8 weeks
+# before, or starts in its fortnight after; the customer ordered nothing in the 8 weeks before; the line or the
+# customer's other lines have no cases before or in the window.
+LEFT_OUT = {
+    "history": "past the history",
+    "before": "another before",
+    "after": "another after",
+    "no order": "no order before",
+    "no cases": "no cases",
+}
+
+
+def _days(column: pd.Series[Any]) -> np.ndarray[Any, Any]:
+    return np.asarray(column.to_numpy("datetime64[D]").astype(np.int64))
+
+
+def _sums(rows: Frame, keys: list[str], values: list[str], asks: Frame, first: str, last: str) -> Frame:
+    """Per row of `asks`, the Σ of `rows`' `values` over the rows of its `keys` ordered from its `first` day to its
+    `last` (columns of `asks`): one sort and two binary searches, never a join of the two."""
+    keyed = pd.concat([rows[keys], asks[keys]], ignore_index=True)
+    code = keyed.groupby(keys, sort=False).ngroup().to_numpy().astype(np.int64)
+    span = np.int64(1 << 22)  # more days than 0001-01-01 … 9999-12-31 from 1970
+    key = code[: len(rows)] * span + _days(rows["ordered_on"])
+    order = np.argsort(key, kind="stable")
+    key = key[order]
+    totals = np.vstack([np.zeros(len(values)), np.cumsum(rows[values].to_numpy(dtype=float)[order], axis=0)])
+    mine = code[len(rows) :] * span
+    low = np.searchsorted(key, mine + _days(asks[first]), "left")
+    high = np.searchsorted(key, mine + _days(asks[last]), "right")
+    return pd.DataFrame(totals[high] - totals[low], columns=values, index=asks.index)
+
+
+def measured(build: Build, since: date) -> Frame:
+    """s6.sql's measure for every agreed discount from `since`, by `price_agreement_id` (Bora's S6 rulings, 11-04):
+    who agreed it; the line's and the customer's other lines' cases in the 8 weeks before and in the window — its
+    first day to `S6_AFTER` days past its last; the line's Customer Margin and agreed discount (`discount`) in the
+    window; the lift, (line ÷ others) in the window ÷ (line ÷ others) before; the gain, the margin less what the line
+    would have earned at list without the lift, margin − (margin + discount) ÷ lift; and `left_out`, why it is not
+    counted (a key of `LEFT_OUT`, judged in that order), or "" when it is — the lift and the gain then NaN."""
+    as_of = build["sales_order"]["ordered_on"].max()
+    every = build["price_agreement"]
+    found = every[
+        (every["kind"] == "agreed_discount")
+        & every["product_line_id"].notna()
+        & (every["valid_from"] >= pd.Timestamp(since))
+    ].reset_index(drop=True)
+    one, week, after = pd.Timedelta(days=1), pd.Timedelta(days=WEEK_DAYS), pd.Timedelta(days=S6_AFTER)
+    asks = found.assign(before_from=found["valid_from"] - week, before_to=found["valid_from"] - one)
+    asks["window_to"] = found["valid_to"] + after
+    pl = _sales_pl(build)
+    mine, theirs = ["customer_id", "product_line_id"], ["customer_id"]
+    line_before = _sums(pl, mine, ["cases"], asks, "before_from", "before_to")["cases"]
+    window = _sums(pl, mine, ["cases", "customer_margin", "discount_agreed"], asks, "valid_from", "window_to")
+    all_before = _sums(pl, theirs, ["cases"], asks, "before_from", "before_to")["cases"]
+    all_window = _sums(pl, theirs, ["cases"], asks, "valid_from", "window_to")["cases"]
+    out = pd.DataFrame(
+        {
+            "agreed_by_employee_id": found["agreed_by_employee_id"],
+            "line_before": line_before,
+            "others_before": all_before - line_before,
+            "line_window": window["cases"],
+            "others_window": all_window - window["cases"],
+            "margin": window["customer_margin"],
+            "discount": window["discount_agreed"],
+        }
+    )
+    keys = ["price_agreement_id", "customer_id", "product_line_id", "valid_from", "valid_to"]
+    pairs = found[keys].merge(every[keys], on=["customer_id", "product_line_id"], suffixes=("", "_other"))
+    pairs = pairs[pairs["price_agreement_id"] != pairs["price_agreement_id_other"]]
+    ends_before = pairs["valid_to_other"].between(pairs["valid_from"] - week, pairs["valid_from"] - one)
+    starts_after = pairs["valid_from_other"].between(pairs["valid_to"] + one, pairs["valid_to"] + after)
+    none = 0.0005  # below the cases' grain, 0.001: a sum of none, less a float's dust
+    shares = ["line_before", "others_before", "line_window", "others_window"]
+    reasons = {
+        "history": asks["window_to"] > as_of,
+        "before": found["price_agreement_id"].isin(pairs.loc[ends_before, "price_agreement_id"]),
+        "after": found["price_agreement_id"].isin(pairs.loc[starts_after, "price_agreement_id"]),
+        "no order": all_before < none,
+        "no cases": (out[shares] < none).any(axis=1),
+    }
+    assert list(reasons) == list(LEFT_OUT)
+    out["left_out"] = np.select([np.asarray(held, dtype=bool) for held in reasons.values()], list(reasons), "")
+    counted = out["left_out"] == ""
+    lift = (out["line_window"] / out["others_window"]) / (out["line_before"] / out["others_before"])
+    out["lift"] = lift.where(counted)
+    out["gain"] = (out["margin"] - (out["margin"] + out["discount"]) / lift).where(counted)
+    return out.set_index(found["price_agreement_id"].rename("price_agreement_id"))
 
 
 def gains(build: Build, since: date) -> Frame:
-    """s6.sql's agreements — the agreed discounts from `since` to the last order day, each to its end or that day —
-    by `price_agreement_id`: who agreed it, its margin gain (the margin a day during it less the margin a day in the
-    8 weeks before, × its days) and its discount crowns (the agreed discounts of the customer-line during it)."""
-    as_of = build["sales_order"]["ordered_on"].max()
-    agreements = build["price_agreement"]
-    found = agreements[
-        (agreements["kind"] == "agreed_discount")
-        & agreements["product_line_id"].notna()
-        & agreements["valid_from"].between(pd.Timestamp(since), as_of)
-    ].copy()
-    found["valid_to"] = found["valid_to"].clip(upper=as_of)
-    found["days"] = (found["valid_to"] - found["valid_from"]).dt.days + 1
-    keys = ["price_agreement_id", "customer_id", "product_line_id", "valid_from", "valid_to"]
-    joined = _sales_pl(build).merge(found[keys], on=["customer_id", "product_line_id"])
-    start = joined["valid_from"]
-    joined = joined[
-        (joined["ordered_on"] >= start - pd.Timedelta(days=WEEK_DAYS)) & (joined["ordered_on"] <= joined["valid_to"])
-    ]
-    during = (joined["ordered_on"] >= joined["valid_from"]).to_numpy()
-    sums = (
-        pd.DataFrame(
-            {
-                "price_agreement_id": joined["price_agreement_id"].to_numpy(),
-                "during": np.where(during, joined["customer_margin"], 0.0),
-                "before": np.where(during, 0.0, joined["customer_margin"]),
-                "discount": np.where(during, joined["discount_agreed"], 0.0),
-            }
-        )
-        .groupby("price_agreement_id")
-        .sum()
-    )
-    out = found.set_index("price_agreement_id")[["agreed_by_employee_id", "days"]].join(sums).fillna(0.0)
-    out["gain"] = (out["during"] / out["days"] - out["before"] / WEEK_DAYS) * out["days"]
-    return out[["agreed_by_employee_id", "gain", "discount"]]
+    """s6.sql's counted agreements (`measured`), by `price_agreement_id`: who agreed it, its margin gain and its
+    discount crowns."""
+    found = measured(build, since)
+    return found.loc[found["left_out"] == "", ["agreed_by_employee_id", "gain", "discount"]]
 
 
 def _pinned_reps(build: Build, stories: StoriesConfig) -> dict[int, bool]:
@@ -451,31 +521,43 @@ def _pinned_reps(build: Build, stories: StoriesConfig) -> dict[int, bool]:
     }
 
 
+def _pinned(build: Build, stories: StoriesConfig) -> Frame:
+    """`measured` from `S6_FROM` (once a check: `s6` and `s6_note` read it), the pinned reps' agreements, each with
+    whether its rep is disciplined."""
+    pinned = _pinned_reps(build, stories)
+    found = build.joined("s6_measured", lambda made: measured(made, S6_FROM))
+    found = found[found["agreed_by_employee_id"].isin(list(pinned))]
+    return found.assign(disciplined=found["agreed_by_employee_id"].map(pinned).astype(bool))
+
+
 def s6_reps(build: Build, stories: StoriesConfig) -> dict[bool, float]:
     """The pinned reps' margin gained per discount crown, disciplined (True) and not (False)."""
-    pinned = _pinned_reps(build, stories)
-    found = build.joined("s6_gains", lambda made: gains(made, S6_FROM))  # once a check: `s6` and `s6_note` read it
-    found = found[found["agreed_by_employee_id"].isin(list(pinned))]
-    disciplined = found["agreed_by_employee_id"].map(pinned).astype(bool)
+    found = _pinned(build, stories)
+    counted = found[found["left_out"] == ""]
     out = {}
     for side in (True, False):
-        mine = found[disciplined == side]
+        mine = counted[counted["disciplined"] == side]
         crowns = float(mine["discount"].sum())
         out[side] = float(mine["gain"].sum()) / crowns if crowns else math.nan
     return out
 
 
 def s6(build: Build, stories: StoriesConfig) -> float:
-    """s6.sql: the disciplined pinned reps' margin gained per discount crown minus the undisciplined ones' (a
-    difference: the undisciplined gain is negative by design). The margin is G1's (`_sales_pl`): net revenue less the
-    purchase price, before G4's costs."""
+    """s6.sql: the disciplined pinned reps' Customer Margin gained per agreed-discount crown minus the undisciplined
+    ones' (a difference: the undisciplined gain may be negative)."""
     ratios = s6_reps(build, stories)
     return ratios[True] - ratios[False]
 
 
 def s6_note(build: Build, stories: StoriesConfig) -> str:
+    """Each side's ratio, and the pinned reps' agreements counted and left out (`LEFT_OUT`)."""
     ratios = s6_reps(build, stories)
-    return f"disciplined {ratios[True]:.2f}, undisciplined {ratios[False]:.2f} a crown; pre-G4 margin"
+    found = _pinned(build, stories)
+    left = found["left_out"].value_counts()
+    why = " · ".join(f"{int(left[code])} {label}" for code, label in LEFT_OUT.items() if code in left)
+    note = f"disciplined {ratios[True]:.2f}, undisciplined {ratios[False]:.2f} a crown; "
+    note += f"{int(left.get('', 0))} of {len(found)} agreements counted"
+    return note + (f" (left out: {why})" if why else "")
 
 
 def s6_targets(build: Build, stories: StoriesConfig) -> float:

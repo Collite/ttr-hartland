@@ -1,5 +1,6 @@
-"""`stories-check --csv` (G1 S1.2 T7, S1.4 T6): the pandas twins of S1, S1-weather, S2, S2-affluence, S4 and S6 on small
-hand-made CSV builds, the k-means check's parts, the runner's verdicts and report, and the warm-up switch."""
+"""`stories-check --csv` (G1 S1.2 T7, S1.4 T6, S1.5 T1): the pandas twins of S1, S1-weather, S2, S2-affluence, S4 and
+S6 on small hand-made CSV builds (S6's on conftest's `s6_case`), the k-means check's parts, the runner's verdicts and
+report, and the warm-up switch."""
 
 from __future__ import annotations
 
@@ -14,12 +15,15 @@ import numpy as np
 import pytest
 
 from hartland_sim.checks.stories import (
+    S6_FROM,
     Build,
     _ntile,
+    _sales_pl,
     adjusted_rand,
     check,
     gains,
     kmeans,
+    measured,
     read,
     report,
     s1,
@@ -28,6 +32,7 @@ from hartland_sim.checks.stories import (
     s2_affluence,
     s4,
     s6,
+    s6_note,
     s6_reps,
 )
 from hartland_sim.cli import main
@@ -397,76 +402,91 @@ def test_the_warm_up_writes_nothing_before_the_first_day(tmp_path: Path) -> None
     assert len(written) == 2 and written[1].split(",")[1] == first.isoformat()
 
 
-# ── S6 ─────────────────────────────────────────────────────────────────────────
+# ── S6 (G1 S1.5 T1: the measure, on `s6_case`) ──────────────────────────────────
 
 
-def _s6_build(run: Path, disciplined_gain: float, undisciplined_gain: float) -> None:
-    """Two pinned reps (SJC-02 disciplined, SMS-02 not), one agreement each in March 2024 on a customer's Gold, and
-    the customer-line's margin a day: 100 in the 8 weeks before, 100 + the gain a day during; the agreed discount 10 a
-    day during. Each order is one line of one case."""
-    _catalogue(run)
-    _write(run, "area", [{"area_id": 1, "code": "SJC-02"}, {"area_id": 2, "code": "SMS-02"}])
-    _write(
-        run,
-        "assignment",
-        [
-            {"assignment_id": n, "employee_id": n, "kind": "rep_area", "area_id": n, "valid_from": date(2023, 1, 1)}
-            | {"valid_to": date(9999, 12, 31)}
-            for n in (1, 2)
-        ],
-    )
-    start, end = date(2024, 3, 1), date(2024, 3, 31)
-    _write(
-        run,
-        "price_agreement",
-        [
-            {"price_agreement_id": 10 + n, "customer_id": n, "product_line_id": 2, "kind": "agreed_discount"}
-            | {"valid_from": start, "valid_to": end, "agreed_by_employee_id": n}
-            for n in (1, 2)
-        ],
-    )
-    orders: list[dict[str, Any]] = []
-    lines: list[dict[str, Any]] = []
-    discounts: list[dict[str, Any]] = []
-    for customer, gain in ((1, disciplined_gain), (2, undisciplined_gain)):
-        day = start - timedelta(days=56)
-        while day <= end:
-            n = len(orders) + 1
-            during = day >= start
-            orders.append(
-                {"sales_order_id": n, "customer_id": customer, "ordered_on": day}
-                | {"channel": "small_retail", "delivery_point_id": customer}
-            )
-            margin = 100.0 + (gain if during else 0.0)
-            lines.append(
-                {"sales_order_line_id": n, "sales_order_id": n, "sku_id": 102, "qty_cases": 1.0}
-                | {"invoice_price_case": 50.0 + margin, "purchase_price_case": 50.0, "is_free_goods": False}
-            )
-            if during:
-                discounts.append({"sales_order_line_id": n, "kind": "agreed", "amount_line": 10.0})
-            day += timedelta(days=1)
-    _write(run, "sales_order", orders)
-    _write(run, "sales_order_line", lines)
-    _write(run, "sales_order_line_discount", discounts)
+def test_s6_s_gain_is_the_lifted_cases_margin_at_list_less_the_crowns(tmp_path: Path, s6_case: Any) -> None:
+    """The window's Customer Margin less what the line would have earned without the lift: the lifted cases (e × d
+    more a day, over the agreement's 45 days) at the margin a case at list, less the crowns paid — the first order's
+    7 unlifted days bought at the discount among them, the lifted remainder ordered after the end at list."""
+    s6_case.write(tmp_path)
+    found = gains(Build(tmp_path), S6_FROM)
+    assert list(found.index) == [1, 2]
+    for customer, e in s6_case.elasticity.items():
+        mine = {o["sales_order_id"] for o in s6_case.tables["sales_order"] if o["customer_id"] == customer}
+        lines = {r["sales_order_line_id"] for r in s6_case.tables["sales_order_line"] if r["sales_order_id"] in mine}
+        discounts = s6_case.tables["sales_order_line_discount"]
+        crowns = sum(r["amount_line"] for r in discounts if r["sales_order_line_id"] in lines)
+        lifted = e * s6_case.pct / 100 * 45 * s6_case.daily
+        assert found.loc[customer, "discount"] == pytest.approx(crowns)
+        assert found.loc[customer, "gain"] == pytest.approx(s6_case.margin[customer] * lifted - crowns, rel=0.01)
+        assert found.loc[customer, "agreed_by_employee_id"] == customer
 
 
-def test_s6_is_the_disciplined_pinned_reps_gain_a_crown_less_the_undisciplined_ones(tmp_path: Path) -> None:
-    _s6_build(tmp_path, disciplined_gain=25.0, undisciplined_gain=-5.0)  # 2.5 a crown and −0.5 a crown
+@pytest.mark.parametrize(
+    "case",
+    [
+        "no order before",
+        "an agreement ending before",
+        "an agreement starting after",
+        "past the history",
+        "no cases of the line before",
+        "no cases of the others in the window",
+    ],
+)
+def test_s6_leaves_an_agreement_out(tmp_path: Path, s6_case: Any, case: str) -> None:
+    s6_case.leave_out(case)
+    s6_case.write(tmp_path)
+    found = measured(Build(tmp_path), S6_FROM)
+    assert found.loc[1, "left_out"] == s6_case.LEFT_OUT[case]
+    assert 1 not in gains(Build(tmp_path), S6_FROM).index
+
+
+def test_s6_counts_only_the_agreements_from_the_day_given(tmp_path: Path, s6_case: Any) -> None:
+    s6_case.write(tmp_path)
+    assert gains(Build(tmp_path), s6_case.start + timedelta(days=1)).empty
+
+
+def test_s6_s_customer_margin_is_net_less_delivery_and_warehouse(tmp_path: Path, s6_case: Any) -> None:
+    """`sales_pl`'s Customer Margin: gross − the discounts − delivery − warehouse, a NULL cost as 0 (G1's rows: the net
+    revenue); the purchase price plays no part."""
+    s6_case.write(tmp_path)
+    margins = _sales_pl(Build(tmp_path)).groupby(["customer_id", "product_line_id"])["customer_margin"].sum()
+    orders = {o["sales_order_id"]: o["customer_id"] for o in s6_case.tables["sales_order"]}
+    off = {r["sales_order_line_id"]: r["amount_line"] for r in s6_case.tables["sales_order_line_discount"]}
+    expected: dict[tuple[int, int], float] = {}
+    for r in s6_case.tables["sales_order_line"]:
+        costs = (r["delivery_cost_case"] or 0) + (r["warehouse_cost_case"] or 0)
+        key = (orders[r["sales_order_id"]], r["sku_id"])
+        expected[key] = expected.get(key, 0.0) + (r["list_price_case"] - costs) * r["qty_cases"]
+        expected[key] -= off.get(r["sales_order_line_id"], 0.0)
+    assert margins.to_dict() == pytest.approx(expected)
+    assert margins[1, 1] < margins[2, 1]  # customer 1's costs: 50 a case
+    for r in s6_case.tables["sales_order_line"]:
+        r["purchase_price_case"] = 0.0
+    s6_case.write(tmp_path / "none")
+    assert _sales_pl(Build(tmp_path / "none")).equals(_sales_pl(Build(tmp_path)))
+
+
+def test_s6_is_the_disciplined_pinned_reps_gain_a_crown_less_the_undisciplined_ones(
+    tmp_path: Path, s6_case: Any
+) -> None:
+    s6_case.write(tmp_path)
     build = Build(tmp_path)
-    assert s6_reps(build, STORIES) == {True: pytest.approx(2.5), False: pytest.approx(-0.5)}
-    assert s6(build, STORIES) == pytest.approx(3.0)
-    found = gains(build, date(2024, 2, 26))
-    assert found.loc[11, "gain"] == pytest.approx(25.0 * 31) and found.loc[11, "discount"] == pytest.approx(310.0)
+    found = gains(build, S6_FROM)
+    ratios = (found["gain"] / found["discount"]).to_dict()
+    assert ratios[1] > 1 > 0 > ratios[2]
+    assert s6_reps(build, STORIES) == {True: pytest.approx(ratios[1]), False: pytest.approx(ratios[2])}
+    assert s6(build, STORIES) == pytest.approx(ratios[1] - ratios[2])
     verdicts = {v.check: v for v in check(tmp_path, STORIES)}
-    assert verdicts["detectors/s6.sql"].passed is True and "pre-G4" in verdicts["detectors/s6.sql"].note
+    assert verdicts["detectors/s6.sql"].passed is True
+    assert verdicts["detectors/s6.sql"].note.endswith("a crown; 2 of 2 agreements counted")
     assert verdicts["detectors/s6_targets.sql"].passed is None  # promotion_result is G4's
 
 
-def test_s6_counts_only_the_agreements_whose_8_weeks_before_are_in_the_history(tmp_path: Path) -> None:
-    _s6_build(tmp_path, disciplined_gain=25.0, undisciplined_gain=-5.0)
-    assert gains(Build(tmp_path), date(2024, 3, 2)).empty
-
-
-def test_s6_fails_when_the_disciplined_gain_no_more_a_crown(tmp_path: Path) -> None:
-    _s6_build(tmp_path, disciplined_gain=5.0, undisciplined_gain=5.0)
-    assert s6(Build(tmp_path), STORIES) == pytest.approx(0.0, abs=1e-9)
+def test_s6_s_note_names_the_agreements_left_out(tmp_path: Path, s6_case: Any) -> None:
+    s6_case.leave_out("an agreement starting after")
+    s6_case.write(tmp_path)
+    assert s6_note(Build(tmp_path), STORIES).endswith(
+        "a crown; 1 of 3 agreements counted (left out: 1 another before · 1 another after)"
+    )

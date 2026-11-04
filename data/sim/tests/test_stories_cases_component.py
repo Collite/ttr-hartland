@@ -5,15 +5,18 @@ rest is never missed. G5 S5.2 tunes the stories' parameters on the build; these 
 from __future__ import annotations
 
 import itertools
+import math
 import re
 from collections.abc import Callable
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import psycopg
 import pytest
 
-from hartland_sim.config import STORIES_DIR
+from hartland_sim.checks.stories import Build, s6
+from hartland_sim.config import STORIES_DIR, StoriesConfig
 
 pytestmark = pytest.mark.component
 
@@ -413,40 +416,35 @@ def test_s5_counts_the_giveaways_from_the_loans_first_day(db: psycopg.Connection
     assert float(giveaway["PHA"]["cost"]) == pytest.approx(200)
 
 
-# ── S6: a difference, not a ratio ────────────────────────────────────────────
+# ── S6: the twin's measure in SQL (G1 S1.5 T1(d)) ─────────────────────────────
 
 
-def test_s6_holds_when_the_undisciplined_gain_is_negative(db: psycopg.Connection, put: Put) -> None:
-    """The disciplined rep gains 1.2 CZK of margin per discount crown, the undisciplined one loses 0.6: the metric is
-    1.8 (the ratio of ratios was −2, a fail). The disciplined customer's order before the agreement carries its
-    predecessor's discount, which is not this agreement's."""
+@pytest.mark.parametrize(
+    "case", [None, "an agreement ending before", "an agreement starting after", "past the history"]
+)
+def test_s6_is_the_twin_s_value_on_the_hand_built_case(
+    db: psycopg.Connection, put: Put, s6_case: Any, tmp_path: Path, case: str | None
+) -> None:
+    """s6.sql on conftest's `s6_case` = the pandas twin's value on its CSV build (the disciplined customer's gain a
+    crown less the undisciplined one's: a difference, so the negative side holds), and NULL where the twin leaves a
+    side with no agreement counted. `sales_pl`'s Customer Margin is the net revenue where the costs are NULL, never
+    NULL itself."""
+    if case:
+        s6_case.leave_out(case)
+    s6_case.write(tmp_path)
+    twin = s6(Build(tmp_path), StoriesConfig.load())
     with db.transaction(force_rollback=True):
-        _catalogue(db, put)
-        put(db, "okres", okres_id=1)
-        for rep, slot in ((1, "SJC-02"), (2, "SMS-02")):
-            put(db, "area", area_id=rep, code=slot)
-            put(db, "assignment", assignment_id=rep, employee_id=rep, kind="rep_area", area_id=rep, **TENURE)
-            put(db, "customer", customer_id=rep)
-            put(
-                db,
-                "price_agreement",
-                price_agreement_id=rep,
-                customer_id=rep,
-                product_line_id=1,
-                kind="agreed_discount",
-                valid_from=date(2025, 1, 1),
-                valid_to=date(2025, 3, 31),
-                agreed_by_employee_id=rep,
-            )
-        # 90 days; the 8 weeks before give 5 600 ÷ 56 = 100 CZK a day
-        _sale(db, put, customer=1, day=date(2024, 12, 1), gross=7600, agreed=2000)
-        _sale(db, put, customer=1, day=date(2025, 2, 1), gross=31_000, agreed=10_000)  # (21 000 − 9 000) ÷ 10 000
-        _sale(db, put, customer=2, day=date(2024, 12, 1), gross=5600)
-        _sale(db, put, customer=2, day=date(2025, 2, 1), gross=11_000, agreed=5000)  # (6 000 − 9 000) ÷ 5 000
-        _last_order_day(db, put, date(2026, 10, 31))
+        for table, rows in s6_case.tables.items():
+            for row in rows:
+                put(db, table, **row)
         db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        ((nulls,),) = db.execute("SELECT count(*) FROM hartland.sales_pl WHERE customer_margin IS NULL").fetchall()
         metric = _one(db, "detectors/s6.sql")
-    assert float(metric) == pytest.approx(1.2 - (-0.6))
+    assert nulls == 0
+    if case:
+        assert metric is None and math.isnan(twin)
+    else:
+        assert twin > 0.5 and float(metric) == pytest.approx(twin, rel=1e-6)
 
 
 # ── the probes ───────────────────────────────────────────────────────────────
