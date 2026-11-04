@@ -6,6 +6,9 @@ before `history.first_day`).
 - `weather`: the regions' temperatures of the day (S1's weather term) and its `weather_daily` rows;
 - 3 `acquisition` — the acquisitions, losses and cross-sales — first, as S1.2 built it: a store acquired today
   orders today, and one lost today buys nothing;
+- `conditions`, on a month's first day: the month's `customer_condition` from what the month before booked
+  (`month_end.conditions`), after the acquisitions, so a store lost on the 1st has none and one acquired on the 1st
+  has one; the warm-up's first month's are setup's;
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
 - 2 `field`: the tourplans, visits and prompts — G2's, a stub here;
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);
@@ -50,6 +53,7 @@ from hartland_sim.world import Checkpoint, World
 STEPS = (
     "weather",
     "acquisition",
+    "conditions",
     "demand",
     "field",
     "orders",
@@ -168,6 +172,10 @@ class Loop:
 
     def acquisition(self, day: date) -> None:
         acquisition.step(self.world, self.reps, day, self.today.shares)
+
+    def conditions(self, day: date) -> None:
+        if day.day == 1 and day != self.config.history.warm_up_from:
+            month_end_hook.conditions(self.world, self.closing, day, self.output)
 
     def demand(self, day: date) -> None:
         today = self.today

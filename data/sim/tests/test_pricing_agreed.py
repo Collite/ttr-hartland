@@ -132,6 +132,23 @@ def test_a_grant_reserves_its_expected_cost_and_one_past_the_budget_is_refused(w
     assert (agreement.valid_from, agreement.valid_to) == (DAY, date(2023, 3, 31))
 
 
+def test_the_charge_follows_the_line_s_price_index_as_the_budget_does(world: World, rules: Rules) -> None:
+    """review-221 R4: the budgets are at the drifted list, so the charges against them are too."""
+    customer, line = next((c, line) for c, line in _asks(world, "SMS-02") if _cap(rules, c, line) > 0)
+    drifted = Checkpoint.of(world).restore()
+    drifted.price_index = {**drifted.price_index, line: 1.3}
+    flat = expected_gross(world, rules, customer.customer_id, line, DAY, quarter_end(DAY))
+    moved = expected_gross(drifted, rules, customer.customer_id, line, DAY, quarter_end(DAY))
+    assert world.price_index[line] == 1.0 and moved == pytest.approx(1.3 * flat)
+    one, other = (grant(w, rules, customer.customer_id, line, DAY) for w in (world, drifted))
+    assert isinstance(one, Agreement) and isinstance(other, Agreement) and one.discount_pct == other.discount_pct
+    lift = 1 + rules.elasticity[rules.customers[customer.customer_id], rules.lines[line]] * one.discount_pct / 100
+    assert one.budget_charge == round(one.discount_pct / 100 * flat * lift, 2)
+    assert other.budget_charge == round(one.discount_pct / 100 * moved * lift, 2)
+    assert one.budget_charge is not None and other.budget_charge is not None
+    assert abs(other.budget_charge - 1.3 * one.budget_charge) <= 0.01
+
+
 def test_an_ask_without_a_budget_a_phase_or_a_granter_is_refused(world: World, rules: Rules) -> None:
     employee = _rep(world, "SMS-02")
     customer, line = _asks(world, "SMS-02")[0]

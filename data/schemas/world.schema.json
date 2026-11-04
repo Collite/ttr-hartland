@@ -1223,7 +1223,8 @@
           "properties": {
             "error_pct": {
               "type": "array",
-              "minItems": 1,
+              "description": "The planning error (± %) of each month ahead, one month ahead first. A quarter's last month-end plans Q+1's three months, which its budgets read, so at least three.",
+              "minItems": 3,
               "items": {
                 "type": "number",
                 "minimum": 0,

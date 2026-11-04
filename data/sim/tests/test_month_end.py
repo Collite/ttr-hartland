@@ -1,17 +1,19 @@
-"""The month-end's G1 half (G1 S1.4 T3, `05` §3): M+1's conditions from what month M booked (S1.3's tiers), the
-phases from the last six months (R-4), the rolling plan of M+1…M+3 (the demand's expectation × a planning error,
-stream `plan`), M+1's channel lists; each row written under the day it becomes valid."""
+"""The month-end's G1 half (G1 S1.4 T3, `05` §3): a month's conditions on its first day from what the month before
+booked (S1.3's tiers), the phases from the last six months (R-4), the rolling plan of M+1…M+3 (the demand's
+expectation × a planning error, stream `plan`, valued at its quarter's list at today's index), M+1's channel lists;
+each row written under the day it becomes valid."""
 
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.config import ConfigError, StoriesConfig, WorldConfig
 from hartland_sim.dates import add_months
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
@@ -59,12 +61,16 @@ def _rows(run: Path, table: str) -> list[dict[str, str]]:
         return list(csv.DictReader(source))
 
 
-def test_m_plus_1_s_conditions_come_from_what_month_m_booked(world: World, closing: Closing, tmp_path: Path) -> None:
+def test_a_month_s_conditions_come_from_what_the_month_before_booked(
+    world: World, closing: Closing, tmp_path: Path
+) -> None:
     rich, poor = _retail(world, 2)
     lines = _bits(closing, "CLASSIC", "GOLD", "SMESI", "POLEVKY", "NUDLE")  # 5 lines, coffee and culinary
     world.bought[DAY.replace(day=1)] = {rich.customer_id: Bought(51_000.0, 3, lines)}
     with CsvWriter(tmp_path) as writer:
-        rows = month_end.conditions(world, closing, DAY, Output(writer, FEB))
+        rows = month_end.conditions(world, closing, FEB, Output(writer, FEB))
+        with pytest.raises(ValueError, match="first day"):
+            month_end.conditions(world, closing, DAY, Output(writer, FEB))
     assert rich.condition is not None and rich.condition.month == FEB
     assert (rich.condition.volume_tier, rich.condition.volume_pct) == ("VOL-T2", 4)
     assert (rich.condition.cross_sell_tier, rich.condition.cross_sell_pct) == ("XS-T2", 3)  # 2 % + 1 % both brands
@@ -84,8 +90,24 @@ def test_a_row_valid_before_the_first_written_day_is_not_written(
     world: World, closing: Closing, tmp_path: Path
 ) -> None:
     with CsvWriter(tmp_path) as writer:
-        month_end.conditions(world, closing, DAY, Output(writer, date(2023, 3, 1)))
+        month_end.conditions(world, closing, FEB, Output(writer, date(2023, 3, 1)))
     assert not _rows(tmp_path, "customer_condition")
+
+
+def test_a_store_lost_on_the_first_has_no_condition_of_the_month_one_acquired_on_it_has_one(
+    world: World, closing: Closing, tmp_path: Path
+) -> None:
+    """review-221 N2: the conditions run on the 1st after the acquisitions, not on the month-end before."""
+    reps = acquisition.Reps.of(world, STORIES)
+    lost = next(c for c in _retail(world, 200) if not c.traits)
+    reps.rates = acquisition.Rates(1e6, 1e6, 0.0)  # every potential store acquired, every unpinned customer lost
+    acquisition.step(world, reps, FEB)
+    acquired = next(c for c in world.customers.values() if c.channel == "small_retail" and c.since == FEB)
+    assert lost.until == DAY and not lost.active_on(FEB) and acquired.active_on(FEB)
+    with CsvWriter(tmp_path) as writer:
+        month_end.conditions(world, closing, FEB, Output(writer, FEB))
+    written = {int(r["customer_id"]) for r in _rows(tmp_path, "customer_condition")}
+    assert lost.customer_id not in written and acquired.customer_id in written
 
 
 def test_the_phases_follow_the_last_six_months(world: World, closing: Closing) -> None:
@@ -207,6 +229,62 @@ def test_a_quarter_s_last_month_end_keeps_q_plus_1_s_planned_gross_by_budget_hol
     assert {r["month"] for r in rows} == {date(2023, 4, 1), date(2023, 5, 1), date(2023, 6, 1)}
 
 
+def test_a_quarter_end_budgets_q_plus_1_s_three_months_whatever_the_plan_s_reach(
+    world: World, closing: Closing, opening: Setup, tmp_path: Path
+) -> None:
+    """review-221 N1: a plan of four months ahead budgets Q+1's three; fewer than three is refused at load."""
+    plan = replace(WORLD.policies.sales_plan, error_pct=(4, 6, 8, 10))
+    further = replace(closing, config=replace(WORLD, policies=replace(WORLD.policies, sales_plan=plan)))
+    day = date(2023, 3, 31)
+    world.standard_list = standard_list(opening.portfolio.skus, day + timedelta(days=1))
+    with CsvWriter(tmp_path) as writer:
+        rows = month_end.plan(world, further, day, Output(writer, NEVER))
+    assert {r["month"] for r in rows} == {date(2023, m, 1) for m in (4, 5, 6, 7)}
+    customer = row_id("customer", code="KA-TESCO")
+    in_q2 = [r for r in rows if r["customer_id"] == customer and r["month"] <= date(2023, 6, 1)]
+    assert world.planned_gross["KA-TESCO"] == pytest.approx(sum(r["planned_net_revenue"] for r in in_q2))
+
+
+def test_a_plan_of_fewer_than_three_months_is_refused(tmp_path: Path) -> None:
+    import yaml
+
+    from hartland_sim.config import WORLD_FILE
+
+    data = yaml.safe_load(WORLD_FILE.read_text(encoding="utf-8"))
+    data["policies"]["sales_plan"]["error_pct"] = [4, 6]
+    path = tmp_path / "world.yaml"
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    with pytest.raises(ConfigError, match=r"policies\.sales_plan\.error_pct"):
+        WorldConfig.load(path)
+
+
+def _price_per_case(world: World, closing: Closing, day: date, month: date, line: str) -> float:
+    cases, gross = month_end.expectation(world, closing, day, month)
+    i = list(closing.rules.lines).index(line)
+    return float(gross[:, i].sum() / cases[:, i].sum())
+
+
+def test_a_month_of_the_next_quarter_is_valued_at_its_list_at_today_s_index(
+    world: World, closing: Closing, opening: Setup
+) -> None:
+    """review-221 R5: on 2024-02-29 May's GOLD holds the GOLD-CREMA SKUs launched on 2024-04-02, which SC-2024-Q1
+    does not list; they are valued at their base price × today's index, not 0."""
+    day, may = date(2024, 2, 29), date(2024, 5, 1)
+    skus = opening.portfolio.skus
+    launched = [s for s in skus if s.line == "GOLD" and s.launched_on == date(2024, 4, 2)]
+    assert launched
+    world.standard_list = standard_list(skus, day, world.price_index)
+    assert not any(s.sku_id in world.standard_list.prices for s in launched)
+    march = _price_per_case(world, closing, day, date(2024, 3, 1), "GOLD")
+    flat = _price_per_case(world, closing, day, may, "GOLD")
+    assert abs(flat / march - 1) <= 0.03
+    world.price_index = {**world.price_index, "GOLD": 1.2}
+    world.standard_list = standard_list(skus, day, world.price_index)
+    assert _price_per_case(world, closing, day, may, "GOLD") == pytest.approx(1.2 * flat, rel=1e-4)
+    made = month_end.priced(world, closing, may)
+    assert made.code == "SC-2024-Q2" and all(s.sku_id in made.prices for s in launched)
+
+
 def test_m_plus_1_s_channel_lists_need_the_standard_of_its_quarter(
     world: World, closing: Closing, tmp_path: Path
 ) -> None:
@@ -233,7 +311,7 @@ def test_the_warm_up_s_last_month_end_writes_january_2024_and_nothing_before(
     world.standard_list = standard_list(skus, first)  # the quarter-end's roll
     with CsvWriter(tmp_path) as writer:
         month_end.close(world, closing, date(2023, 12, 31), Output(writer, first))
-    assert {r["month"] for r in _rows(tmp_path, "customer_condition")} == {"2024-01-01"}
+    assert not _rows(tmp_path, "customer_condition")  # 2024-01-01's own step writes January's (test_day)
     assert {r["valid_from"] for r in _rows(tmp_path, "channel_price_list")} == {"2024-01-01"}
     assert {(r["month"], r["version"]) for r in _rows(tmp_path, "sales_plan")} >= {("2024-01-01", "3")}
 

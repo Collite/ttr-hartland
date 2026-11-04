@@ -419,8 +419,9 @@ def granter(world: World, customer: Customer, day: date) -> int | None:
 
 
 def expected_gross(world: World, rules: Rules, customer_id: int, line: str, first: date, last: date) -> float:
-    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices: what
-    its points order (`loop.demand.expected_gross`'s rule), so 0 on a line it does not buy."""
+    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices at the
+    line's current price index (`World.price_index`: the list its orders are priced at, as the quarter's budget is):
+    what its points order (`loop.demand.expected_gross`'s rule), so 0 on a line it does not buy."""
     demand = world.demand
     assert demand is not None
     c, i = rules.customers[customer_id], rules.lines[line]
@@ -428,7 +429,7 @@ def expected_gross(world: World, rules: Rules, customer_id: int, line: str, firs
     _, listed, price_line = demand.catalogue.shares(first, len(demand.lines))
     groups = demand.point_group[points]
     daily = (demand.base[points, i] * (listed * price_line)[groups, i]).sum() * demand.carried[c, i]
-    return float(daily) * ((last - first).days + 1)
+    return float(daily) * ((last - first).days + 1) * world.price_index.get(line, 1.0)
 
 
 def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) -> Agreement | Refusal:
