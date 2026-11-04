@@ -450,8 +450,8 @@ class Meta:
     """`_sim_meta`: what `load-world` and `prolong` check a database against (contracts §2).
 
     `world_sha256` hashes `data/world.yaml` as `stories_sha256` hashes the stories; `build_id` names the inputs
-    (the seed, the world, the stories, the inventory, the reference files, the package version), so two builds of the
-    same inputs carry the same id and their CSVs stay byte-identical."""
+    (the seed, the world, the stories, the inventory, the reference files, the package version, the generator's
+    revision), so two builds of the same inputs carry the same id and their CSVs stay byte-identical."""
 
     master_seed: int
     stories_sha256: str

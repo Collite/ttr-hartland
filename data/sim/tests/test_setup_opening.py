@@ -21,6 +21,7 @@ from hartland_sim.config import InventoryConfig, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CellError, CsvWriter, cell
 from hartland_sim.setup.opening import STATE_TABLES, inputs, rates, state_rows, tracked, write
+from hartland_sim.setup.opening import meta as opening_meta
 from hartland_sim.setup.portfolio import listed
 from hartland_sim.setup.rows import tables
 from hartland_sim.setup.run import Setup
@@ -273,6 +274,18 @@ def test_the_meta_names_the_inputs(written: Path) -> None:
     assert meta.world_sha256 == hashlib.sha256((Path(__file__).parents[2] / "world.yaml").read_bytes()).hexdigest()
     assert meta.last_day_done == OPENING_DAY
     assert len(meta.build_id) == 16
+
+
+def test_the_generator_s_revision_is_in_the_build_id_and_nothing_else(monkeypatch: pytest.MonkeyPatch) -> None:
+    """⚑R221-C (re-review 1 RR1): a change to what a build writes bumps `REVISION`, and a run of the old is not this."""
+    import hartland_sim
+
+    held = opening_meta(WORLD, STORIES, OPENING_DAY)
+    monkeypatch.setattr(hartland_sim, "REVISION", hartland_sim.REVISION + 1)
+    bumped = opening_meta(WORLD, STORIES, OPENING_DAY)
+    assert bumped.build_id != held.build_id
+    assert replace(bumped, build_id=held.build_id) == held
+    assert hartland_sim.__version__ == "0.11.0"
 
 
 def test_the_opening_checkpoint_round_trips(opening: Setup, written: Path) -> None:

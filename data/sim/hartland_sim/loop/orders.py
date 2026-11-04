@@ -8,8 +8,9 @@ customers' asks for a discount.
 - `source` is drawn by the channel's mix (`world.yaml channels.<channel>.order_sources`; a station shop takes special
   retail's), stream `order` by the order's id. A visit or a phone order is taken by who holds the customer that day —
   its area's rep, its KAM (`pricing.granter`) — the others by no one. When no one holds it that day (an area or an
-  account unheld), the same draw picks again among the mix's other sources, their shares renormalised (review-221
-  N3): no visit nobody made. `visit_id` stays empty: the visits are G2 S2.1's.
+  account unheld), the same draw, rescaled within the source it picked, picks again among the mix's other sources,
+  their shares renormalised (review-221 N3, RR4): no visit nobody made. `visit_id` stays empty: the visits are G2
+  S2.1's.
 - `requested_on` is the next working day (`setup.calendar`'s Czech days off); `dc_site_id` the DC of the point's
   region (`world.yaml sites.dcs`); `status` the credit check's — `released`, or `held` with its reason (A-14).
 Its lines are `pricing.price_order`'s, numbered in that order (the free lines last), each with the purchase price of
@@ -156,11 +157,23 @@ def order_no(code: str, day: date, n: int) -> str:
     return ORDER_NO.format(day=day, code=code, n=n)
 
 
+def _pick(shares: Array, draw: float) -> int:
+    return min(int(np.searchsorted(shares, draw, side="right")), len(shares) - 1)
+
+
 def source(desk: Desk, channel: str, draw: float, taken: bool = True) -> str:
     """The source a uniform `draw` picks from `channel`'s mix (a terms channel: a station shop's is special retail);
     from its sources no one takes when `taken` is False (module docstring)."""
     names, shares = (desk.sources if taken else desk.untaken)[channel]
-    return names[min(int(np.searchsorted(shares, draw, side="right")), len(names) - 1)]
+    return names[_pick(shares, draw)]
+
+
+def rescaled(desk: Desk, channel: str, draw: float) -> float:
+    """`draw` within the interval of `channel`'s mix it falls in, as a uniform of [0, 1) again: one draw, read twice."""
+    _, shares = desk.sources[channel]
+    k = _pick(shares, draw)
+    low = float(shares[k - 1]) if k else 0.0
+    return min(max((draw - low) / (float(shares[k]) - low), 0.0), float(np.nextafter(1.0, 0.0)))
 
 
 def order(
@@ -190,7 +203,7 @@ def order(
     kind = source(desk, terms(customer), draw)
     taker = granter(world, customer, day) if kind in TAKEN else None
     if kind in TAKEN and taker is None:
-        kind = source(desk, terms(customer), draw, taken=False)
+        kind = source(desk, terms(customer), rescaled(desk, terms(customer), draw), taken=False)
     demand = world.demand
     assert demand is not None
     spot = demand.spots[rules.points[basket.delivery_point_id]]

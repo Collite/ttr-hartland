@@ -17,14 +17,17 @@ day loop from the warm-up to the last day, the state at the end.
 
 **Prolong** (`prolong`): the loop resumed from a run's last checkpoint to a later day, its rows appended to the run's
 files, then the same end — the state tables and the promotions rendered again, the checkpoint and `_sim_meta` moved.
-- **The guard** (⚑R221-A): the run's `_sim_meta.build_id` must be this checkout's — the seed, `world.yaml`, the
-  stories (or their null world), `inventory.yaml`, the reference files and the package version (`opening.meta`). A
-  run of other inputs is built again, never extended; `CsvWriter` also refuses a file under another header.
+- **The guard** (⚑R221-A, ⚑R221-C): the run's `_sim_meta.build_id` must be this checkout's — the seed, `world.yaml`,
+  the stories (or their null world), `inventory.yaml`, the reference files, the package version and the generator's
+  revision (`hartland_sim.REVISION`, `opening.meta`). A run of other inputs or of another generator is built again,
+  never extended; `CsvWriter` also refuses a file under another header.
 - **Resumable:** before its first row a prolong writes `_prolong.json` — the day it starts from and the size of each
-  file it may append to (all but the rendered tables and the run's own files, `determinism.RENDERED`/`OWN`). The end
+  file it may append to (all but the rendered tables and the run's own files, `opening.RENDERED`/`OWN`). The end
   keeps that day's checkpoint, saves `_sim_meta`, then deletes the marker. A prolong that finds the marker left by one
   that stopped (an exception, Ctrl-C, the machine) first cuts each listed file back to its size, removes a table the
-  stopped one began, and runs from the marker's day again, so no row is written twice. A run therefore keeps the last
+  stopped one began, and runs from the marker's day again, so no row is written twice; a marker older than
+  `_sim_meta`'s last day was left by one that stopped after saving it, so it finished and the marker is only removed.
+  A run therefore keeps the last
   two checkpoints of the loop — a prolong's first day and its last — beside the warm-up's; the next prolong's end
   drops the older.
 
@@ -43,7 +46,6 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-from hartland_sim.checks.determinism import OWN, RENDERED
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import quarter_start
 from hartland_sim.io.csv_writer import CsvWriter
@@ -53,7 +55,7 @@ from hartland_sim.rng import using_master_seed
 from hartland_sim.setup import opening
 from hartland_sim.setup import portfolio as portfolio_setup
 from hartland_sim.setup.market import Market
-from hartland_sim.setup.opening import REPO_DIR, STATE_TABLES, state_rows
+from hartland_sim.setup.opening import OWN, RENDERED, REPO_DIR, STATE_TABLES, state_rows
 from hartland_sim.setup.promotions import status_of
 from hartland_sim.setup.rows import tables
 from hartland_sim.setup.run import run as setup
@@ -117,7 +119,7 @@ def prolong(run: Path, until: date, world: WorldConfig | None = None, stories: S
     differs = _differs(held, opening.meta(world, stories, held.last_day_done))
     if differs:
         raise ValueError(f"{run} is a build of other inputs ({', '.join(differs)} differ); build it again")
-    recovered = _recover(run)
+    recovered = _recover(run, held.last_day_done)
     since = recovered or held.last_day_done
     if until <= since:
         raise ValueError(f"{run} is done to {since}, past {until}")
@@ -148,7 +150,9 @@ def _differs(held: Meta, current: Meta) -> list[str]:
         ("world.yaml", held.world_sha256 != current.world_sha256),
         ("the stories", held.stories_sha256 != current.stories_sha256),
     ]
-    return [name for name, differ in named if differ] or ["the inventory, reference files or version"]
+    return [name for name, differ in named if differ] or [
+        "the inventory, reference files, version or generator revision"
+    ]
 
 
 def _appended(path: Path) -> bool:
@@ -165,14 +169,21 @@ def _mark(run: Path, since: date) -> None:
     partial.replace(path)
 
 
-def _recover(run: Path) -> date | None:
+def _recover(run: Path, done: date) -> date | None:
     """An unfinished prolong's files cut back to their sizes before it, a table it began removed; the day it ran from.
-    None when `run` holds no `_prolong.json`; `ValueError`, before any file is touched, when a listed file is gone or
-    shorter than its size."""
+    None when `run` holds no `_prolong.json`, or one older than `done` (`_sim_meta`'s last day: that prolong finished,
+    and its marker is removed with nothing cut); `ValueError`, before any file is touched, when the marker is newer
+    than `done` or a listed file is gone or shorter than its size."""
     path = run / PROLONG_MARK
     if not path.is_file():
         return None
     mark = json.loads(path.read_text(encoding="utf-8"))
+    since = date.fromisoformat(mark["from"])
+    if since < done:
+        path.unlink()
+        return None
+    if since > done:
+        raise ValueError(f"{run}'s unfinished prolong starts {since}, after its _sim_meta's {done}; build it again")
     sizes: dict[str, int] = mark["sizes"]
     files = {p.name: p for p in sorted(run.glob("*.csv")) if _appended(p)}
     lost = sorted(name for name, size in sizes.items() if name not in files or files[name].stat().st_size < size)
@@ -183,7 +194,7 @@ def _recover(run: Path) -> date | None:
             os.truncate(file, sizes[name])
         else:
             file.unlink()
-    return date.fromisoformat(mark["from"])
+    return since
 
 
 def _end(run: Path, loop: Loop, world: WorldConfig, stories: StoriesConfig, since: date | None = None) -> Meta:

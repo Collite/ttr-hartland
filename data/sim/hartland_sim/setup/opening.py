@@ -21,7 +21,12 @@ prolong renders them from the checkpoint alone. The opening is a build of zero d
 `_sim_meta` (the inputs' hashes, the day before the warm-up as `last_day_done`) and the opening checkpoint. A run
 folder is written once. The inputs are the committed files a build reads (`inputs`): `world.yaml`, the inventory, the
 stories and the reference files git tracks, each named by its path in the repo, so an untracked `.DS_Store` never
-changes a `build_id`.
+changes a `build_id`. `build_id` hashes them, the seed, the package version and the generator's revision
+(`hartland_sim.REVISION`, bumped by a change to what a build writes), so `prolong` extends only a run of the same.
+
+**A run's files** (`RENDERED`, `OWN`): the tables a build's end renders whole — the state tables and the promotions,
+their status of the last day — and the run's own files, `_sim_meta` and `_sim_checkpoint`. A prolong appends to every
+other file (`loop.build`), and the determinism battery's closed documents leave both out (`checks.determinism`).
 """
 
 from __future__ import annotations
@@ -46,10 +51,12 @@ from hartland_sim.setup.policies import budget_row
 from hartland_sim.setup.portfolio import Portfolio, listed
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, row, tables
-from hartland_sim.world import Checkpoint, Meta, Stock, World, digest
+from hartland_sim.world import CHECKPOINT_FILE, META_FILE, Checkpoint, Meta, Stock, World, digest
 
 REPO_DIR = DATA_DIR.parent
 STATE_TABLES = ("employee", "assignment", "customer", "lifecycle_phase", "discount_budget")
+RENDERED = ("promotion", *STATE_TABLES)  # rendered at a build's end, never appended to (module docstring)
+OWN = (CHECKPOINT_FILE, META_FILE)  # the run's own files
 
 
 def rates(
@@ -140,14 +147,22 @@ def tracked(folder: Path) -> list[Path]:
 
 
 def meta(world: WorldConfig, stories: StoriesConfig, last_day_done: date) -> Meta:
-    """`_sim_meta` for a build of the committed inputs (`world.Meta`): the files on disk, the seed, and the stories'
-    `sha256` — the files' own, or the null world's (`StoriesConfig.null`), so a null build has an id of its own."""
+    """`_sim_meta` for a build of the committed inputs (`world.Meta`): the files on disk, the seed, the package version,
+    the generator's revision (`hartland_sim.REVISION`) and the stories' `sha256` — the files' own, or the null world's
+    (`StoriesConfig.null`), so a null build has an id of its own."""
     return Meta(
         master_seed=world.master_seed,
         stories_sha256=stories.sha256,
         world_sha256=hashlib.sha256(WORLD_FILE.read_bytes()).hexdigest(),
         last_day_done=last_day_done,
-        build_id=digest(REPO_DIR, inputs(), str(world.master_seed), hartland_sim.__version__, stories.sha256)[:16],
+        build_id=digest(
+            REPO_DIR,
+            inputs(),
+            str(world.master_seed),
+            hartland_sim.__version__,
+            str(hartland_sim.REVISION),
+            stories.sha256,
+        )[:16],
     )
 
 

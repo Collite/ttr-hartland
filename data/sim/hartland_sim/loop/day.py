@@ -8,7 +8,7 @@ before `history.first_day`).
   orders today, and one lost today buys nothing;
 - `conditions`, on a month's first day: the month's `customer_condition` from what the month before booked
   (`month_end.conditions`), after the acquisitions, so a store lost on the 1st has none and one acquired on the 1st
-  has one; the warm-up's first month's are setup's;
+  has one; the warm-up's first month has none (no month before it);
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
 - 2 `field`: the tourplans, visits and prompts — G2's, a stub here;
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);

@@ -103,9 +103,9 @@ jobs:
       - name: just stories-check --dry (the answer key)
         run: just stories-check --dry
 
-      # `stories.md` is written only after every twin has run, into a fresh run folder: the grep fails exactly when
-      # the check crashed, whatever its verdicts.
+      # `stories.md` is written only after every twin has run, into a fresh run folder, and ends with "N of M run checks
+      # pass": the grep fails when the check crashed or no twin ran (M = 0, every table missing), whatever the verdicts.
       - name: just stories-check --csv ci-3-months (the twins over the build; one quarter judges nothing)
         run: |
           just stories-check --csv ci-3-months || true
-          grep -q 'run checks pass' data/build/ci-3-months/stories.md
+          grep -qE '^[0-9]+ of [1-9][0-9]* run checks pass' data/build/ci-3-months/stories.md

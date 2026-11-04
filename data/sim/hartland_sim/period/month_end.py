@@ -10,7 +10,7 @@ written.
   after the acquisitions — review-221 N2): each tiered (small-retail) customer active that day gets the month's
   `Condition` from what it booked the month before (`World.bought`): its net revenue, the product lines it paid for,
   whether coffee and culinary both. It is set on the customer and written. A store lost on the 1st has none, one
-  acquired on the 1st has one; the warm-up's first month's are setup's.
+  acquired on the 1st has one; the warm-up's first month has none (no month before it).
 - **The phases** (R-4, `world.yaml policies.lifecycle`): each tiered customer active on M+1's first day is phased from
   its last `lookback_months` months: VIP when their net revenue reached `vip_min_net_revenue`, regular when it ordered
   in `regular_min_order_months` of them, else occasional. A change opens an episode from M+1's first day in the

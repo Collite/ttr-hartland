@@ -16,8 +16,10 @@ from pathlib import Path
 
 import pytest
 
+import hartland_sim
 from hartland_sim.checks.determinism import closed, hashes
 from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.loop import build as builder
 from hartland_sim.loop.build import BUILD_JSON, PROLONG_MARK, Built, build, prolong
 from hartland_sim.loop.day import Loop
 from hartland_sim.setup.market import Market
@@ -121,12 +123,38 @@ def test_a_prolong_is_the_straight_build_on_the_closed_documents(tmp_path: Path,
 
 
 def test_a_prolong_refuses_a_run_of_another_build_id(tmp_path: Path, early: tuple[Path, Path]) -> None:
-    """⚑R221-A: the inventory, the reference files and the version are in `build_id`, not in the three hashes."""
+    """⚑R221-A: the inventory, the reference files, the version and the revision are in `build_id`, not in the three
+    hashes."""
     run = _copy(early[0], tmp_path)
     replace(Meta.load(run), build_id="0" * 16).save(run)
     before = hashes(run)
-    with pytest.raises(ValueError, match="other inputs .the inventory, reference files or version differ"):
+    with pytest.raises(ValueError, match="other inputs .the inventory, reference files, version or generator revision"):
         prolong(run, DAY, EARLY, STORIES)
+    assert hashes(run) == before and not (run / PROLONG_MARK).exists()
+
+
+def test_a_prolong_refuses_a_run_of_another_generator_revision(
+    tmp_path: Path, early: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """⚑R221-C (re-review 1 RR1): a bump of `REVISION` alone refuses the run, by name, without touching it."""
+    run = _copy(early[0], tmp_path)
+    before = hashes(run)
+    monkeypatch.setattr(hartland_sim, "REVISION", hartland_sim.REVISION + 1)
+    with pytest.raises(ValueError, match="other inputs .the inventory, reference files, version or generator revision"):
+        prolong(run, DAY, EARLY, STORIES)
+    assert hashes(run) == before and not (run / PROLONG_MARK).exists()
+
+
+def test_a_marker_older_than_the_meta_cuts_nothing(tmp_path: Path, early: tuple[Path, Path]) -> None:
+    """RR3: a prolong that stopped after saving `_sim_meta` finished; its marker is removed, no file cut back."""
+    run = _copy(early[0], tmp_path)
+    builder._mark(run, BUILT)  # as the prolong below writes it
+    stale = (run / PROLONG_MARK).read_text(encoding="utf-8")
+    prolong(run, DAY, EARLY, STORIES)
+    (run / PROLONG_MARK).write_text(stale, encoding="utf-8")
+    before = hashes(run)
+    with pytest.raises(ValueError, match="past"):
+        prolong(run, BUILT, EARLY, STORIES)
     assert hashes(run) == before and not (run / PROLONG_MARK).exists()
 
 

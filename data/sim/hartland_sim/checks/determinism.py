@@ -23,11 +23,8 @@ from pathlib import Path
 
 from hartland_sim.config import WorldConfig
 from hartland_sim.dates import add_months
-from hartland_sim.setup.opening import STATE_TABLES
-from hartland_sim.world import CHECKPOINT_FILE, META_FILE
+from hartland_sim.setup.opening import OWN, RENDERED
 
-RENDERED = ("promotion", *STATE_TABLES)  # rendered at a build's end: its last day's, not a closed document
-OWN = (CHECKPOINT_FILE, META_FILE)
 Keep = Callable[[dict[str, str]], bool]
 
 

@@ -205,6 +205,19 @@ def test_a_visit_or_a_phone_order_no_one_can_take_draws_again_among_the_others(
         Desk.of(world, Rules.of(opening.world, WORLD, STORIES), replace(WORLD, channels=taken))
 
 
+def test_the_re_pick_follows_the_untaken_shares_when_there_are_several(world: World, opening: Setup) -> None:
+    """RR4: the draw is rescaled within the visit's interval, so {visit .5, portal .25, web .25} re-picks half each."""
+    channels = WORLD.channels
+    mix = {"visit": 0.5, "portal": 0.25, "web": 0.25}
+    config = replace(WORLD, channels=replace(channels, small_retail=replace(channels.small_retail, order_sources=mix)))
+    desk = Desk.of(world, Rules.of(opening.world, WORLD, STORIES), config)
+    store = _customers(world, "small_retail")[0]
+    store.area = None
+    draws = [(k + 0.5) / 200 for k in range(100)]  # evenly over the visit's [0, 0.5)
+    counts = Counter(_head(world, desk, _basket(world, store), draw)["source"] for draw in draws)
+    assert set(counts) == {"portal", "web"} and abs(counts["portal"] - counts["web"]) <= 2
+
+
 def test_an_order_of_a_customer_with_an_invoice_overdue_is_held(world: World, desk: Desk) -> None:
     store = _customers(world, "small_retail")[0]
     due = DAY - timedelta(days=WORLD.finance.hold.overdue_days_over + 1)
