@@ -111,6 +111,17 @@ def test_the_writer_appends_under_one_header_and_refuses_a_null_in_a_not_null_co
         writer.write_all({"no_such_table": []})
 
 
+def test_the_writer_appends_only_under_the_inventory_s_header(tmp_path: Path) -> None:
+    """review-221 R1: a run written under an older inventory is refused, not extended."""
+    path = tmp_path / "calendar.csv"
+    path.write_text("day,year,quarter\n2024-01-01,2024,1\n", encoding="utf-8")
+    before = path.read_bytes()
+    row = {"day": date(2024, 1, 2), "year": 2024, "quarter": 1, "month": 1, "week": 1, "iso_year": 2024}
+    with CsvWriter(tmp_path) as writer, pytest.raises(ValueError, match="header is not the inventory's calendar"):
+        writer.append("calendar", [row])
+    assert path.read_bytes() == before
+
+
 def test_write_all_goes_in_load_order(opening: Setup, tmp_path: Path) -> None:
     with CsvWriter(tmp_path) as writer:
         names = writer.write_all(opening.tables)

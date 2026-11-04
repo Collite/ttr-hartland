@@ -8,8 +8,9 @@ a boolean as `true`/`false`, `jsonb` as compact JSON with sorted keys, text as i
 NULL — so an empty text, which COPY would read as NULL too, is refused rather than written.
 
 `CsvWriter` keeps each table's file open and appends: setup writes its tables once, the day loop appends each day's
-rows (`append`); a table's file is created with its header on its first rows, and `write_all` writes a set of tables
-in the inventory's `load_order`.
+rows (`append`); a table's file is created with its header on its first rows, an existing one is appended to only
+under the inventory's header for its table (a run of an older inventory is refused, not extended), and `write_all`
+writes a set of tables in the inventory's `load_order`.
 """
 
 from __future__ import annotations
@@ -200,12 +201,18 @@ class CsvWriter:
         if name not in self.files:
             table = _tables()[name]
             path = self.run / f"{name}.csv"
-            new = not path.exists()
+            header = [column.name for column in table.columns]
+            new = not path.exists() or path.stat().st_size == 0
+            if not new:
+                with path.open(encoding="utf-8", newline="") as source:
+                    held = next(csv.reader(source), [])
+                if held != header:
+                    raise ValueError(f"{path}'s header is not the inventory's {name}: the run is of other inputs")
             self.run.mkdir(parents=True, exist_ok=True)
             handle = path.open("a", encoding="utf-8", newline="")
             writer = csv.writer(handle, lineterminator="\n")
             if new:
-                writer.writerow([column.name for column in table.columns])
+                writer.writerow(header)
             self.files[name] = (handle, writer)
         return self.files[name][1]
 

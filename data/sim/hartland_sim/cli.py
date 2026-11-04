@@ -171,6 +171,8 @@ def prolong(args: argparse.Namespace) -> int:
     except (FileNotFoundError, ValueError) as error:
         print(f"hartland-sim prolong: {error}", file=sys.stderr)
         return 1
+    if built.recovered:
+        print(f"hartland-sim prolong: {run} held an unfinished prolong, cut back and run again from {built.recovered}")
     print(f"hartland-sim prolong: {run} to {args.until} in {built.timings['total']:.0f} s")
     return 0
 

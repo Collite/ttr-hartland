@@ -1,13 +1,15 @@
 """The determinism battery (G1 S1.4 T5, `05` §7). The unit tier: the measures — a build's per-file hashes, and its
 closed documents by a day, the rows a prolong to that day must give as a straight build does whatever was appended
-after or in which order — and a prolong of a few days against a straight build. The build tier (`-m build`): two
-2024 builds byte-equal, prolongs from 2024-04-09 to 05-09 and across 2024-03-31 equal to the straight 2025 build on
-the closed documents, another seed another world."""
+after or in which order — and a prolong of a few days against a straight build: refused on a run of other inputs
+(⚑R221-A), and run again after one that stopped, with no row written twice (review-221 R2). The build tier
+(`-m build`): two 2024 builds byte-equal, prolongs from 2024-04-09 to 05-09 and across 2024-03-31 equal to the straight
+2025 build on the closed documents, another seed another world."""
 
 from __future__ import annotations
 
 import csv
 import json
+import shutil
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -16,13 +18,15 @@ import pytest
 
 from hartland_sim.checks.determinism import closed, hashes
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.loop.build import BUILD_JSON, Built, build, prolong
+from hartland_sim.loop.build import BUILD_JSON, PROLONG_MARK, Built, build, prolong
+from hartland_sim.loop.day import Loop
 from hartland_sim.setup.market import Market
 from hartland_sim.world import Checkpoint, Meta
 
 WORLD = WorldConfig.load()
 STORIES = StoriesConfig.load()
 EARLY = replace(WORLD, history=replace(WORLD.history, first_day=date(2023, 1, 1)))  # the loop writes from day one
+BUILT, DAY = date(2023, 1, 3), date(2023, 1, 5)  # the miniature battery's build and its prolong's day
 
 
 def _write(run: Path, table: str, header: list[str], rows: list[list[str]]) -> None:
@@ -72,15 +76,38 @@ def test_a_changed_closed_row_changes_its_table_s_hash(tmp_path: Path) -> None:
     assert [name for name in found if found[name] != changed[name]] == ["sales_order_line"]
 
 
-def test_a_prolong_is_the_straight_build_on_the_closed_documents(tmp_path: Path, osm_market: Market) -> None:
+def test_closed_documents_without_the_orders_file_skip_the_lines_parents(tmp_path: Path) -> None:
+    run = _run(tmp_path / "run", [["1", "2024-02-01"]])
+    (run / "sales_order.csv").unlink()
+    found = closed(run, date(2024, 2, 10))
+    assert "sales_order" not in found and {"sales_order_line", "sales_order_line_discount"} <= set(found)
+
+
+@pytest.fixture(scope="module")
+def early(tmp_path_factory: pytest.TempPathFactory, osm_market: Market) -> tuple[Path, Path]:
+    """The miniature battery's runs, built once: to the 3rd (each test prolongs a copy) and straight to the 5th."""
+    built = build(tmp_path_factory.mktemp("built") / "run", BUILT, EARLY, STORIES, market=osm_market)
+    straight = build(tmp_path_factory.mktemp("straight") / "run", DAY, EARLY, STORIES, market=osm_market)
+    return built.run, straight.run
+
+
+def _copy(run: Path, to: Path) -> Path:
+    return Path(shutil.copytree(run, to / "run"))
+
+
+def _order_ids(run: Path) -> list[str]:
+    with (run / "sales_order.csv").open(encoding="utf-8") as source:
+        return [r["sales_order_id"] for r in csv.DictReader(source)]
+
+
+def test_a_prolong_is_the_straight_build_on_the_closed_documents(tmp_path: Path, early: tuple[Path, Path]) -> None:
     """T5's battery in miniature (the build tier runs it on 2024): a build to the 3rd prolonged to the 5th gives the
     closed documents of a straight build to the 5th, and only the days after the 3rd are appended."""
-    day = date(2023, 1, 5)
-    straight = build(tmp_path / "straight", day, EARLY, STORIES, market=osm_market)
-    prolonged = tmp_path / "prolonged"
-    build(prolonged, date(2023, 1, 3), EARLY, STORIES, market=osm_market)
-    prolong(prolonged, day, EARLY, STORIES)
-    assert closed(prolonged, day, EARLY) == closed(straight.run, day, EARLY)
+    day = DAY
+    prolonged = _copy(early[0], tmp_path)
+    assert prolong(prolonged, day, EARLY, STORIES).recovered is None
+    assert closed(prolonged, day, EARLY) == closed(early[1], day, EARLY)
+    assert not (prolonged / PROLONG_MARK).exists()
     assert Meta.load(prolonged).last_day_done == day and Checkpoint.load(prolonged).day == day
     with (prolonged / "sales_order.csv").open(encoding="utf-8") as source:
         days = {r["ordered_on"] for r in csv.DictReader(source)}
@@ -89,8 +116,63 @@ def test_a_prolong_is_the_straight_build_on_the_closed_documents(tmp_path: Path,
     assert [p["until"] for p in report["prolongs"]] == ["2023-01-05"]
     with pytest.raises(ValueError, match="past"):
         prolong(prolonged, day, EARLY, STORIES)
-    with pytest.raises(ValueError, match="other inputs"):
+    with pytest.raises(ValueError, match="other inputs .the master seed differ"):
         prolong(prolonged, date(2023, 1, 9), replace(EARLY, master_seed=EARLY.master_seed + 1), STORIES)
+
+
+def test_a_prolong_refuses_a_run_of_another_build_id(tmp_path: Path, early: tuple[Path, Path]) -> None:
+    """⚑R221-A: the inventory, the reference files and the version are in `build_id`, not in the three hashes."""
+    run = _copy(early[0], tmp_path)
+    replace(Meta.load(run), build_id="0" * 16).save(run)
+    before = hashes(run)
+    with pytest.raises(ValueError, match="other inputs .the inventory, reference files or version differ"):
+        prolong(run, DAY, EARLY, STORIES)
+    assert hashes(run) == before and not (run / PROLONG_MARK).exists()
+
+
+def test_a_prolong_stopped_in_its_loop_runs_again_as_the_straight_build(
+    tmp_path: Path, early: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R2: the 4th is appended, the 5th raises; the next prolong cuts the files back and runs from the 3rd again."""
+    run = _copy(early[0], tmp_path)
+    ran = Loop.run
+
+    def stopping(loop: Loop, day: date) -> None:
+        if day == DAY:
+            raise KeyboardInterrupt
+        ran(loop, day)
+
+    monkeypatch.setattr(Loop, "run", stopping)
+    with pytest.raises(KeyboardInterrupt):
+        prolong(run, DAY, EARLY, STORIES)
+    assert (run / PROLONG_MARK).is_file() and "2023-01-04" in (run / "sales_order.csv").read_text(encoding="utf-8")
+    monkeypatch.undo()
+    assert prolong(run, DAY, EARLY, STORIES).recovered == BUILT
+    assert closed(run, DAY, EARLY) == closed(early[1], DAY, EARLY)
+    ids = _order_ids(run)
+    assert len(ids) == len(set(ids)) == len(_order_ids(early[1]))
+    assert not (run / PROLONG_MARK).exists() and Meta.load(run).last_day_done == DAY
+
+
+def test_a_prolong_stopped_at_its_meta_runs_again_as_the_straight_build(
+    tmp_path: Path, early: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R2: the checkpoint of the 5th is saved, `_sim_meta` is not; the prolong's first day's checkpoint is kept."""
+    run = _copy(early[0], tmp_path)
+
+    def failing(meta: Meta, into: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Meta, "save", failing)
+    with pytest.raises(OSError, match="disk full"):
+        prolong(run, DAY, EARLY, STORIES)
+    assert Checkpoint.load(run).day == DAY and Meta.load(run).last_day_done == BUILT
+    monkeypatch.undo()
+    assert prolong(run, DAY, EARLY, STORIES).recovered == BUILT
+    assert closed(run, DAY, EARLY) == closed(early[1], DAY, EARLY)
+    ids = _order_ids(run)
+    assert len(ids) == len(set(ids))
+    assert Checkpoint.load(run, BUILT).day == BUILT  # kept until the next prolong's end
 
 
 # ── the build tier ─────────────────────────────────────────────────────────────

@@ -97,7 +97,8 @@ def closed(run: Path, day: date, world: WorldConfig | None = None) -> dict[str, 
             out[name] = _digest(path, _within(column, parents))
     lines = run / "sales_order_line.csv"
     if lines.is_file():
-        line_ids = {row["sales_order_line_id"] for row in _rows(lines) if row["sales_order_id"] in ids["sales_order"]}
+        orders = ids.get("sales_order", set())
+        line_ids = {row["sales_order_line_id"] for row in _rows(lines) if row["sales_order_id"] in orders}
         discounts = run / "sales_order_line_discount.csv"
         if discounts.is_file():
             out["sales_order_line_discount"] = _digest(discounts, _within("sales_order_line_id", line_ids))

@@ -469,11 +469,15 @@ class Meta:
         ]
 
     def save(self, run: Path) -> None:
+        """Written beside the old file and moved into its place, so a failed write leaves the old one whole."""
         run.mkdir(parents=True, exist_ok=True)
-        with (run / META_FILE).open("w", encoding="utf-8", newline="") as out:
+        path = run / META_FILE
+        partial = path.with_name(f"{META_FILE}.partial")
+        with partial.open("w", encoding="utf-8", newline="") as out:
             writer = csv.writer(out, lineterminator="\n")
             writer.writerow(["key", "value"])
             writer.writerows(self.rows())
+        os.replace(partial, path)
 
     @classmethod
     def load(cls, run: Path) -> Meta:

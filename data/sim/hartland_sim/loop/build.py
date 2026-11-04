@@ -8,23 +8,34 @@ day loop from the warm-up to the last day, the state at the end.
   - the five state tables rendered from the `World` (`opening.state_rows`, ⚑R201-A), `discount_budget` from the first
     written quarter on (the warm-up's quarters stay in the `World`);
   - the calendar's promotions with their `status` on the last day (setup writes them as of `history.until`);
+  - the checkpoint of the last day, beside the warm-up's last day's (and a prolong's first day's, below);
   - `_sim_meta`, its `last_day_done` the last day;
-  - the checkpoint of the last day, beside the warm-up's last day's;
   - `build.json`: the seed, the stories' hash, the git sha, the timings, and what the run did by quarter (orders,
     grants, refusals and holds by reason).
 - **The null world** (`null`): every story and planted case off (`StoriesConfig.null`), with a stories hash of its
   own; `world_sha256` and `build_id` hash the files on disk.
 
 **Prolong** (`prolong`): the loop resumed from a run's last checkpoint to a later day, its rows appended to the run's
-files, then the same end — the state tables and the promotions rendered again, `_sim_meta` and the checkpoint moved.
-The run's `_sim_meta` must be this checkout's: the seed, `world.yaml`, the stories (or their null world). The
-database's side (`load-world` appends, the world reacts) is G5 S5.3's.
+files, then the same end — the state tables and the promotions rendered again, the checkpoint and `_sim_meta` moved.
+- **The guard** (⚑R221-A): the run's `_sim_meta.build_id` must be this checkout's — the seed, `world.yaml`, the
+  stories (or their null world), `inventory.yaml`, the reference files and the package version (`opening.meta`). A
+  run of other inputs is built again, never extended; `CsvWriter` also refuses a file under another header.
+- **Resumable:** before its first row a prolong writes `_prolong.json` — the day it starts from and the size of each
+  file it may append to (all but the rendered tables and the run's own files, `determinism.RENDERED`/`OWN`). The end
+  keeps that day's checkpoint, saves `_sim_meta`, then deletes the marker. A prolong that finds the marker left by one
+  that stopped (an exception, Ctrl-C, the machine) first cuts each listed file back to its size, removes a table the
+  stopped one began, and runs from the marker's day again, so no row is written twice. A run therefore keeps the last
+  two checkpoints of the loop — a prolong's first day and its last — beside the warm-up's; the next prolong's end
+  drops the older.
+
+The database's side (`load-world` appends, the world reacts) is G5 S5.3's.
 """
 
 from __future__ import annotations
 
 import csv
 import json
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -32,6 +43,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from hartland_sim.checks.determinism import OWN, RENDERED
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import quarter_start
 from hartland_sim.io.csv_writer import CsvWriter
@@ -47,6 +59,7 @@ from hartland_sim.setup.run import run as setup
 from hartland_sim.world import Checkpoint, Meta
 
 BUILD_JSON = "build.json"
+PROLONG_MARK = "_prolong.json"
 
 
 @dataclass(frozen=True)
@@ -55,6 +68,7 @@ class Built:
     meta: Meta
     report: Report
     timings: dict[str, float]
+    recovered: date | None = None  # a prolong that cut back an unfinished one: the day it ran from again
 
 
 def build(
@@ -91,44 +105,89 @@ def build(
 
 
 def prolong(run: Path, until: date, world: WorldConfig | None = None, stories: StoriesConfig | None = None) -> Built:
-    """`run`'s loop from its last checkpoint to `until` (module docstring); `ValueError` when `run` is not a build of
-    these inputs or is past `until`."""
+    """`run`'s loop from its last checkpoint to `until` (module docstring), an unfinished prolong's cut back first;
+    `ValueError` when `run` is not a build of these inputs or is past `until`."""
     world = world or WorldConfig.load()
     stories = stories or StoriesConfig.load()
     held = Meta.load(run)
     null = held.stories_sha256 == stories.null().sha256
     if null:
         stories = stories.null()
-    current = opening.meta(world, stories, held.last_day_done)
-    if (held.master_seed, held.world_sha256, held.stories_sha256) != (
-        current.master_seed,
-        current.world_sha256,
-        current.stories_sha256,
-    ):
-        raise ValueError(f"{run} is a build of other inputs (its _sim_meta: {held}); build it again")
-    if until <= held.last_day_done:
-        raise ValueError(f"{run} is done to {held.last_day_done}, past {until}")
+    differs = _differs(held, opening.meta(world, stories, held.last_day_done))
+    if differs:
+        raise ValueError(f"{run} is a build of other inputs ({', '.join(differs)} differ); build it again")
+    recovered = _recover(run)
+    since = recovered or held.last_day_done
+    if until <= since:
+        raise ValueError(f"{run} is done to {since}, past {until}")
     started = time.perf_counter()
-    state = Checkpoint.load(run).restore()
-    if state.day != held.last_day_done:
-        raise ValueError(f"{run}'s last checkpoint is of {state.day}, its _sim_meta says {held.last_day_done}")
+    state = Checkpoint.load(run, since).restore()
     skus = portfolio_setup.build(tables(), world, stories).skus
     timings: dict[str, float] = {}
+    _mark(run, since)
     with using_master_seed(world.master_seed), CsvWriter(run) as writer:
         loop = Loop.of(state, world, stories, skus, Output.of(writer, world))
         mark = time.perf_counter()
         loop.until(until)
         timings["loop"] = time.perf_counter() - mark
     mark = time.perf_counter()
-    meta = _end(run, loop, world, stories)
+    meta = _end(run, loop, world, stories, since)
     timings["end"] = time.perf_counter() - mark
     timings["total"] = time.perf_counter() - started
-    _report(run, meta, loop.report, timings, null, until, prolonged=True)
-    return Built(run, meta, loop.report, timings)
+    _report(run, meta, loop.report, timings, null, until, prolonged=True, recovered=recovered)
+    return Built(run, meta, loop.report, timings, recovered)
 
 
-def _end(run: Path, loop: Loop, world: WorldConfig, stories: StoriesConfig) -> Meta:
-    """The end of a build or a prolong (module docstring)."""
+def _differs(held: Meta, current: Meta) -> list[str]:
+    """What `held`'s inputs differ from `current`'s in, by name; empty when their `build_id`s are equal."""
+    if held.build_id == current.build_id:
+        return []
+    named = [
+        ("the master seed", held.master_seed != current.master_seed),
+        ("world.yaml", held.world_sha256 != current.world_sha256),
+        ("the stories", held.stories_sha256 != current.stories_sha256),
+    ]
+    return [name for name, differ in named if differ] or ["the inventory, reference files or version"]
+
+
+def _appended(path: Path) -> bool:
+    """A file of `run` a prolong appends to: not one the end renders, not the run's own."""
+    return path.stem not in RENDERED and path.name not in OWN
+
+
+def _mark(run: Path, since: date) -> None:
+    """`_prolong.json` before a prolong's first row (module docstring), written whole or not at all."""
+    sizes = {path.name: path.stat().st_size for path in sorted(run.glob("*.csv")) if _appended(path)}
+    path = run / PROLONG_MARK
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(json.dumps({"from": since.isoformat(), "sizes": sizes}, indent=2) + "\n", encoding="utf-8")
+    partial.replace(path)
+
+
+def _recover(run: Path) -> date | None:
+    """An unfinished prolong's files cut back to their sizes before it, a table it began removed; the day it ran from.
+    None when `run` holds no `_prolong.json`; `ValueError`, before any file is touched, when a listed file is gone or
+    shorter than its size."""
+    path = run / PROLONG_MARK
+    if not path.is_file():
+        return None
+    mark = json.loads(path.read_text(encoding="utf-8"))
+    sizes: dict[str, int] = mark["sizes"]
+    files = {p.name: p for p in sorted(run.glob("*.csv")) if _appended(p)}
+    lost = sorted(name for name, size in sizes.items() if name not in files or files[name].stat().st_size < size)
+    if lost:
+        raise ValueError(f"{run}'s unfinished prolong cannot be cut back ({', '.join(lost)}); build it again")
+    for name, file in files.items():
+        if name in sizes:
+            os.truncate(file, sizes[name])
+        else:
+            file.unlink()
+    return date.fromisoformat(mark["from"])
+
+
+def _end(run: Path, loop: Loop, world: WorldConfig, stories: StoriesConfig, since: date | None = None) -> Meta:
+    """The end of a build, or of a prolong from `since` (module docstring): the checkpoints, then `_sim_meta`, then the
+    prolong's marker removed."""
     state = loop.world
     rendered = state_rows(state, world)
     first = world.history.first_day
@@ -138,11 +197,13 @@ def _end(run: Path, loop: Loop, world: WorldConfig, stories: StoriesConfig) -> M
     with CsvWriter(run) as writer:
         writer.write_all(rendered)
     restatus(run / "promotion.csv", state.day)
+    keep = [first - timedelta(days=1), *([since] if since else [])]
+    if loop.warm_up_end is not None:
+        loop.warm_up_end.save(run, keep=keep)
+    Checkpoint.of(state).save(run, keep=keep)
     meta = opening.meta(world, stories, state.day)
     meta.save(run)
-    if loop.warm_up_end is not None:
-        loop.warm_up_end.save(run)
-    Checkpoint.of(state).save(run, keep=[first - timedelta(days=1)])
+    (run / PROLONG_MARK).unlink(missing_ok=True)
     return meta
 
 
@@ -198,6 +259,7 @@ def _report(
     null: bool,
     until: date,
     prolonged: bool = False,
+    recovered: date | None = None,
 ) -> None:
     sha, dirty = git_sha()
     entry: dict[str, Any] = {
@@ -210,6 +272,7 @@ def _report(
         "git_sha": sha,
         "git_dirty": dirty,
         "timings_s": {name: round(seconds, 1) for name, seconds in timings.items()},
+        **({"recovered_from": recovered.isoformat()} if recovered else {}),
         "quarters": {
             quarter: {key: round(n, 1) if isinstance(n, float) else n for key, n in sorted(counts.items())}
             for quarter, counts in report.quarters.items()
