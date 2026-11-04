@@ -7,8 +7,9 @@ customers' asks for a discount.
   never follow the generation order.
 - `source` is drawn by the channel's mix (`world.yaml channels.<channel>.order_sources`; a station shop takes special
   retail's), stream `order` by the order's id. A visit or a phone order is taken by who holds the customer that day —
-  its area's rep, its KAM (`pricing.granter`) — the others by no one. `visit_id` stays empty: the visits are G2
-  S2.1's.
+  its area's rep, its KAM (`pricing.granter`) — the others by no one. When no one holds it that day (an area or an
+  account unheld), the same draw picks again among the mix's other sources, their shares renormalised (review-221
+  N3): no visit nobody made. `visit_id` stays empty: the visits are G2 S2.1's.
 - `requested_on` is the next working day (`setup.calendar`'s Czech days off); `dc_site_id` the DC of the point's
   region (`world.yaml sites.dcs`); `status` the credit check's — `released`, or `held` with its reason (A-14).
 Its lines are `pricing.price_order`'s, numbered in that order (the free lines last), each with the purchase price of
@@ -25,7 +26,8 @@ before its orders, so an order of that day carries what was agreed; the demand l
 `price_agreement` row; one of the warm-up runs to its quarter's end and is never cited after 2024-01-01.
 
 **One day** (`step`): the asks, then each basket's order in the events' order, written through `Output` (nothing
-before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day). A
+before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day; what only
+the rows need — the order ids, the source draws, the agreement rows — is made on a written day only). A
 tiered customer's order is booked on its month (`book`, `World.bought`): its net revenue, its product lines — what
 the month-end reads the next month's tiers and the phases from.
 """
@@ -37,11 +39,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from functools import cache
-from typing import Any
+from typing import Any, get_args
 
 import numpy as np
 
-from hartland_sim.config import WorldConfig
+from hartland_sim.config import Channel, WorldConfig
 from hartland_sim.dates import quarter_end, quarter_start
 from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.io.reference import Row
@@ -96,22 +98,28 @@ class Desk:
     config: WorldConfig
     dcs: Mapping[str, int]  # region code → its DC's site_id
     sources: Mapping[str, tuple[tuple[str, ...], Array]]  # a terms channel → its sources, their cumulative shares
+    untaken: Mapping[str, tuple[tuple[str, ...], Array]]  # the same without the taken ones, for an order with no taker
     asking: Array  # the indices (in the World's order) of the customers a rep or a KAM answers
     _plans: dict[date, tuple[dict[int, Array], Array]] = field(default_factory=dict, repr=False)
 
     @classmethod
     def of(cls, world: World, rules: Rules, config: WorldConfig) -> Desk:
         dcs = {region: row_id("site", code=dc) for dc, regions in config.sites.dcs.items() for region in regions}
-        sources = {}
-        for name in ("big_retail", "small_retail", "special_retail", "gas_ka", "own_shops", "web", "vending", "horeca"):
+        sources, untaken = {}, {}
+        for name in get_args(Channel):
             mix = getattr(config.channels, name).order_sources
             shares = np.cumsum([float(share) for share in mix.values()])
             if not np.isclose(shares[-1], 1.0):
                 raise ValueError(f"world.yaml channels.{name}.order_sources sum to {shares[-1]}, not 1")
             sources[name] = (tuple(mix), shares)
+            other = {kind: float(share) for kind, share in mix.items() if kind not in TAKEN}
+            if len(other) < len(mix):
+                if not sum(other.values()):
+                    raise ValueError(f"world.yaml channels.{name}.order_sources: an order no one takes has no source")
+                untaken[name] = (tuple(other), np.cumsum(list(other.values())) / sum(other.values()))
         customers = list(world.customers.values())
         asking = np.array([c for c, customer in enumerate(customers) if customer.channel in ASKING], dtype=np.int64)
-        return cls(rules, config, dcs, sources, asking)
+        return cls(rules, config, dcs, sources, untaken, asking)
 
     def plan(self, world: World, day: date) -> tuple[dict[int, Array], Array]:
         """The asks of `day`'s quarter: the asking customers by the day they ask (its ordinal), and each one's draw of
@@ -148,9 +156,10 @@ def order_no(code: str, day: date, n: int) -> str:
     return ORDER_NO.format(day=day, code=code, n=n)
 
 
-def source(desk: Desk, channel: str, draw: float) -> str:
-    """The source a uniform `draw` picks from `channel`'s mix (a terms channel: a station shop's is special retail)."""
-    names, shares = desk.sources[channel]
+def source(desk: Desk, channel: str, draw: float, taken: bool = True) -> str:
+    """The source a uniform `draw` picks from `channel`'s mix (a terms channel: a station shop's is special retail);
+    from its sources no one takes when `taken` is False (module docstring)."""
+    names, shares = (desk.sources if taken else desk.untaken)[channel]
     return names[min(int(np.searchsorted(shares, draw, side="right")), len(names) - 1)]
 
 
@@ -179,6 +188,9 @@ def order(
     number = order_no(customer.code, day, n)
     order_id = business_id("sales_order", number)  # `row_id`'s: its id_key is its `order_no`
     kind = source(desk, terms(customer), draw)
+    taker = granter(world, customer, day) if kind in TAKEN else None
+    if kind in TAKEN and taker is None:
+        kind = source(desk, terms(customer), draw, taken=False)
     demand = world.demand
     assert demand is not None
     spot = demand.spots[rules.points[basket.delivery_point_id]]
@@ -192,7 +204,7 @@ def order(
         ordered_on=day,
         requested_on=next_working_day(day),
         source=kind,
-        taken_by_employee_id=granter(world, customer, day) if kind in TAKEN else None,
+        taken_by_employee_id=taker,
         visit_id=None,
         status=status,
         hold_reason=reason,
@@ -277,23 +289,26 @@ class Day:
 def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], output: Output) -> Day:
     """The day's asks, then its baskets' orders (module docstring), the rows written through `output`."""
     done = Day()
+    write = output.writes(day)
     agreements = []
     for answer in asks(world, desk, day):
         if isinstance(answer, Refusal):
             done.refused[answer.reason] += 1
         else:
             done.granted += 1
-            agreements.append(agreement_row(row_id("price_agreement", code=answer.code), answer))
+            if write:
+                agreements.append(agreement_row(row_id("price_agreement", code=answer.code), answer))
     output.append(day, "price_agreement", agreements)
     numbers: Counter[int] = Counter()
     counts = []
     for event in events:
         numbers[event.customer_id] += 1
         counts.append(numbers[event.customer_id])
-    codes = [world.customers[event.customer_id].code for event in events]
-    ids = np.array([business_id("sales_order", order_no(c, day, n)) for c, n in zip(codes, counts, strict=True)])
-    draws = uniforms("order", "source", ids=ids).tolist() if len(ids) else []
-    write = output.writes(day)
+    draws = [0.0] * len(events)  # a warm-up order is not written: its source is never drawn (each id draws its own)
+    if write and events:
+        codes = [world.customers[event.customer_id].code for event in events]
+        ids = np.array([business_id("sales_order", order_no(c, day, n)) for c, n in zip(codes, counts, strict=True)])
+        draws = uniforms("order", "source", ids=ids).tolist()
     today = running(world, day)
     heads, lines, discounts = [], [], []
     for event, n, draw in zip(events, counts, draws, strict=True):

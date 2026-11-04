@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -185,6 +186,23 @@ def test_a_visit_or_a_phone_order_is_taken_by_the_customer_s_rep_or_kam(world: W
     assert _head(world, desk, _basket(world, store), 0.5)["taken_by_employee_id"] == rep  # phone
     assert _head(world, desk, _basket(world, store), 0.9)["taken_by_employee_id"] is None  # portal
     assert _head(world, desk, _basket(world, venue), 0.1)["taken_by_employee_id"] == kam  # phone
+
+
+def test_a_visit_or_a_phone_order_no_one_can_take_draws_again_among_the_others(
+    world: World, desk: Desk, opening: Setup
+) -> None:
+    """review-221 N3: the same draw, the mix's other sources renormalised (small retail's: the portal alone)."""
+    store = _customers(world, "small_retail")[0]
+    held = _head(world, desk, _basket(world, store), 0.0)
+    assert (held["source"], held["taken_by_employee_id"]) == ("visit", granter(world, store, DAY))
+    store.area = None  # its area unheld
+    for draw in (0.0, 0.5, 0.9):
+        head = _head(world, desk, _basket(world, store), draw)
+        assert (head["source"], head["taken_by_employee_id"]) == ("portal", None)
+    channels = WORLD.channels
+    taken = replace(channels, horeca=replace(channels.horeca, order_sources={"visit": 0.5, "phone": 0.5}))
+    with pytest.raises(ValueError, match="horeca.order_sources: an order no one takes"):
+        Desk.of(world, Rules.of(opening.world, WORLD, STORIES), replace(WORLD, channels=taken))
 
 
 def test_an_order_of_a_customer_with_an_invoice_overdue_is_held(world: World, desk: Desk) -> None:
