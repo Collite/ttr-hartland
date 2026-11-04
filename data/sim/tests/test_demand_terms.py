@@ -195,7 +195,7 @@ def test_an_agreed_discount_adds_elasticity_times_its_percent(demand: Demand) ->
 def test_thirty_percent_of_the_customer_lines_are_elastic(opening: Setup) -> None:
     assert opening.world.demand is not None
     found = elasticity(opening.world.demand, STORIES)
-    assert set(np.unique(found)) == {LOW, HIGH} == {0.4, 3.5}  # s6.yaml; high derived on paper (G1 S1.5 T2)
+    assert set(np.unique(found)) == {LOW, HIGH} == {0.4, 3.0}  # s6.yaml; high derived on paper (G1 S1.5 T2)
     assert (found == HIGH).mean() == pytest.approx(0.30, abs=0.02)
     again = elasticity(opening.world.demand, STORIES)
     assert np.array_equal(found, again)

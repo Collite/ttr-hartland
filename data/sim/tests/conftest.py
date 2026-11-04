@@ -3,7 +3,7 @@ opening world setup builds from the committed inputs (`osm_market`, `opening`, o
 tier (`-m build`), the story and the null world built to 2025 (`story_world`, `null_world`, once a session); and, for
 the component tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
 (`hartland_db`), and `put`, which writes one hand-built row into it; and S6's hand-built case (`s6_case`), the rows
-both its twin and its SQL read (G1 S1.5 T1)."""
+both its twin and its SQL read (G1 S1.5 T1), with each way it leaves its agreement out (`s6_left_out`, a parameter)."""
 
 from __future__ import annotations
 
@@ -172,6 +172,13 @@ def _cell(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return value.isoformat() if isinstance(value, date) else str(value)
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """`s6_left_out`: every case of `S6Case.LEFT_OUT`, so the CSV and the component tier run the same ones
+    (review-225 R3)."""
+    if "s6_left_out" in metafunc.fixturenames:
+        metafunc.parametrize("s6_left_out", list(S6Case.LEFT_OUT))
 
 
 @pytest.fixture

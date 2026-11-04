@@ -419,20 +419,11 @@ def test_s5_counts_the_giveaways_from_the_loans_first_day(db: psycopg.Connection
 # ── S6: the twin's measure in SQL (G1 S1.5 T1(d)) ─────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "case", [None, "an agreement ending before", "an agreement starting after", "past the history"]
-)
-def test_s6_is_the_twin_s_value_on_the_hand_built_case(
-    db: psycopg.Connection, put: Put, s6_case: Any, tmp_path: Path, case: str | None
-) -> None:
-    """s6.sql on conftest's `s6_case` = the pandas twin's value on its CSV build (the disciplined customer's gain a
-    crown less the undisciplined one's: a difference, so the negative side holds), and NULL where the twin leaves a
-    side with no agreement counted. `sales_pl`'s Customer Margin is the net revenue where the costs are NULL, never
-    NULL itself."""
-    if case:
-        s6_case.leave_out(case)
-    s6_case.write(tmp_path)
-    twin = s6(Build(tmp_path), StoriesConfig.load())
+def _s6_in_sql(db: psycopg.Connection, put: Put, s6_case: Any, run: Path) -> tuple[Any, float]:
+    """s6.sql's metric on conftest's `s6_case` and the pandas twin's on its CSV build. `sales_pl`'s Customer Margin is
+    the net revenue where the costs are NULL, never NULL itself."""
+    s6_case.write(run)
+    twin = s6(Build(run), StoriesConfig.load())
     with db.transaction(force_rollback=True):
         for table, rows in s6_case.tables.items():
             for row in rows:
@@ -441,10 +432,26 @@ def test_s6_is_the_twin_s_value_on_the_hand_built_case(
         ((nulls,),) = db.execute("SELECT count(*) FROM hartland.sales_pl WHERE customer_margin IS NULL").fetchall()
         metric = _one(db, "detectors/s6.sql")
     assert nulls == 0
-    if case:
-        assert metric is None and math.isnan(twin)
-    else:
-        assert twin > 0.5 and float(metric) == pytest.approx(twin, rel=1e-6)
+    return metric, twin
+
+
+def test_s6_is_the_twin_s_value_on_the_hand_built_case(
+    db: psycopg.Connection, put: Put, s6_case: Any, tmp_path: Path
+) -> None:
+    """The disciplined customer's gain a crown less the undisciplined one's: a difference, so the negative side
+    holds."""
+    metric, twin = _s6_in_sql(db, put, s6_case, tmp_path)
+    assert twin > 0.5 and float(metric) == pytest.approx(twin, rel=1e-6)
+
+
+def test_s6_leaves_out_what_the_twin_leaves_out(
+    db: psycopg.Connection, put: Put, s6_case: Any, tmp_path: Path, s6_left_out: str
+) -> None:
+    """Each way of `S6Case.LEFT_OUT` leaves the disciplined side with no agreement counted in SQL as in the twin —
+    those on the sums too, where the twin's `< 0.0005` and the SQL's `> 0` are different code (review-225 R3)."""
+    s6_case.leave_out(s6_left_out)
+    metric, twin = _s6_in_sql(db, put, s6_case, tmp_path)
+    assert metric is None and math.isnan(twin)
 
 
 # ── the probes ───────────────────────────────────────────────────────────────

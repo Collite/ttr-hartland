@@ -95,7 +95,7 @@ def test_a_disciplined_rep_grants_the_elastic_asks_below_the_cap(world: World, r
             assert answer.reason == "declined"
     assert granted[True][1] >= 50 and granted[False][1] >= 100
     assert granted[True][0] == granted[True][1]  # (high ÷ high) ^ anything = 1
-    assert granted[False][0] / granted[False][1] <= 0.05  # (0.4 ÷ 3.5) ^ 2.7 ≈ 0.003
+    assert granted[False][0] / granted[False][1] <= 0.05  # (0.4 ÷ 3.0) ^ 2.7 ≈ 0.004
 
 
 def test_an_undisciplined_rep_grants_every_ask_flat(world: World, rules: Rules) -> None:

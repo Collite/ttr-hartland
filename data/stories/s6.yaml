@@ -10,7 +10,7 @@ parameters:
   # Of the customer × lines, by store cluster and affluence: a high elasticity is likelier at a store on a street whose
   # shoppers watch prices, and in a poorer okres (∝ street_factor ÷ affluence, scaled back to high_share).
   elasticity:
-    high: 3.5 # derived on paper (checks/s6_expected.py, its test): the smallest of 3.0 … 4.5 that meets 04's bounds
+    high: 3.0 # derived on paper (checks/s6_expected.py, its test): the smallest of 3.0 … 4.5 that meets 04's bounds
     low: 0.4
     high_share: 0.30
     street_factor:
@@ -22,7 +22,7 @@ parameters:
   # grant at a share of the line's maximum drawn from `disciplined_share_of_max`; a less disciplined one flat.
   disciplined_from: 1.0
   disciplined_share_of_max: [0.5, 0.9]
-  undisciplined_discount_pct: [5, 8] # flat, to whoever asks
+  undisciplined_discount_pct: [5, 8] # flat, below `disciplined_from` (whether it grants is the chance's)
   undisciplined_target_miss_pct: [20, 40] # an undisciplined product manager's targets miss by this much
   # Pinned: two disciplined and two undisciplined reps (by the area they hold on the warm-up's first day, as in
   # anomalies.yaml) and the product managers of two lines.
@@ -31,7 +31,7 @@ parameters:
 detector:
   sql: detectors/s6.sql
   # The disciplined reps' margin gained per discount crown minus the undisciplined reps': 04's "> 1 … < 0.5" gives
-  # at least 0.5. A difference, because the undisciplined gain is negative by design.
+  # at least 0.5. A difference, because the undisciplined gain may be negative.
   metric: disciplined_minus_undisciplined_margin_per_discount
   threshold: 0.5
   direction: ">="

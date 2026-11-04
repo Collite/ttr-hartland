@@ -5,11 +5,12 @@ the S1, S2 and S4 twins pass on the story world and fail on the null one.
 
 **S6** (S1.4 T6, re-cut in S1.5 T5): per rep, the Customer Margin gained per agreed-discount crown
 (`checks.stories.gains`, s6.sql's measure) ranks with its hidden `discount_discipline` (the answer key: the story
-world's checkpoint) — Spearman ≥ 0.8 over all reps, the null world's |ρ| < 0.3 — and `04` S6's bounds on the pinned
-reps (review-196 ⚑D): the disciplined ones' ratio > 1, the undisciplined ones' < 0.5; s6.sql's twin passes on the
-story world and fails on the null one. The story world falls short of all four bars: the lift — a ratio of the few cases
-an agreement's windows hold — scatters far wider than the discount moves it, so strict expected failures hold the
-numbers and the PR's Found line carries them (the list's stop condition: S1.5 does not solve it)."""
+world's checkpoint) — Spearman ≥ 0.8 over all reps, the null world's |ρ| < 0.3 — and `04` S6's bounds on the pinned reps
+(review-196 ⚑D): the disciplined ones' ratio > 1, the undisciplined ones' < 0.5; s6.sql's twin passes on the story world
+and fails on the null one. The story world falls short of three of the four bars (the pinned undisciplined pass, 0.45
+against T2's 0.11–0.27, inside the noise): the lift — a ratio of the few cases an agreement's windows hold — scatters
+far wider than the discount moves it, so strict expected failures hold the numbers and the PR's Found line carries them
+(the list's stop condition: S1.5 does not solve it; review-225 ⚑R225-A)."""
 
 from __future__ import annotations
 
@@ -110,7 +111,7 @@ def spearman(frame: pd.DataFrame) -> float:
     return float(frame["ratio"].rank().corr(frame["discipline"].rank()))
 
 
-@pytest.mark.xfail(strict=True, reason="Found (S1.5 T5): Spearman 0.19 on 2024–2025; per-rep residual SD 1.27 vs T2")
+@pytest.mark.xfail(strict=True, reason="Found (S1.5 T5): Spearman 0.14 on 2024–2025; per-rep residual SD 1.33 vs T2")
 def test_s6_the_reps_gain_a_crown_ranks_with_their_discipline(story_world: Built) -> None:
     assert spearman(by_rep(story_world.run, _reps(story_world))) >= 0.8
 
@@ -120,19 +121,16 @@ def test_s6_in_the_null_world_the_ranking_is_gone(story_world: Built, null_world
     assert len(frame) == 50 and abs(spearman(frame)) < 0.3
 
 
-@pytest.mark.xfail(strict=True, reason="Found (S1.5 T5): the pinned disciplined 0.64 a crown, not > 1 (T2: 1.51)")
+@pytest.mark.xfail(strict=True, reason="Found (S1.5 T5): the pinned disciplined 0.02 a crown, not > 1 (T2: 1.59)")
 def test_s6_the_pinned_disciplined_reps_discounts_pay(story_world: Built) -> None:
     assert s6_reps(Build(story_world.run), StoriesConfig.load())[True] > 1
 
 
-@pytest.mark.xfail(
-    strict=True, reason="Found (S1.5 T5): the pinned undisciplined 0.73 a crown, not < 0.5 (T2: 0.08–0.24)"
-)
 def test_s6_the_pinned_undisciplined_reps_lose_on_their_discounts(story_world: Built) -> None:
     assert s6_reps(Build(story_world.run), StoriesConfig.load())[False] < 0.5
 
 
-@pytest.mark.xfail(strict=True, reason="Found (S1.5 T5): s6.sql's pinned difference −0.09 on 2024–2025, not ≥ 0.5")
+@pytest.mark.xfail(strict=True, reason="Found (S1.5 T5): s6.sql's pinned difference −0.43 on 2024–2025, not ≥ 0.5")
 def test_s6_s_twin_passes_on_the_story_world(story_world: Built) -> None:
     (s6,) = [v for v in check(story_world.run, StoriesConfig.load()) if v.check == "detectors/s6.sql"]
     assert s6.passed, s6

@@ -423,22 +423,11 @@ def test_s6_s_gain_is_the_lifted_cases_margin_at_list_less_the_crowns(tmp_path: 
         assert found.loc[customer, "agreed_by_employee_id"] == customer
 
 
-@pytest.mark.parametrize(
-    "case",
-    [
-        "no order before",
-        "an agreement ending before",
-        "an agreement starting after",
-        "past the history",
-        "no cases of the line before",
-        "no cases of the others in the window",
-    ],
-)
-def test_s6_leaves_an_agreement_out(tmp_path: Path, s6_case: Any, case: str) -> None:
-    s6_case.leave_out(case)
+def test_s6_leaves_an_agreement_out(tmp_path: Path, s6_case: Any, s6_left_out: str) -> None:
+    s6_case.leave_out(s6_left_out)
     s6_case.write(tmp_path)
     found = measured(Build(tmp_path), S6_FROM)
-    assert found.loc[1, "left_out"] == s6_case.LEFT_OUT[case]
+    assert found.loc[1, "left_out"] == s6_case.LEFT_OUT[s6_left_out]
     assert 1 not in gains(Build(tmp_path), S6_FROM).index
 
 
