@@ -30,9 +30,10 @@ from hartland_sim.loop.pricing import standard_list, standard_rows
 from hartland_sim.loop.warmup import Output
 from hartland_sim.period import Closing
 from hartland_sim.rng import rng
+from hartland_sim.setup.org import MARKETING
 from hartland_sim.world import Budget, PriceList, World
 
-ISSUER = ("management", "OU-MKT")  # Marketing's director (`setup.org.MARKETING`): who issues a standard list
+ISSUER = tuple(MARKETING.split(":"))  # Marketing's director (role, org unit): who issues a standard list
 
 
 def _first(day: date) -> date:

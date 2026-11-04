@@ -54,6 +54,7 @@ from hartland_sim.setup import opening
 from hartland_sim.setup import portfolio as portfolio_setup
 from hartland_sim.setup.market import Market
 from hartland_sim.setup.opening import REPO_DIR, STATE_TABLES, state_rows
+from hartland_sim.setup.promotions import status_of
 from hartland_sim.setup.rows import tables
 from hartland_sim.setup.run import run as setup
 from hartland_sim.world import Checkpoint, Meta
@@ -207,15 +208,8 @@ def _end(run: Path, loop: Loop, world: WorldConfig, stories: StoriesConfig, sinc
     return meta
 
 
-def status(valid_from: date, valid_to: date, day: date) -> str:
-    """A promotion's status on `day` (`setup.promotions.status`'s rule, on its row)."""
-    if day < valid_from:
-        return "approved"
-    return "running" if day <= valid_to else "closed"
-
-
 def restatus(path: Path, day: date) -> None:
-    """`path`'s promotions with their `status` on `day`, every other cell as written."""
+    """`path`'s promotions with their `status` on `day` (`setup.promotions.status_of`), every other cell as written."""
     if not path.is_file():
         return
     with path.open(encoding="utf-8", newline="") as source:
@@ -224,7 +218,7 @@ def restatus(path: Path, day: date) -> None:
         rows = list(reader)
     at = {name: header.index(name) for name in ("valid_from", "valid_to", "status")}
     for cells in rows:
-        cells[at["status"]] = status(
+        cells[at["status"]] = status_of(
             date.fromisoformat(cells[at["valid_from"]]), date.fromisoformat(cells[at["valid_to"]]), day
         )
     partial = path.with_name(path.name + ".partial")

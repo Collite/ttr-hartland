@@ -126,6 +126,7 @@ def build_world(args: argparse.Namespace) -> int:
         return 1
     from hartland_sim.config import WorldConfig
     from hartland_sim.loop.build import build
+    from hartland_sim.loop.day import quarter
 
     world = WorldConfig.load()
     until = args.until or world.history.until
@@ -135,9 +136,10 @@ def build_world(args: argparse.Namespace) -> int:
     except FileExistsError as error:
         print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
         return 1
-    quarters = built.report.quarters
+    first = world.history.first_day  # a quarter's first day: the quarters from its own are the written ones
+    written = sum(q["orders"] for name, q in built.report.quarters.items() if name >= quarter(first))
     print(
-        f"hartland-sim build-world: {run} — {sum(q['orders'] for q in quarters.values())} orders to {until}"
+        f"hartland-sim build-world: {run} — {written} orders written, {first} to {until},"
         f" in {built.timings['total']:.0f} s (build id {built.meta.build_id})"
     )
     return 0

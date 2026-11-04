@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -36,12 +36,9 @@ def hashes(run: Path) -> dict[str, str]:
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(run.glob("*.csv"))}
 
 
-def _rows(path: Path) -> Iterator[dict[str, str]]:
-    with path.open(encoding="utf-8", newline="") as source:
-        yield from csv.DictReader(source)
-
-
-def _digest(path: Path, keep: Keep | None = None) -> str:
+def _digest(path: Path, keep: Keep | None = None, column: str | None = None) -> tuple[str, set[str]]:
+    """The sha256 of `path`'s rows that `keep` keeps (module docstring), and their values of `column` — the ids the
+    children's rows are kept by, collected in the same pass (none without a `column`)."""
     with path.open(encoding="utf-8", newline="") as source:
         reader = csv.reader(source)
         header = next(reader, [])
@@ -49,7 +46,8 @@ def _digest(path: Path, keep: Keep | None = None) -> str:
     out = hashlib.sha256(",".join(header).encode() + b"\n")
     for row in sorted(rows):
         out.update("\x1f".join(row).encode() + b"\n")
-    return out.hexdigest()
+    at = header.index(column) if column is not None else None
+    return out.hexdigest(), {row[at] for row in rows} if at is not None else set()
 
 
 def _within(column: str, parents: set[str]) -> Keep:
@@ -76,34 +74,29 @@ def closed(run: Path, day: date, world: WorldConfig | None = None) -> dict[str, 
         "weather_daily": lambda row: row["day"] <= last,
         "sales_plan": made,
     }
+    keys = {
+        "sales_order": "sales_order_id",
+        "standard_price_list": "standard_price_list_id",
+        "channel_price_list": "channel_price_list_id",
+    }
     out = {}
     ids: dict[str, set[str]] = {}
     for name, keep in by_date.items():
         path = run / f"{name}.csv"
         if path.is_file():
-            out[name] = _digest(path, keep)
-            key = {"standard_price_list": "standard_price_list_id", "channel_price_list": "channel_price_list_id"}
-            if name in key or name == "sales_order":
-                column = key.get(name, "sales_order_id")
-                ids[name] = {row[column] for row in _rows(path) if keep(row)}
-    children = {
-        "sales_order_line": ("sales_order_id", ids.get("sales_order", set())),
-        "standard_price": ("standard_price_list_id", ids.get("standard_price_list", set())),
-        "channel_price": ("channel_price_list_id", ids.get("channel_price_list", set())),
+            out[name], ids[name] = _digest(path, keep, keys.get(name))
+    children = {  # a child's rows by its parent's kept ids, and its own ids when a grandchild needs them
+        "sales_order_line": ("sales_order", "sales_order_id", "sales_order_line_id"),
+        "sales_order_line_discount": ("sales_order_line", "sales_order_line_id", None),
+        "standard_price": ("standard_price_list", "standard_price_list_id", None),
+        "channel_price": ("channel_price_list", "channel_price_list_id", None),
     }
-    for name, (column, parents) in children.items():
+    for name, (parent, column, key) in children.items():
         path = run / f"{name}.csv"
-        if path.is_file():
-            out[name] = _digest(path, _within(column, parents))
-    lines = run / "sales_order_line.csv"
-    if lines.is_file():
-        orders = ids.get("sales_order", set())
-        line_ids = {row["sales_order_line_id"] for row in _rows(lines) if row["sales_order_id"] in orders}
-        discounts = run / "sales_order_line_discount.csv"
-        if discounts.is_file():
-            out["sales_order_line_discount"] = _digest(discounts, _within("sales_order_line_id", line_ids))
+        if path.is_file() and (parent in by_date or parent in ids):  # discounts without the lines' file: whole, below
+            out[name], ids[name] = _digest(path, _within(column, ids.get(parent, set())), key)
     for path in sorted(run.glob("*.csv")):
         name = path.stem
         if name not in out and name not in RENDERED and path.name not in OWN:
-            out[name] = _digest(path)
+            out[name] = _digest(path)[0]
     return dict(sorted(out.items()))

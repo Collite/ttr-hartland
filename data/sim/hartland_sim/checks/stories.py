@@ -454,7 +454,7 @@ def _pinned_reps(build: Build, stories: StoriesConfig) -> dict[int, bool]:
 def s6_reps(build: Build, stories: StoriesConfig) -> dict[bool, float]:
     """The pinned reps' margin gained per discount crown, disciplined (True) and not (False)."""
     pinned = _pinned_reps(build, stories)
-    found = gains(build, S6_FROM)
+    found = build.joined("s6_gains", lambda made: gains(made, S6_FROM))  # once a check: `s6` and `s6_note` read it
     found = found[found["agreed_by_employee_id"].isin(list(pinned))]
     disciplined = found["agreed_by_employee_id"].map(pinned).astype(bool)
     out = {}
