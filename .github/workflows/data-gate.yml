@@ -82,7 +82,9 @@ jobs:
       - name: pytest -m build (the story and the null world built to 2025, the stories, determinism and timing)
         run: uv run pytest -m build
 
-  # The verb end to end, as a user runs it (G1 S1.4 T7): a three-month build and the answer key.
+  # The verb end to end, as a user runs it (G1 S1.4 T7): a three-month build, the answer key, and the twins over the
+  # build. One quarter judges nothing (S1 and S4 need a year: `nan`, so FAIL, and the check exits 1): the step proves
+  # the twins read the build it just made, not that the stories hold — the build tier judges them on 2024–2025.
   build-world:
     runs-on: ubuntu-latest
     steps:
@@ -98,5 +100,12 @@ jobs:
       - name: just build-world --until 2024-03-31 --csv
         run: just build-world --until 2024-03-31 --csv --run ci-3-months
 
-      - name: just stories-check --csv --dry
-        run: just stories-check --csv --dry
+      - name: just stories-check --dry (the answer key)
+        run: just stories-check --dry
+
+      # `stories.md` is written only after every twin has run, into a fresh run folder: the grep fails exactly when
+      # the check crashed, whatever its verdicts.
+      - name: just stories-check --csv ci-3-months (the twins over the build; one quarter judges nothing)
+        run: |
+          just stories-check --csv ci-3-months || true
+          grep -q 'run checks pass' data/build/ci-3-months/stories.md
