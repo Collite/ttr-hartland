@@ -67,7 +67,44 @@ PENDING = sorted(name for name, verb in VERBS.items() if verb.handler is pending
 
 
 def test_the_landed_verbs_are_no_longer_pending() -> None:
-    assert set(VERBS) - set(PENDING) == {"reference-check", "osm-extract", "ddl", "stories-check"}
+    landed = {"reference-check", "osm-extract", "ddl", "stories-check", "build-world", "prolong"}
+    assert set(VERBS) - set(PENDING) == landed
+
+
+@pytest.mark.parametrize(("argv", "stage"), [(["build-world"], "G5 S5.1"), (["prolong", "2026-12-31"], "G5 S5.3")])
+def test_build_world_and_prolong_are_csv_only_until_g5(
+    argv: list[str], stage: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(argv) == 1
+    assert stage in capsys.readouterr().err
+
+
+def test_build_world_takes_a_run_name_or_a_path() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["build-world", "--until", "2024-12-31", "--csv", "--null", "--run", "r1"])
+    assert (args.until.isoformat(), args.csv, args.null, args.run) == ("2024-12-31", True, True, "r1")
+    from hartland_sim.cli import BUILD_DIR, _run_dir
+
+    assert _run_dir("r1") == BUILD_DIR / "r1" and _run_dir("/tmp/x/r1") == Path("/tmp/x/r1")
+    assert parser.parse_args(["prolong", "2024-05-09", "--csv", "r1"]).csv == "r1"
+
+
+def test_build_world_counts_the_orders_it_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """review-221 N5: the warm-up's quarters order too, but write nothing."""
+    from collections import Counter
+    from datetime import date
+
+    from hartland_sim.loop import build
+    from hartland_sim.loop.day import Report
+    from hartland_sim.world import Meta
+
+    report = Report({"2023-Q4": Counter(orders=7), "2024-Q1": Counter(orders=5), "2024-Q2": Counter(orders=4)})
+    meta = Meta(1, "s", "w", date(2024, 6, 30), "b" * 16)
+    monkeypatch.setattr(build, "build", lambda run, *_, **__: build.Built(run, meta, report, {"total": 1.0}))
+    assert main(["build-world", "--until", "2024-06-30", "--csv", "--run", str(tmp_path / "r")]) == 0
+    assert "— 9 orders written, 2024-01-01 to 2024-06-30," in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("verb", PENDING)

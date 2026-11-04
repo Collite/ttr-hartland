@@ -6,12 +6,12 @@ import dataclasses
 from datetime import date
 from functools import reduce
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 import yaml
 
-from hartland_sim.config import WORLD_FILE, ConfigError, WorldConfig
+from hartland_sim.config import WORLD_FILE, Channel, ConfigError, WorldConfig
 from hartland_sim.io.reference import read
 from hartland_sim.setup.classifier.chains import CHAINS
 
@@ -150,6 +150,8 @@ def test_the_codes_name_reference_rows(world: WorldConfig, ref: Path) -> None:
 def test_the_shares_add_up(world: WorldConfig) -> None:
     assert sum(dataclasses.astuple(world.finance.payment_behaviour)) == pytest.approx(1)
     assert sum(world.suppliers.coffee_split.values()) == pytest.approx(1)
+    for name in get_args(Channel):
+        assert sum(getattr(world.channels, name).order_sources.values()) == pytest.approx(1), name
 
 
 def test_the_history_runs_in_order(world: WorldConfig) -> None:

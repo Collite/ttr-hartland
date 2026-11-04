@@ -121,8 +121,30 @@ class StoreTerms:
         )
 
 
-def base(spots: Sequence[Spot], line_set: Sequence[Line], terms: StoreTerms, affluence: Mapping[str, float]) -> Array:
-    """The base of each spot × line, in units (module docstring)."""
+def store_factor(store: Store, terms: StoreTerms) -> float:
+    """A store's `size_base × hours_factor` (module docstring)."""
+    sunday = 1 + terms.sunday_open_uplift if store.sunday_open else 1.0
+    return float(terms.size_base[store.size_class] * store.weekly_hours**terms.weekly_hours_elasticity * sunday)
+
+
+def store_means(spots: Sequence[Spot], terms: StoreTerms) -> dict[str, float]:
+    """Each channel's mean store factor over its spots with a store: what a store-less spot of the channel takes."""
+    stores: dict[str, list[float]] = defaultdict(list)
+    for spot in spots:
+        if spot.store is not None:
+            stores[spot.channel].append(store_factor(spot.store, terms))
+    return {channel: float(np.mean(factors)) for channel, factors in stores.items()}
+
+
+def base(
+    spots: Sequence[Spot],
+    line_set: Sequence[Line],
+    terms: StoreTerms,
+    affluence: Mapping[str, float],
+    means: Mapping[str, float] | None = None,
+) -> Array:
+    """The base of each spot × line, in units (module docstring). A store-less spot takes its channel's mean store
+    factor from `means` (`Demand.store_means`, the opening's), or else from `spots`' own stores."""
     line_base = np.array([terms.line_base.get(line.code, 1.0) for line in line_set])
     exponent = np.array([terms.affluence_exponent["premium" if line.is_premium else "other"] for line in line_set])
     streets = sorted({spot.store.street_type for spot in spots if spot.store is not None})
@@ -130,17 +152,14 @@ def base(spots: Sequence[Spot], line_set: Sequence[Line], terms: StoreTerms, aff
         [[terms.street_mix.get(street, {}).get(line.code, 1.0) for line in line_set] for street in streets]
     )
     street = np.array([streets.index(spot.store.street_type) if spot.store else -1 for spot in spots], dtype=np.int64)
+    if means is None:
+        means = store_means(spots, terms)
     store = np.ones(len(spots))
-    stores: dict[str, list[float]] = defaultdict(list)  # a channel's store factors
     for i, spot in enumerate(spots):
         if spot.store is not None:
-            sunday = 1 + terms.sunday_open_uplift if spot.store.sunday_open else 1.0
-            hours = spot.store.weekly_hours**terms.weekly_hours_elasticity
-            store[i] = terms.size_base[spot.store.size_class] * hours * sunday
-            stores[spot.channel].append(float(store[i]))
-    for i, spot in enumerate(spots):
-        if spot.store is None and spot.channel not in KEY_ACCOUNTS and stores[spot.channel]:
-            store[i] = np.mean(stores[spot.channel])
+            store[i] = store_factor(spot.store, terms)
+        elif spot.channel not in KEY_ACCOUNTS and spot.channel in means:
+            store[i] = means[spot.channel]
     rich = np.array([affluence[spot.okres] for spot in spots])
     out = line_base * rich[:, None] ** exponent * store[:, None]
     if streets:
@@ -265,6 +284,7 @@ class Demand:
     customer_ids: Array  # (C,) in the World's order
     customer_start: Array  # (C + 1,) customer c's points are customer_start[c]:customer_start[c + 1]
     terms: StoreTerms
+    store_means: dict[str, float]  # each channel's mean store factor at the opening: a store-less point's, on a rebase
     units: Array  # (P, L) the base, before the scale
     scale: Array  # (P,) units → cases a day
     # The orders (T5): when each point orders, and in what grain.
@@ -300,11 +320,11 @@ class Demand:
 
     def rebase(self, changed: Mapping[int, Spot], affluence: Mapping[str, float]) -> None:
         """Stores changed: the base of each changed point (by its index) again. The scale stays, so a bigger store
-        sells more."""
+        sells more; a store-less point keeps its channel's mean store factor of the opening."""
         spots = list(self.spots)
         for p, spot in sorted(changed.items()):
             spots[p] = spot
-            self.units[p] = base([spot], self.lines, self.terms, affluence)[0]
+            self.units[p] = base([spot], self.lines, self.terms, affluence, self.store_means)[0]
         self.spots = tuple(spots)
         self.__dict__.pop("_base", None)
         self.generation += 1
@@ -376,7 +396,8 @@ def opening(
     found = spots(customers, made, geography)
     terms = StoreTerms.of(stories)
     index = affluence_index()
-    units = base(found, line_set, terms, index)
+    factors = store_means(found, terms)
+    units = base(found, line_set, terms, index, factors)
     regions = tuple(dict.fromkeys(geography.region_of.values()))
     groups = {group: g for g, group in enumerate(goods.groups)}
     customer_index = {customer.customer_id: c for c, customer in enumerate(customers)}
@@ -422,6 +443,7 @@ def opening(
         customer_ids=np.array([customer.customer_id for customer in customers], dtype=np.int64),
         customer_start=start,
         terms=terms,
+        store_means=factors,
         units=units,
         scale=scale,
         cycle=cycle,

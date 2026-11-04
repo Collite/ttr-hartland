@@ -1,6 +1,7 @@
 """Shared fixtures: the committed reference files (`ref`, the okres table and its parts); the OSM market and the
-opening world setup builds from the committed inputs (`osm_market`, `opening`, one run per session); and, for the
-component tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
+opening world setup builds from the committed inputs (`osm_market`, `opening`, one run per session); for the build
+tier (`-m build`), the story and the null world built to 2025 (`story_world`, `null_world`, once a session); and, for
+the component tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
 (`hartland_db`), and `put`, which writes one hand-built row into it."""
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from psycopg.types.json import Jsonb
 from hartland_sim.config import DDL_DIR, Column, InventoryConfig
 from hartland_sim.io.ddl import DOCWH, OWNER, READONLY
 from hartland_sim.io.reference import read
+from hartland_sim.loop.build import Built, build
 from hartland_sim.setup import market as market_setup
 from hartland_sim.setup.market import Market
 from hartland_sim.setup.run import Setup, run
@@ -71,6 +73,21 @@ def osm_market() -> Market:
 def opening(osm_market: Market) -> Setup:
     """The opening world and setup's rows, from the committed inputs (G1 S1.1). Read it, never change it."""
     return run(market=osm_market)
+
+
+BUILT_UNTIL = date(2025, 12, 31)  # the build tier's worlds: S1's window is 2024–2025, S4's 2025
+
+
+@pytest.fixture(scope="session")
+def story_world(tmp_path_factory: pytest.TempPathFactory, osm_market: Market) -> Built:
+    """The build tier's world (`-m build`): `build-world` from the warm-up to `BUILT_UNTIL`, once a session."""
+    return build(tmp_path_factory.mktemp("story-world") / "run", BUILT_UNTIL, market=osm_market)
+
+
+@pytest.fixture(scope="session")
+def null_world(tmp_path_factory: pytest.TempPathFactory, osm_market: Market) -> Built:
+    """The build tier's null world: every story and planted case off, to `BUILT_UNTIL`."""
+    return build(tmp_path_factory.mktemp("null-world") / "run", BUILT_UNTIL, null=True, market=osm_market)
 
 
 @pytest.fixture(scope="session")

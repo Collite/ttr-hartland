@@ -36,7 +36,7 @@ osm-extract *ARGS:
 ddl *ARGS:
     uv run hartland-sim ddl "$@"
 
-# The simulation → data/build/<run>/ [--until DAY] [--csv] [--null] (G1 S1.4).
+# The simulation → data/build/<run>/ [--until DAY] --csv [--null] [--run NAME] (G1 S1.4; Postgres at G5 S5.1).
 build-world *ARGS:
     uv run hartland-sim build-world "$@"
 
@@ -44,7 +44,7 @@ build-world *ARGS:
 load-world *ARGS:
     uv run hartland-sim load-world "$@"
 
-# From the last checkpoint up to DAY: the world reacts, appends (G5 S5.3).
+# From the last checkpoint up to DAY: a CSV build's loop with --csv RUN (G1 S1.4); the world reacts, appends (G5 S5.3).
 prolong *ARGS:
     uv run hartland-sim prolong "$@"
 

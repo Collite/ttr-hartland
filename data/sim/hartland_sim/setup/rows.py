@@ -24,12 +24,17 @@ def columns(table: str) -> tuple[str, ...]:
     return _columns()[table]
 
 
+@cache
+def _names(table: str) -> frozenset[str]:
+    return frozenset(columns(table))
+
+
 def row(table: str, **values: Any) -> Row:
     """A row of `table` from its columns by name; `KeyError` naming what is missing or not the table's."""
     names = columns(table)
-    missing = [name for name in names if name not in values]
-    stray = sorted(set(values) - set(names))
-    if missing or stray:
+    if values.keys() != _names(table):
+        missing = [name for name in names if name not in values]
+        stray = sorted(set(values) - set(names))
         raise KeyError(f"{table}: missing {missing}, not its columns {stray}")
     return {name: values[name] for name in names}
 

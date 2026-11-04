@@ -166,10 +166,16 @@ def seeded(templates: Templates, years: Iterable[int], code: str) -> dict[int, P
 
 
 def status(promotion: Promotion, day: date) -> str:
-    """A promotion's status on `day`: approved before it starts, running, closed after it ends."""
-    if day < promotion.valid_from:
+    """A promotion's status on `day` (`status_of`)."""
+    return status_of(promotion.valid_from, promotion.valid_to, day)
+
+
+def status_of(valid_from: date, valid_to: date, day: date) -> str:
+    """The status on `day` of a promotion running `valid_from`–`valid_to`: approved before it starts, running, closed
+    after it ends (a build's end restatuses its rows by it, `loop.build.restatus`)."""
+    if day < valid_from:
         return "approved"
-    return "running" if day <= promotion.valid_to else "closed"
+    return "running" if day <= valid_to else "closed"
 
 
 def estimated_budget(promotion: Promotion, template: Template, demand: Demand, phases: list[str] | None) -> float:

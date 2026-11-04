@@ -2,12 +2,13 @@
 
 **The price lists** (`01` §5.1). The standard list is a quarterly version: each SKU sold in the quarter at the
 catalogue's `base_price_case`, per piece ÷ `units_per_case`, with the factories' standard price (`cogs_case`) as its
-purchase price. A channel's list is a monthly version: the standard × `world.yaml pricing.channel_factor[channel]`,
-or × the factor of Marketing's hero override for that SKU in that channel. Both carry their validity; the `World`
-holds the versions in force (`World.standard_list`, `World.channel_lists`), which S1.4's period ends roll: the
-month-end the channel lists, the quarter-end the standard list with its price drift. A channel's list is made from
-the standard list of its month only. Every list is without VAT but the web's, a shelf price incl. VAT (`01` §4.4),
-and its `channel_price` rows stay so; an order line is priced without VAT on every channel (`price_order`).
+purchase price, both × its line's price index (the quarter-end's drift, S1.4). A channel's list is a monthly
+version: the standard × `world.yaml pricing.channel_factor[channel]`, or × the factor of Marketing's hero override for
+that SKU in that channel. Both carry their validity; the `World` holds the versions in force (`World.standard_list`,
+`World.channel_lists`), which S1.4's period ends roll: the month-end the channel lists, the quarter-end the standard
+list with its price drift. A channel's list is made from the standard list of its month only. Every list is without
+VAT but the web's, a shelf price incl. VAT (`01` §4.4), and its `channel_price` rows stay so; an order line is priced
+without VAT on every channel (`price_order`).
 
 **The discounts** (contracts §4). A line qualifies for `Term`s — a tier, an agreement, a promotion — and `apply` takes
 them in the pricing order, each on the price the earlier ones left: a percentage off it, or an individual price down
@@ -103,14 +104,17 @@ def _sold(sku: Sku, first: date, last: date) -> bool:
     return sku.launched_on <= last and sku.last_day >= first
 
 
-def standard_list(skus: Sequence[Sku], day: date) -> PriceList:
-    """The standard list of the quarter holding `day`: each SKU sold in the quarter at its base price."""
+def standard_list(skus: Sequence[Sku], day: date, index: Mapping[str, float] | None = None) -> PriceList:
+    """The standard list of the quarter holding `day`: each SKU sold in the quarter at its base price and its standard
+    purchase price, each × its line's price `index` (1.0 without one: the catalogue's prices), to the haléř; per piece
+    the case price ÷ its units."""
     first, last = quarter_start(day), quarter_end(day)
-    prices = {
-        sku.sku_id: Price(sku.base_price_case, round(sku.base_price_case / sku.units_per_case, 2), sku.cogs_case)
-        for sku in skus
-        if _sold(sku, first, last)
-    }
+    prices = {}
+    for sku in skus:
+        if _sold(sku, first, last):
+            factor = index[sku.line] if index is not None else 1.0
+            case = round(sku.base_price_case * factor, 2)
+            prices[sku.sku_id] = Price(case, round(case / sku.units_per_case, 2), round(sku.cogs_case * factor, 2))
     code = STANDARD_CODE.format(year=first.year, quarter=(first.month - 1) // 3 + 1)
     return PriceList(None, code, first, last, 1.0, prices)
 
@@ -415,8 +419,9 @@ def granter(world: World, customer: Customer, day: date) -> int | None:
 
 
 def expected_gross(world: World, rules: Rules, customer_id: int, line: str, first: date, last: date) -> float:
-    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices: what
-    its points order (`loop.demand.expected_gross`'s rule), so 0 on a line it does not buy."""
+    """The customer-line's expected gross from `first` to `last` at flat terms, on `first`'s listings and prices at the
+    line's current price index (`World.price_index`: the list its orders are priced at, as the quarter's budget is):
+    what its points order (`loop.demand.expected_gross`'s rule), so 0 on a line it does not buy."""
     demand = world.demand
     assert demand is not None
     c, i = rules.customers[customer_id], rules.lines[line]
@@ -424,7 +429,7 @@ def expected_gross(world: World, rules: Rules, customer_id: int, line: str, firs
     _, listed, price_line = demand.catalogue.shares(first, len(demand.lines))
     groups = demand.point_group[points]
     daily = (demand.base[points, i] * (listed * price_line)[groups, i]).sum() * demand.carried[c, i]
-    return float(daily) * ((last - first).days + 1)
+    return float(daily) * ((last - first).days + 1) * world.price_index.get(line, 1.0)
 
 
 def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) -> Agreement | Refusal:
@@ -615,6 +620,15 @@ def taken(candidates: Sequence[tuple[int, Promotion]]) -> list[tuple[int, Promot
     return kept
 
 
+def running(world: World, day: date) -> list[tuple[int, Promotion]]:
+    """The `World`'s promotions running on `day`, in its order: what `promotions` looks through for an order."""
+    return [
+        (pid, promotion)
+        for pid, promotion in world.promotions.items()
+        if promotion.valid_from <= day <= promotion.valid_to
+    ]
+
+
 def promotions(
     world: World,
     rules: Rules,
@@ -622,9 +636,11 @@ def promotions(
     delivery_point_id: int,
     day: date,
     lines: Sequence[tuple[int, float, float]],
+    today: Sequence[tuple[int, Promotion]] | None = None,
 ) -> list[Draft]:
     """The order's lines — (sku_id, cases, pieces) — with the day's promotions applied (module docstring): each line
-    with its promotion terms (less the free part of a 1 + 1), then the free lines the promotions add."""
+    with its promotion terms (less the free part of a 1 + 1), then the free lines the promotions add. `today` is
+    `running(world, day)`, when the caller has it for the day's orders."""
     demand = world.demand
     if demand is None:
         raise ValueError("the World has no demand state (setup makes it)")
@@ -634,7 +650,7 @@ def promotions(
     whole = {sku: _whole(count, each, pieces_grain) for sku, count, each in lines}
     candidates = [
         (promotion_id, promotion)
-        for promotion_id, promotion in world.promotions.items()
+        for promotion_id, promotion in (running(world, day) if today is None else today)
         if admits(promotion, spot, customer, day) and _touches(promotion, rules, cases, whole)
     ]
     drafts = [Draft(sku, count, each) for sku, count, each in lines]
@@ -739,12 +755,15 @@ def list_in_force(world: World, channel: str, day: date) -> PriceList:
     return found
 
 
-def price_order(world: World, rules: Rules, basket: BasketReady) -> list[Priced]:
-    """`basket`'s lines priced (module docstring): its own lines, then the free lines its promotions add."""
+def price_order(
+    world: World, rules: Rules, basket: BasketReady, today: Sequence[tuple[int, Promotion]] | None = None
+) -> list[Priced]:
+    """`basket`'s lines priced (module docstring): its own lines, then the free lines its promotions add. `today` is
+    `running(world, basket.day)`, when the caller has it."""
     customer = world.customers[basket.customer_id]
     day = basket.day
     prices = list_in_force(world, basket.channel, day).prices
-    drafts = promotions(world, rules, customer, basket.delivery_point_id, day, basket.lines)
+    drafts = promotions(world, rules, customer, basket.delivery_point_id, day, basket.lines, today)
     tiered = tiers(customer, day.replace(day=1))
     out = []
     for draft in drafts:

@@ -174,6 +174,17 @@ class Budget:
     reserved: float = 0.0
 
 
+@dataclass
+class Bought:
+    """What a customer bought in a month, as its orders book it (`loop.orders.book`, S1.4): its net revenue without
+    VAT, its orders, and the product lines of its paid lines, a bit each in `Demand.lines`' order. The month-end reads
+    the next month's tiers and the phases from it."""
+
+    net_revenue: float = 0.0
+    orders: int = 0
+    lines: int = 0
+
+
 @dataclass(frozen=True)
 class Promotion:
     """A promotion as the loop reads it (`promotion` + its `promotion_eligibility` rows): setup seeds the committed
@@ -285,9 +296,15 @@ class World:
     agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id (`add_agreement`)
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
     # S1.3: the price lists in force on `day` — the standard one and each channel's; S1.4's period ends roll them
-    # (the month-end the channel lists, the quarter-end the standard list).
+    # (the month-end the channel lists, the quarter-end the standard list by `price_index`).
     standard_list: PriceList | None = None
     channel_lists: dict[str, PriceList] = field(default_factory=dict)  # by channel
+    price_index: dict[str, float] = field(default_factory=dict)  # S1.4: each line's standard price ÷ its base price
+    # S1.4: what the tiered customers bought, by month (its first day) and customer_id, for the month-ends — the
+    # last `policies.lifecycle.lookback_months`; and the planned gross of the quarter ahead by budget target (a rep
+    # area's code, a KAM's account's), which a quarter's last month-end sets for the quarter-end's budgets.
+    bought: dict[date, dict[int, Bought]] = field(default_factory=dict)
+    planned_gross: dict[str, float] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
@@ -433,8 +450,8 @@ class Meta:
     """`_sim_meta`: what `load-world` and `prolong` check a database against (contracts §2).
 
     `world_sha256` hashes `data/world.yaml` as `stories_sha256` hashes the stories; `build_id` names the inputs
-    (the seed, the world, the stories, the inventory, the reference files, the package version), so two builds of the
-    same inputs carry the same id and their CSVs stay byte-identical."""
+    (the seed, the world, the stories, the inventory, the reference files, the package version, the generator's
+    revision), so two builds of the same inputs carry the same id and their CSVs stay byte-identical."""
 
     master_seed: int
     stories_sha256: str
@@ -452,11 +469,15 @@ class Meta:
         ]
 
     def save(self, run: Path) -> None:
+        """Written beside the old file and moved into its place, so a failed write leaves the old one whole."""
         run.mkdir(parents=True, exist_ok=True)
-        with (run / META_FILE).open("w", encoding="utf-8", newline="") as out:
+        path = run / META_FILE
+        partial = path.with_name(f"{META_FILE}.partial")
+        with partial.open("w", encoding="utf-8", newline="") as out:
             writer = csv.writer(out, lineterminator="\n")
             writer.writerow(["key", "value"])
             writer.writerows(self.rows())
+        os.replace(partial, path)
 
     @classmethod
     def load(cls, run: Path) -> Meta:

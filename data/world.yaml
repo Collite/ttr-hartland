@@ -40,6 +40,7 @@ channels:
     dc_level_orders: [LIDL, KAUFLAND, PENNY] # these order to their own DCs, the rest store by store
     order_grain: case
     order_cycle_days: 7
+    order_sources: { edi: 1.0 } # the chains order by EDI, store by store or to their own DCs
   small_retail:
     customers: 5000 # independent stores that are customers (⚑NH-1)
     active_share_at_start: 0.40 # of the independents and station shops; the rest are potential
@@ -47,30 +48,37 @@ channels:
     since_until: 2023-12-31
     order_grain: case
     order_cycle_days: 14
+    order_sources: { visit: 0.45, phone: 0.35, portal: 0.20 }
   special_retail: # every station shop but OMV's and Shell's: a small-retail sub-channel (NH-D5)
     order_grain: case
     order_cycle_days: 14
+    order_sources: { visit: 0.30, phone: 0.40, portal: 0.30 }
   gas_ka:
     accounts: [OMV, SHELL]
     order_grain: case
     order_cycle_days: 7
+    order_sources: { edi: 1.0 }
   own_shops:
     order_grain: piece
     order_cycle_days: 2
+    order_sources: { replenishment: 1.0 }
   web:
     consumers: 30000
     order_grain: piece
     order_cycle_days: 60
+    order_sources: { web: 1.0 }
   vending:
     operators: 40
     order_grain: case
     order_cycle_days: 7
+    order_sources: { portal: 0.60, phone: 0.40 }
   horeca:
     direct_customers: 600
     wholesalers: 2
     potential: 2000
     order_grain: case
     order_cycle_days: 10
+    order_sources: { phone: 0.50, portal: 0.30, visit: 0.20 }
   # What a channel may buy (channel_listing, R-7): the retail packs of these lines and the Professional packs of
   # those. `all` = every line.
   listings:
@@ -188,6 +196,8 @@ policies:
       occasional: [GOLD, KELIMKY, NUDLE]
       regular: [ESPRESSO, PREMIUM, BEZKOFEIN]
       vip: [ESPRESSO, PREMIUM, GOLD]
+  sales_plan: # the month-end's rolling plan of M+1…M+3 (S1.4): the demand's expectation × a planning error
+    error_pct: [4, 6, 8] # ± %, uniform, one, two and three months ahead
   prompt_caps: { potential: 3, occasional: 4, regular: 5, vip: 6 } # prompts per visit, by phase (G2 S2.2)
   # The rep-prompt rules (R-5…R-7, R-12; prompt_rule): priority 1 first; a mandatory rule cannot be hidden, an
   # adaptable one an agent may tune. The sales director owns them. G2 S2.2 applies the parameters.
