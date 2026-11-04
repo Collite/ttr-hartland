@@ -24,19 +24,21 @@ both brands, up to `cross_sell_max_pct`. The bonus rides on a reached tier: two 
 `tiers` reads the month's `Condition` off the customer: a volume and a cross-sell term on every line, from the sales
 budget, coded with the tier's code (the cross-sell tier's code with the bonus in its percentage).
 
-**The agreements** (`01` §5.2–5.3, `04` S6). A customer asks for a discount on a line; `grant` answers as the person
-who holds the customer that day — the rep of its area (small retail: an agreed discount) or its KAM (the other
-channels: an individual price). Their `discount_discipline` decides (`s6.yaml`): a disciplined one (at or above
-`disciplined_from`) grants with the chance (elasticity ÷ high) ^ (discipline × `disciplined_choice_exponent`), so
-mostly to the customer-lines that answer a discount, and sizes it at a share of the cap (`disciplined_share_of_max`);
-an undisciplined one grants every ask a flat `undisciplined_discount_pct`, up to the cap. The cap is the line's
-`max_agreed_discount_pct`, for a rep × the share its customer's phase allows (`policies.lifecycle.concession_share`).
-An agreement runs to the quarter's end and reserves its expected cost — its percentage of the customer-line's
-expected gross until then (`loop.demand`'s base at flat terms, lifted by the discount itself through the line's
-elasticity) — from the granter's budget of the quarter; one the budget cannot hold is refused. So is an ask of a
-customer not active on the day, on a line it does not buy (`Demand.carried`: S1.4 asks for the lines bought), or on a
-line that has one running. The draws are stream `pricing_agree`'s, by customer, line and day. On the order, `agreed`
-is the running agreed discount's term and `individual` a line's percentage, never above the line's maximum.
+**The agreements** (`01` §5.2–5.3, `04` S6 as amended 11-04). A customer asks for a discount on a line; `grant`
+answers as the person who holds the customer that day — the rep of its area (small retail: an agreed discount) or its
+KAM (the other channels: an individual price). Their `discount_discipline` decides (`s6.yaml`). Every granter grants
+with the chance (elasticity ÷ high) ^ (`disciplined_choice_exponent` × (discipline − the range's floor)) (`chance`):
+the least disciplined to whoever asks, each step of discipline sharper, so mostly to the customer-lines that answer a
+discount. A disciplined one (at or above `disciplined_from`) sizes it at a share of the cap
+(`disciplined_share_of_max`), a less disciplined one at a flat `undisciplined_discount_pct`, up to the cap. The cap
+is the line's `max_agreed_discount_pct`, for a rep × the share its customer's phase allows
+(`policies.lifecycle.concession_share`). An agreement runs to the quarter's end and reserves its expected cost — its
+percentage of the customer-line's expected gross until then (`loop.demand`'s base at flat terms, lifted by the
+discount itself through the line's elasticity) — from the granter's budget of the quarter; one the budget cannot
+hold is refused. So is an ask of a customer not active on the day, on a line it does not buy (`Demand.carried`: S1.4
+asks for the lines bought), or on a line that has one running. The draws are stream `pricing_agree`'s, by customer,
+line and day: the first decides, the next sizes. On the order, `agreed` is the running agreed discount's term and
+`individual` a line's percentage, never above the line's maximum.
 
 **Individual prices** (`01` §5.3). A KAM's customer (big retail, gas KA, vending, HoReCa) buys a line at its
 individual price: a running agreement for the SKU sets its price (a negotiated price, as agreed), else one for the
@@ -432,6 +434,13 @@ def expected_gross(world: World, rules: Rules, customer_id: int, line: str, firs
     return float(daily) * ((last - first).days + 1) * world.price_index.get(line, 1.0)
 
 
+def chance(elasticity: float, discipline: float, s6: Mapping[str, Any]) -> float:
+    """The chance a granter of `discipline` grants an ask on a customer-line of `elasticity` (module docstring): 1 at
+    the discipline range's floor and on a high elasticity, a low one's falling with each step of discipline."""
+    exponent = s6["disciplined_choice_exponent"] * (discipline - s6["discipline_range"][0])
+    return float((elasticity / s6["elasticity"]["high"]) ** exponent)
+
+
 def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) -> Agreement | Refusal:
     """`customer_id`'s ask for a discount on `line` on `day` (module docstring): the agreement, added to the `World`
     with its budget reserved, or the refusal."""
@@ -458,11 +467,9 @@ def grant(world: World, rules: Rules, customer_id: int, line: str, day: date) ->
     s6 = rules.s6
     discipline = world.actors[employee].skills.discount_discipline
     draw = rng("pricing_agree", "grant", customer_id, line, day)
+    if draw.random() >= chance(rules.elasticity[c, i], discipline, s6):
+        return Refusal(customer_id, line, day, "declined", employee)
     if discipline >= s6["disciplined_from"]:
-        hidden = rules.elasticity[c, i]
-        chance = (hidden / s6["elasticity"]["high"]) ** (discipline * s6["disciplined_choice_exponent"])
-        if draw.random() >= chance:
-            return Refusal(customer_id, line, day, "declined", employee)
         pct = round(cap * draw.uniform(*s6["disciplined_share_of_max"]), 1)
     else:
         pct = min(round(draw.uniform(*s6["undisciplined_discount_pct"]), 1), cap)

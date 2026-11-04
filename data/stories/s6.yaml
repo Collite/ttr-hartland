@@ -10,15 +10,16 @@ parameters:
   # Of the customer × lines, by store cluster and affluence: a high elasticity is likelier at a store on a street whose
   # shoppers watch prices, and in a poorer okres (∝ street_factor ÷ affluence, scaled back to high_share).
   elasticity:
-    high: 2.0
+    high: 3.5 # derived on paper (checks/s6_expected.py, its test): the smallest of 3.0 … 4.5 that meets 04's bounds
     low: 0.4
     high_share: 0.30
     street_factor:
       { village: 1.4, residential: 1.2, petrol: 1.0, transport_hub: 0.9, shopping_centre: 0.8, high_street: 0.6 }
-  disciplined_choice_exponent: 2 # a disciplined rep grants ∝ elasticity ^ (discipline × 2), below the line's maximum
-  # A rep, KAM or PM at or above this discipline is disciplined (1.0 is the average). Asked for a discount, a
-  # disciplined one grants with the chance (elasticity ÷ high) ^ (discipline × exponent), sized at a share of the
-  # line's maximum drawn from `disciplined_share_of_max`; an undisciplined one grants every ask, flat.
+  # Every rep and KAM, asked for a discount, grants with the chance (elasticity ÷ high) ^ (exponent × (discipline −
+  # the range's floor)): the least disciplined to whoever asks, the targeting sharper with each step of discipline.
+  disciplined_choice_exponent: 3
+  # A rep, KAM or PM at or above this discipline is disciplined (1.0 is the average). A disciplined rep or KAM sizes a
+  # grant at a share of the line's maximum drawn from `disciplined_share_of_max`; a less disciplined one flat.
   disciplined_from: 1.0
   disciplined_share_of_max: [0.5, 0.9]
   undisciplined_discount_pct: [5, 8] # flat, to whoever asks

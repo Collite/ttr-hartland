@@ -13,4 +13,4 @@ __version__ = "0.11.0"
 # The generator's revision (⚑R221-C): what a build writes — its rows, its ids, its draws. Bump it in the PR that changes
 # any of them, so a run is extended only by a generator that writes as the one that built it (`build_id` hashes it).
 # The package version above is the release's, not this.
-REVISION = 1
+REVISION = 2  # 2: G1 S1.5, the S6 re-cut (one grant rule, elasticity.high 3.5)

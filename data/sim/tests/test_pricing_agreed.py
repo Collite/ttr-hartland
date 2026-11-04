@@ -1,4 +1,5 @@
-"""The agreed discount (G1 S1.3 T3, `01` §5.2, `04` S6): who grants an ask and how a discipline chooses and sizes it,
+"""The agreed discount (G1 S1.3 T3, `01` §5.2, `04` S6 as amended 11-04, S1.5 T2): who grants an ask and how a
+discipline chooses (one chance for every granter) and sizes it,
 the cap (the line's maximum × the phase's concession), the quarter's budget (refused past it, reserved within it, at
 the carried line's expected gross and the discount's own lift), the refusals, the agreements' index, and the running
 agreement's term on the order, never above the line's maximum."""
@@ -19,9 +20,11 @@ from hartland_sim.loop.pricing import (
     Term,
     agreed,
     agreement_row,
+    chance,
     expected_gross,
     grant,
 )
+from hartland_sim.rng import rng
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import Agreement, Budget, Checkpoint, Customer, World
 
@@ -92,7 +95,7 @@ def test_a_disciplined_rep_grants_the_elastic_asks_below_the_cap(world: World, r
             assert answer.reason == "declined"
     assert granted[True][1] >= 50 and granted[False][1] >= 100
     assert granted[True][0] == granted[True][1]  # (high ÷ high) ^ anything = 1
-    assert granted[False][0] / granted[False][1] <= 0.05  # (0.4 ÷ 2.0) ^ 2.8 ≈ 0.011
+    assert granted[False][0] / granted[False][1] <= 0.05  # (0.4 ÷ 3.5) ^ 2.7 ≈ 0.003
 
 
 def test_an_undisciplined_rep_grants_every_ask_flat(world: World, rules: Rules) -> None:
@@ -100,7 +103,7 @@ def test_an_undisciplined_rep_grants_every_ask_flat(world: World, rules: Rules) 
     assert world.actors[employee].skills.discount_discipline == 0.5
     _plenty(world, employee)
     low, top = S6["undisciplined_discount_pct"]
-    asked = 0
+    asked = inelastic = 0
     for customer, line in _asks(world, "SMS-02"):
         cap = _cap(rules, customer, line)
         if cap <= 0:
@@ -110,7 +113,49 @@ def test_an_undisciplined_rep_grants_every_ask_flat(world: World, rules: Rules) 
         assert low <= answer.discount_pct <= top or answer.discount_pct == cap
         assert answer.discount_pct <= cap
         asked += 1
-    assert asked >= 100
+        inelastic += bool(rules.elasticity[rules.customers[customer.customer_id], rules.lines[line]] < 1)
+    assert asked >= 100 and inelastic >= 50  # at the range's floor a low elasticity is granted too, never declined
+
+
+def test_every_granter_grants_with_the_chance_of_its_discipline() -> None:
+    """R2 (Bora 11-04): (e ÷ e_high) ^ (γ × (discipline − the range's floor)), γ = 3 — to whoever asks at the floor,
+    a decline of a low elasticity likelier with each step of discipline, a high elasticity always granted."""
+    high, low = S6["elasticity"]["high"], S6["elasticity"]["low"]
+    floor, top = S6["discipline_range"]
+    assert (S6["disciplined_choice_exponent"], floor, top) == (3, 0.5, 1.4)
+    assert chance(low, floor, S6) == chance(high, floor, S6) == 1.0
+    assert chance(low, 1.4, S6) == pytest.approx((low / high) ** 2.7)
+    steps = [chance(low, floor + k / 10, S6) for k in range(10)]  # 0.5 … 1.4
+    assert all(earlier > later for earlier, later in zip(steps, steps[1:], strict=False))
+    assert all(chance(high, floor + k / 10, S6) == 1.0 for k in range(10))
+
+
+@pytest.mark.parametrize("area", ["SJC-02", "VCH-05", "SMS-02"])
+def test_a_grant_s_first_draw_decides_it_and_the_discipline_sizes_it(world: World, rules: Rules, area: str) -> None:
+    """The draws of S1.4: stream `pricing_agree`, key ("grant", customer, line, day) — the first decides against
+    `chance`, the next sizes the grant (a share of the cap from `disciplined_from`, else a flat 5–8 %)."""
+    employee = _rep(world, area)
+    discipline = world.actors[employee].skills.discount_discipline
+    _plenty(world, employee)
+    answers = {True: 0, False: 0}
+    for customer, line in _asks(world, area):
+        cap = _cap(rules, customer, line)
+        if cap <= 0:
+            continue
+        hidden = rules.elasticity[rules.customers[customer.customer_id], rules.lines[line]]
+        draw = rng("pricing_agree", "grant", customer.customer_id, line, DAY)
+        granted = draw.random() < chance(hidden, discipline, S6)
+        answer = grant(world, rules, customer.customer_id, line, DAY)
+        answers[granted] += 1
+        if not granted:
+            assert answer == Refusal(customer.customer_id, line, DAY, "declined", employee)
+            continue
+        assert isinstance(answer, Agreement)
+        if discipline >= S6["disciplined_from"]:
+            assert answer.discount_pct == round(cap * draw.uniform(*S6["disciplined_share_of_max"]), 1)
+        else:
+            assert answer.discount_pct == min(round(draw.uniform(*S6["undisciplined_discount_pct"]), 1), cap)
+    assert answers[True] >= 20 and (answers[False] == 0) == (discipline == 0.5)
 
 
 def test_a_grant_reserves_its_expected_cost_and_one_past_the_budget_is_refused(world: World, rules: Rules) -> None:
@@ -224,13 +269,16 @@ def test_the_same_ask_on_the_same_day_gets_the_same_answer(opening: Setup, rules
 
 
 def test_a_kam_grants_individual_prices(world: World, rules: Rules) -> None:
-    kam_duty = next(d for d in world.duties if d.kind == "kam_customer" and d.on(DAY))
-    customer = next(c for c in world.customers.values() if c.code == kam_duty.target)
-    world.budgets[kam_duty.employee_id, QUARTER] = Budget(1e12)
-    answers = [grant(world, rules, customer.customer_id, line, DAY) for line in ("CLASSIC", "GOLD", "PROFIKAVA")]
-    made = [a for a in answers if isinstance(a, Agreement)]
-    assert made and all(a.kind == "individual_price" and a.employee_id == kam_duty.employee_id for a in made)
-    assert all(a.discount_pct <= rules.max_pct(a.line) for a in made)
+    """The KAMs' customers ask on three lines each: what the KAMs grant (by `chance`, as a rep) is individual prices."""
+    codes = {c.code: c for c in world.customers.values()}
+    made = []
+    for duty in [d for d in world.duties if d.kind == "kam_customer" and d.on(DAY)][:30]:
+        world.budgets[duty.employee_id, QUARTER] = Budget(1e12)
+        customer = codes[duty.target]
+        answers = [grant(world, rules, customer.customer_id, line, DAY) for line in ("CLASSIC", "GOLD", "PROFIKAVA")]
+        made += [(a, duty.employee_id) for a in answers if isinstance(a, Agreement)]
+    assert made and all(a.kind == "individual_price" and a.employee_id == kam for a, kam in made)
+    assert all(a.discount_pct <= rules.max_pct(a.line) for a, _ in made)
 
 
 def test_the_order_takes_the_running_agreed_discount_up_to_the_line_s_maximum(world: World, rules: Rules) -> None:
