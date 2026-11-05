@@ -12,7 +12,12 @@ is a null world and each metric must give the opposite (`null_world`).
 and `s2_affluence`), S4 (`s4`, and 04's k-means check `s4_kmeans`, which has no SQL: s4.yaml `kmeans`).
 S2-affluence counts an order only where the promotion names its channel (ttr-hartland#8 item 1, the twin's default
 until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists), its
-measure re-cut in S1.5 (`measured`). The others (S3, S5, the probes) arrive with their stages.
+measure re-cut in S1.5 (`measured`). **G2 S2.1:** the field's probes, A-6 (`a6`), A-7 (`a7`), A-8 (`a8`). The others
+(S3, S5, the other probes) arrive with their stages.
+
+**The probes** (`anomalies.yaml`): a probe returns one count, judged by its `expect` (`>= n`, `= n`, or `rows` for
+any row at all); with `--null` it must not hold — with the anomaly off the probe finds nothing. A disabled anomaly's
+probe is not run, nor one without a twin.
 
 **`sales_pl`** (S6): the view's columns the twin reads, as the view makes them — the cases, the Customer Margin (gross
 revenue less every discount, the delivery and the warehouse cost, a NULL cost as 0; no COGS, contracts §4) and the
@@ -35,6 +40,7 @@ import numpy as np
 import pandas as pd
 
 from hartland_sim.config import Detector, StoriesConfig, inventory
+from hartland_sim.ids import row_id
 
 S2_FROM = date(2024, 2, 26)  # s2_affluence.sql: promotions whose 8 weeks before lie inside the history
 S6_FROM = date(2024, 2, 26)  # s6.sql: agreements whose 8 weeks before lie inside the history
@@ -52,6 +58,9 @@ class Missing(Exception):
 
 WRITERS = {
     "promotion_result": "G4 S4.3",
+    "visit": "G2 S2.1",
+    "visit_plan": "G2 S2.1",
+    "competitor_sighting": "G2 S2.1",
     "sales_order": "G1 S1.4",
     "sales_order_line": "G1 S1.4",
     "sales_order_line_discount": "G1 S1.4",
@@ -580,6 +589,57 @@ def s6_targets(build: Build, stories: StoriesConfig) -> float:
     return float(on_target[disciplined].mean() - on_target[~disciplined].mean())
 
 
+# ── the probes (G2 S2.1) ──────────────────────────────────────────────────────
+
+A7_YEAR = 2025  # a7.sql: the reps' adherence over 2025
+A7_SKIPPING = 0.65  # a7.sql: a rep who made this share of its planned visits or fewer skips them
+A8_SILENT = 0.6  # a8.sql: a rep whose visits go unrecorded this share of the time or more records nothing
+
+
+def a6(build: Build, stories: StoriesConfig) -> float:
+    """a6.sql: the sightings of the competitor's promotion at visits in the region from its sightings to its end."""
+    held = stories.anomaly("A-6").parameters
+    sightings = build["competitor_sighting"]
+    competitor = row_id("competitor", code=held["competitor"])  # a reference table, loaded from data/reference/
+    found = sightings[(sightings["competitor_id"] == competitor) & (sightings["activity_kind"] == "promotion")]
+    visits = build["visit"][["visit_id", "store_id", "day"]].merge(found[["visit_id"]], on="visit_id")
+    regions = (
+        build["store"][["store_id", "area_id"]]
+        .merge(build["area"][["area_id", "region_id"]], on="area_id")
+        .merge(build["region"][["region_id", "code"]], on="region_id")
+    )
+    at = visits.merge(regions, on="store_id")
+    first, last = pd.Timestamp(held["sightings_from"]), pd.Timestamp(held["until"])
+    return float(((at["code"] == held["region"]) & at["day"].between(first, last)).sum())
+
+
+def a7(build: Build, stories: StoriesConfig) -> float:
+    """a7.sql: the reps who made `A7_SKIPPING` or fewer of their planned visits of `A7_YEAR`."""
+    plans = build["visit_plan"]
+    plans = plans[plans["planned_day"].dt.year == A7_YEAR]
+    made = plans["visit_plan_id"].isin(build["visit"]["visit_plan_id"].dropna())
+    adherence = made.groupby(plans["employee_id"]).mean()
+    return float((adherence <= A7_SKIPPING).sum())
+
+
+def a8(build: Build, stories: StoriesConfig) -> float:
+    """a8.sql: the reps whose visits go unrecorded `A8_SILENT` of the time or more."""
+    visits = build["visit"]
+    unrecorded = (~visits["recorded"].astype(bool)).groupby(visits["employee_id"]).mean()
+    return float((unrecorded >= A8_SILENT).sum())
+
+
+PROBES: Mapping[str, Twin] = {"probes/a6.sql": a6, "probes/a7.sql": a7, "probes/a8.sql": a8}
+
+
+def expected(expect: str) -> tuple[str, float]:
+    """A probe's `expect` as a direction and a threshold: `>= n`, `= n`, or `rows` (more than none)."""
+    if expect == "rows":
+        return ">", 0.0
+    direction, number = expect.split()
+    return {">=": ">=", "=": "between"}[direction], float(number)
+
+
 TWINS: Mapping[str, Twin] = {
     "detectors/s1.sql": s1,
     "detectors/s1_weather.sql": s1_weather,
@@ -634,7 +694,7 @@ def judge(story: str, detector: Detector, value: float, null: bool, note: str = 
 
 def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict]:
     """Every detector of every enabled story over the CSV build in `run` (module docstring), in the stories' order,
-    and S4's k-means, reported; a disabled story's rows say so."""
+    and S4's k-means, reported; a disabled story's rows say so; then the probes (`probes`)."""
     build = Build(run)
     out = []
     for story in stories.stories:
@@ -696,6 +756,28 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
                 out.append(Verdict("S4", "kmeans", "adjusted_rand_index", value, ">=", KMEANS_BAR, None, note))
             except Missing as missing:
                 out.append(Verdict("S4", "kmeans", "adjusted_rand_index", None, ">=", KMEANS_BAR, None, str(missing)))
+    return out + probes(build, stories, null)
+
+
+def probes(build: Build, stories: StoriesConfig, null: bool = False) -> list[Verdict]:
+    """Every enabled anomaly's probe with a twin (module docstring), in `anomalies.yaml`'s order."""
+    out = []
+    for anomaly in stories.anomalies:
+        direction, number = expected(anomaly.probe.expect)
+        threshold: float | tuple[float, float] = (number, number) if direction == "between" else number
+        shown = anomaly.probe.sql
+        twin = PROBES.get(shown)
+        if not anomaly.enabled or twin is None:
+            why = "disabled" if not anomaly.enabled else "no pandas twin yet"
+            out.append(Verdict(anomaly.id, shown, "count", None, direction, threshold, None, why))
+            continue
+        try:
+            value = twin(build, stories)
+        except Missing as missing:
+            out.append(Verdict(anomaly.id, shown, "count", None, direction, threshold, None, str(missing)))
+            continue
+        found = holds(value, direction, threshold)
+        out.append(Verdict(anomaly.id, shown, "count", value, direction, threshold, not found if null else found))
     return out
 
 

@@ -46,8 +46,9 @@ stream `observe` by the visit and the line:
 - `competitor_facings`: the line's slots × a draw in `field.competitor_facings`, and A-6's Kavalír adds its
   `competitor_facings_lift` beside its line in its region from its sightings to its end; `shelf_share_pct`
   Hartland's share of the two;
-- `out_of_stock`: a line it buys whose basket holds `field.shelf_cycles` of the store's order cycles of its demand —
-  the shelf the last order filled has run dry;
+- `out_of_stock`: a line it buys whose basket — what the store sold since its last order, the order it placed
+  today included (the visit sees the shelf before that delivery) — holds `field.shelf_cycles` of the store's order
+  cycles of its demand: the shelf the last order filled has run dry;
 - `secondary_placement`: a display of the line lent at the point that day (`World.loans`, G2 S2.3's);
 - `promo_compliant`: at a sales visit, where a mandatory promotion of the line runs and admits the store, executed
   with `field.promo_compliance`; else null.
@@ -304,6 +305,7 @@ class Crew:
     notebook: NoteBook
     products: Mapping[int, tuple[tuple[str, tuple[str, ...]], ...]]  # line index → its products' (name, nicknames)
     competitors: Mapping[str, str]  # code → name
+    sku_line: Mapping[int, int]  # sku_id → its line's index
 
     @classmethod
     def of(cls, world: World, config: WorldConfig, stories: StoriesConfig) -> Crew:
@@ -364,6 +366,7 @@ class Crew:
             NoteBook.load(),
             {i: tuple(found) for i, found in products.items()},
             {competitor["code"]: competitor["name"] for competitor in read("competitor")},
+            {int(sku): int(line) for sku, line in zip(demand.catalogue.sku_ids, demand.catalogue.line, strict=True)},
         )
 
 
@@ -513,12 +516,22 @@ def visit_row(v: Visit, day: date) -> Row:
 # ── the observations (T4) ──────────────────────────────────────────────────────
 
 
-def observe(world: World, crew: Crew, day: date, visits: Sequence[Visit]) -> list[Row]:
-    """The recorded visits' `visit_observation` rows (module docstring), before the visits' orders."""
+def observe(
+    world: World, crew: Crew, day: date, visits: Sequence[Visit], events: Sequence[BasketReady] = ()
+) -> list[Row]:
+    """The recorded visits' `visit_observation` rows (module docstring), before the visits' orders; `events` are the
+    day's baskets ordered so far, whose cases the shelves still lack."""
     recorded = [v for v in visits if v.recorded]
     demand = world.demand
     if not recorded or demand is None:
         return []
+    ordered: dict[int, Array] = {}
+    for event in events:
+        point = crew.points.get(event.delivery_point_id)
+        if point is not None:
+            held = ordered.setdefault(point, np.zeros(len(demand.lines)))
+            for sku_id, cases, _ in event.lines:
+                held[crew.sku_line[sku_id]] += cases
     mandatory = [promotion for _, promotion in running(world, day) if promotion.mandatory]
     lent = {
         (loan.delivery_point_id, loan.line)
@@ -544,7 +557,8 @@ def observe(world: World, crew: Crew, day: date, visits: Sequence[Visit]) -> lis
         if kavalir is not None and spot.region == kavalir.region:
             theirs = np.where(lines == kavalir.line, theirs * (1 + kavalir.lift), theirs)
         competitor = np.rint(theirs)
-        dry = buys & (demand.basket[p, lines] >= crew.field.shelf_cycles * demand.cycle[p] * base) & (base > 0)
+        sold = demand.basket[p, lines] + (ordered[p][lines] if p in ordered else 0.0)
+        dry = buys & (sold >= crew.field.shelf_cycles * demand.cycle[p] * base) & (base > 0)
         executed = uniforms("observe", "promo", ids=keys) < crew.field.promo_compliance
         for k, i in enumerate(lines.tolist()):
             code = demand.lines[i].code

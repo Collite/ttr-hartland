@@ -299,7 +299,9 @@ field:
     petrol: [CLASSIC, GOLD, SMESI, KELIMKY, NUDLE]
   facings: { S: 14, M: 30, L: 60 }
   competitor_facings: [0.6, 1.4]
-  shelf_cycles: 1.0 # a line is out of stock once its basket holds this many of the store's order cycles of demand
+  # A line is out of stock once what the store sold since its last order holds this many of its order cycles of
+  # demand (the shelf holds two; ~14 % of the lines a store buys on a 2024 build).
+  shelf_cycles: 2.0
   promo_compliance: 0.8 # a running mandatory promotion of the line is executed at the store
   # Competitor sightings (`competitor_sighting`, G2 S2.1 T5): at `share` of the recorded visits a competitor's
   # activity on one of the store's observed lines — its product of that line, the kind by `kinds`, the price seen ×

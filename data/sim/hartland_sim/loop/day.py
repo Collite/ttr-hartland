@@ -219,7 +219,7 @@ class Loop:
         planned = plan(self.world, day)
         self.output.append(day, "visit_plan", (visit_plan_row(p, day) for p in planned))
         made = visit(self.world, self.crew, day, calls(self.world, self.crew, day, planned))
-        observations = observe(self.world, self.crew, day, made)
+        observations = observe(self.world, self.crew, day, made, self.today.events)
         self.output.append(day, "visit_observation", observations)
         sightings = sight(self.world, self.crew, day, made)
         self.output.append(day, "competitor_sighting", (sighting_row(s) for s in sightings))

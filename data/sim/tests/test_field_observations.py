@@ -15,6 +15,7 @@ import pytest
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.loop import field
+from hartland_sim.loop.demand import BasketReady
 from hartland_sim.loop.field import Crew, Visit
 from hartland_sim.loop.pricing import admits
 from hartland_sim.setup.rows import Row, columns
@@ -103,7 +104,8 @@ def test_a_line_is_out_of_stock_once_its_basket_holds_its_shelf_cycles(opening: 
     world = Checkpoint.of(opening.world).restore()  # its baskets filled to 0–2 order cycles of their demand
     demand = world.demand
     assert demand is not None
-    filled = 2 * (np.arange(len(demand.basket)) * 0.6180339887 % 1.0)  # spread evenly over the points
+    shelf = WORLD.field.shelf_cycles
+    filled = 2 * shelf * (np.arange(len(demand.basket)) * 0.6180339887 % 1.0)  # spread evenly over the points
     demand.basket[:] = demand.base * (demand.cycle * filled)[:, None]
     out = n = 0
     for day in DAYS[:4]:
@@ -115,7 +117,29 @@ def test_a_line_is_out_of_stock_once_its_basket_holds_its_shelf_cycles(opening: 
                 assert r["out_of_stock"] == (r["facings"] > 0 and demand.basket[p, i] >= expected > 0)
                 out += r["out_of_stock"]
                 n += r["facings"] > 0
-    assert out / n == pytest.approx(1 - WORLD.field.shelf_cycles / 2, abs=0.1)
+    assert out / n == pytest.approx(0.5, abs=0.1)
+
+
+def test_the_shelf_lacks_what_the_store_ordered_today(opening: Setup, crew: Crew) -> None:
+    world = Checkpoint.of(opening.world).restore()
+    demand = world.demand
+    assert demand is not None
+    day = DAYS[0]
+    v = next(v for v in _visits(world, crew, day) if v.recorded and v.kind == "sales")
+    rows = field.observe(world, crew, day, [v])
+    p = crew.points[v.tourplan.delivery_point_id]
+    first = next(r for r in rows if r["facings"] > 0)
+    i = _line(world, first)
+    demand.basket[p, i] = 0.0  # ordered today: the basket empty, the order holds the line's sold cases
+    sku = next(s for s, line in crew.sku_line.items() if line == i)
+    sold = WORLD.field.shelf_cycles * demand.cycle[p] * demand.base[p, i] + 1
+    event = BasketReady(day, v.tourplan.customer_id, v.tourplan.delivery_point_id, "small_retail", ((sku, sold, 0.0),))
+
+    def dry(events: list[BasketReady]) -> bool:
+        found = field.observe(world, crew, day, [v], events)
+        return bool(next(r for r in found if r["product_line_id"] == first["product_line_id"])["out_of_stock"])
+
+    assert not dry([]) and dry([event])
 
 
 def test_a_lent_display_is_a_secondary_placement(opening: Setup, crew: Crew) -> None:
