@@ -1494,7 +1494,8 @@
         "facings",
         "competitor_facings",
         "shelf_cycles",
-        "promo_compliance"
+        "promo_compliance",
+        "sightings"
       ],
       "properties": {
         "cycle_weeks": {
@@ -1606,6 +1607,128 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "sightings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "share",
+            "confirmed",
+            "kinds",
+            "price",
+            "home",
+            "home_weight",
+            "promotions_planted"
+          ],
+          "properties": {
+            "share": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "confirmed": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "kinds": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "promotion",
+                "listing",
+                "display",
+                "price_cut"
+              ],
+              "properties": {
+                "promotion": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "listing": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "display": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "price_cut": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "price": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "promotion",
+                "listing",
+                "display",
+                "price_cut"
+              ],
+              "properties": {
+                "promotion": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "listing": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "display": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "price_cut": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "home": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "home_weight": {
+              "type": "number",
+              "minimum": 1
+            },
+            "promotions_planted": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
         }
       }
     },

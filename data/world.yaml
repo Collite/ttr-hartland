@@ -301,6 +301,22 @@ field:
   competitor_facings: [0.6, 1.4]
   shelf_cycles: 1.0 # a line is out of stock once its basket holds this many of the store's order cycles of demand
   promo_compliance: 0.8 # a running mandatory promotion of the line is executed at the store
+  # Competitor sightings (`competitor_sighting`, G2 S2.1 T5): at `share` of the recorded visits a competitor's
+  # activity on one of the store's observed lines — its product of that line, the kind by `kinds`, the price seen ×
+  # a draw in the kind's `price` range of the product's typical price — confirmed at `confirmed`. A competitor is
+  # `home_weight` times as likely in its `home` region; one of `promotions_planted` promotes only in its anomaly (A-6).
+  sightings:
+    share: 0.03
+    confirmed: 0.8
+    kinds: { promotion: 0.25, listing: 0.25, display: 0.2, price_cut: 0.3 }
+    price:
+      promotion: [0.7, 0.85]
+      listing: [0.95, 1.05]
+      display: [0.95, 1.05]
+      price_cut: [0.75, 0.9]
+    home: { KAVALIR: VCH }
+    home_weight: 3
+    promotions_planted: [KAVALIR]
 
 delivery:
   carriers_per_dc: 3

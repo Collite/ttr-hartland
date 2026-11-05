@@ -205,6 +205,7 @@ class Promotion:
     condition_qty: float | None = None  # cases of the condition SKU (or, 1+1, of the target) a reward needs
     reward_qty: float | None = None  # cases free per `condition_qty`
     mandatory: bool = False  # the reps must offer it (S2.2's prompt)
+    name: str = ""  # its template's Czech name (the visit notes cite it, G2 S2.1)
     excludes: tuple[str, ...] = ()  # the codes it may not combine with on an order (`promotion_exclusion`)
 
 

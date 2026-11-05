@@ -11,8 +11,9 @@ before `history.first_day`).
   has one; the warm-up's first month has none (no month before it);
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
 - 2 `field` (`loop.field`): the tourplans re-cut on a rep's area move (the month-end re-cuts the stores won and
-  lost), the day's visit plan, the visits and their observations — a converting one then takes its customer's
-  basket as its order, among the day's baskets the orders step makes; the prompts are G2 S2.2's;
+  lost), the day's visit plan, the visits, their observations and competitor sightings — a converting one then
+  takes its customer's basket as its order, among the day's baskets the orders step makes; the prompts are G2
+  S2.2's;
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);
 - 5 `supply`, 6 `delivery` (G3), 7 `finance`, 8 `shops` (G4), 8b `documents` (DOC): stubs, called and returning
   nothing;
@@ -46,9 +47,12 @@ from hartland_sim.loop import acquisition, demand, orders
 from hartland_sim.loop.field import (
     Crew,
     calls,
+    note,
     observe,
     plan,
     recut,
+    sight,
+    sighting_row,
     take_orders,
     visit,
     visit_plan_row,
@@ -215,9 +219,13 @@ class Loop:
         planned = plan(self.world, day)
         self.output.append(day, "visit_plan", (visit_plan_row(p, day) for p in planned))
         made = visit(self.world, self.crew, day, calls(self.world, self.crew, day, planned))
-        self.output.append(day, "visit_observation", observe(self.world, self.crew, day, made))
+        observations = observe(self.world, self.crew, day, made)
+        self.output.append(day, "visit_observation", observations)
+        sightings = sight(self.world, self.crew, day, made)
+        self.output.append(day, "competitor_sighting", (sighting_row(s) for s in sightings))
         today = self.today
         today.events = take_orders(self.world, self.crew, day, made, today.events, today.shares)
+        note(self.world, self.crew, day, made, observations, sightings)
         self.output.append(day, "visit", (visit_row(v, day) for v in made))
 
     def orders(self, day: date) -> None:

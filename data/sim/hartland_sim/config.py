@@ -404,6 +404,17 @@ class Calendar:
 
 
 @dataclass(frozen=True)
+class Sightings:
+    share: float  # of the recorded visits
+    confirmed: float
+    kinds: Mapping[str, float]  # activity kind → its share
+    price: Mapping[str, tuple[float, float]]  # activity kind → the price seen × the typical price, between
+    home: Mapping[str, str]  # competitor code → its home region
+    home_weight: float
+    promotions_planted: tuple[str, ...]  # competitors whose promotions are an anomaly's only
+
+
+@dataclass(frozen=True)
 class Field:
     cycle_weeks: Mapping[str, int]  # store class (or "potential") → weeks
     adherence: float
@@ -419,6 +430,7 @@ class Field:
     competitor_facings: tuple[float, float]  # × a line's slots
     shelf_cycles: float
     promo_compliance: float
+    sightings: Sightings
 
 
 @dataclass(frozen=True)
