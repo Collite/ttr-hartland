@@ -288,6 +288,7 @@ class Tourplan:
     store: str  # osm_id
     store_id: int
     customer_id: int  # the store's customer (a potential one too), or the key account whose station it is
+    delivery_point_id: int  # the store's: its customer's (or the key account's) point there
     area: str
     store_class: str
     cycle_weeks: int

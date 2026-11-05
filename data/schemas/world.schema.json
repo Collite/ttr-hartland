@@ -1489,7 +1489,12 @@
         "travel_minutes",
         "day_starts",
         "day_ends",
-        "outcomes"
+        "outcomes",
+        "observed_lines",
+        "facings",
+        "competitor_facings",
+        "shelf_cycles",
+        "promo_compliance"
       ],
       "properties": {
         "cycle_weeks": {
@@ -1563,6 +1568,44 @@
               "$ref": "#/$defs/visit_outcomes"
             }
           }
+        },
+        "observed_lines": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "facings": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "competitor_facings": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "shelf_cycles": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "promo_compliance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       }
     },

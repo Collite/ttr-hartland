@@ -45,6 +45,7 @@ anomalies:
       until: 2025-12-14
       line: GOLD
       dip_pct: 12
+      competitor_facings_lift: 0.5 # Kavalír's facings beside Gold in the region, from the sightings to the end
     probe: { sql: probes/a6.sql, expect: ">= 10" }
   - id: A-7
     title_cs: Tři obchodní zástupci vynechávají návštěvy

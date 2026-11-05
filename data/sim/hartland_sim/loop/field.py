@@ -37,6 +37,20 @@ tourplan's or the visit's id:
   `field.visit_minutes` (Prague time), and a day of more than fit by `field.day_ends` is compressed into it, every
   travel and visit by the same factor (the areas' loads differ, a dense one's calls are quick); A-8's rep leaves
   `unrecorded_share` of its visits unrecorded — no times, no observations, no note.
+
+**The observations** (`visit_observation`, T4; `observe`): a recorded visit looks at its store class's lines
+(`field.observed_lines`; every line under `dials.observation_lines: all`), before it takes any order, every draw from
+stream `observe` by the visit and the line:
+- `facings`: the store's size class's shelf (`field.facings`) shared by the lines' parts of its demand (the base),
+  × a draw in [0.7, 1.3], at least one — on a line the customer buys; none on another, nor at a potential store;
+- `competitor_facings`: the line's slots × a draw in `field.competitor_facings`, and A-6's Kavalír adds its
+  `competitor_facings_lift` beside its line in its region from its sightings to its end; `shelf_share_pct`
+  Hartland's share of the two;
+- `out_of_stock`: a line it buys whose basket holds `field.shelf_cycles` of the store's order cycles of its demand —
+  the shelf the last order filled has run dry;
+- `secondary_placement`: a display of the line lent at the point that day (`World.loans`, G2 S2.3's);
+- `promo_compliant`: at a sales visit, where a mandatory promotion of the line runs and admits the store, executed
+  with `field.promo_compliance`; else null.
 """
 
 from __future__ import annotations
@@ -54,7 +68,8 @@ from hartland_sim.config import Field, StoriesConfig, WorldConfig
 from hartland_sim.dates import is_working_day
 from hartland_sim.ids import row_id
 from hartland_sim.loop.demand import BasketReady, Shares, take
-from hartland_sim.rng import rng, uniforms
+from hartland_sim.loop.pricing import admits, running
+from hartland_sim.rng import pairs, rng, uniforms
 from hartland_sim.setup.rows import Row, row
 from hartland_sim.world import OPEN, Customer, Tourplan, World
 
@@ -103,6 +118,7 @@ def open_tourplan(
             store=store,
             store_id=row_id("store", osm_id=store),
             customer_id=customer.customer_id,
+            delivery_point_id=row_id("delivery_point", customer=customer.code, place=store),
             area=area,
             store_class=store_class,
             cycle_weeks=cycle(customer, store_class, day, field),
@@ -209,16 +225,30 @@ def visit_plan_row(planned: Planned, day: date) -> Row:
 
 
 @dataclass(frozen=True)
+class Kavalir:
+    """A-6 as the observations read it: the competitor's extra facings beside a line in a region, over days."""
+
+    region: str
+    line: int  # the line's index in the demand's lines
+    first: date
+    last: date
+    lift: float
+
+
+@dataclass(frozen=True)
 class Crew:
     """What the visits read beside the `World`, for a run (never pickled; built again from the configs): `field`,
-    S3's conversion base, each rep's adherence and its unrecorded share (A-8), and each customer's first point (its
-    index in the demand's points: a small-retail customer's only one)."""
+    S3's conversion base, each rep's adherence and its unrecorded share (A-8), each delivery point's index in the
+    demand's points, the lines a store class observes (by index) and each line's id, A-6 while enabled."""
 
     field: Field
     conversion_base: float
     adherence: Mapping[int, float]  # a rep's employee_id → its share of planned visits made
     unrecorded: Mapping[int, float]  # a rep's employee_id → its share of visits left unrecorded
-    points: Mapping[int, int]  # customer_id → its first point's index
+    points: Mapping[int, int]  # delivery_point_id → its index in the demand's points
+    observed: Mapping[str, tuple[int, ...]]  # store class → its observed lines' indices
+    line_ids: tuple[int, ...]  # product_line_id, by line index
+    kavalir: Kavalir | None
 
     @classmethod
     def of(cls, world: World, config: WorldConfig, stories: StoriesConfig) -> Crew:
@@ -234,9 +264,27 @@ class Crew:
         demand = world.demand
         if demand is None:
             raise ValueError("the World has no demand state (setup makes it)")
-        points = {int(customer): int(demand.customer_start[c]) for c, customer in enumerate(demand.customer_ids)}
+        points = {int(point): p for p, point in enumerate(demand.point_ids)}
         conversion = float(stories.story("S3").parameters["conversion_base"])
-        return cls(field, conversion, adherence, unrecorded, points)
+        index = {line.code: i for i, line in enumerate(demand.lines)}
+        every = tuple(range(len(demand.lines)))
+        observed = {
+            store_class: every if config.dials.observation_lines == "all" else tuple(index[code] for code in codes)
+            for store_class, codes in field.observed_lines.items()
+        }
+        line_ids = tuple(row_id("product_line", code=line.code) for line in demand.lines)
+        a6 = stories.anomaly("A-6")
+        kavalir = None
+        if a6.enabled:
+            held = a6.parameters
+            kavalir = Kavalir(
+                str(held["region"]),
+                index[str(held["line"])],
+                date.fromisoformat(str(held["sightings_from"])),
+                date.fromisoformat(str(held["until"])),
+                float(held["competitor_facings_lift"]),
+            )
+        return cls(field, conversion, adherence, unrecorded, points, observed, line_ids, kavalir)
 
 
 @dataclass
@@ -356,7 +404,7 @@ def take_orders(
             out[at] = replace(out[at], visit=(v.visit_id, v.tourplan.employee_id))
             v.outcome = "order"
     if taking:
-        points = np.array([crew.points[customer] for customer in taking], dtype=np.int64)
+        points = np.array([crew.points[v.tourplan.delivery_point_id] for v in taking.values()], dtype=np.int64)
         for event in take(world, day, points, shares):
             v = taking[event.customer_id]
             out.append(replace(event, visit=(v.visit_id, v.tourplan.employee_id)))
@@ -380,3 +428,60 @@ def visit_row(v: Visit, day: date) -> Row:
         note=v.note,
         recorded=v.recorded,
     )
+
+
+# ── the observations (T4) ──────────────────────────────────────────────────────
+
+
+def observe(world: World, crew: Crew, day: date, visits: Sequence[Visit]) -> list[Row]:
+    """The recorded visits' `visit_observation` rows (module docstring), before the visits' orders."""
+    recorded = [v for v in visits if v.recorded]
+    demand = world.demand
+    if not recorded or demand is None:
+        return []
+    mandatory = [promotion for _, promotion in running(world, day) if promotion.mandatory]
+    lent = {
+        (loan.delivery_point_id, loan.line)
+        for loan in world.loans.values()
+        if loan.lent_on <= day and (loan.returned_on is None or day < loan.returned_on)
+    }
+    kavalir = crew.kavalir if crew.kavalir and crew.kavalir.first <= day <= crew.kavalir.last else None
+    low, high = crew.field.competitor_facings
+    rows = []
+    for v in recorded:
+        p = crew.points[v.tourplan.delivery_point_id]
+        spot, customer = demand.spots[p], world.customers[v.tourplan.customer_id]
+        lines = np.array(crew.observed[v.tourplan.store_class], dtype=np.int64)
+        base = demand.base[p, lines]
+        share = base / base.sum() if base.sum() > 0 else np.full(len(lines), 1 / len(lines))
+        size = spot.store.size_class if spot.store else "S"
+        slots = crew.field.facings[size] * share
+        buys = demand.carried[demand.point_customer[p], lines] & (v.kind != "acquisition")
+        keys = pairs(np.full(len(lines), v.visit_id, dtype=np.int64), np.array(crew.line_ids)[lines])
+        drawn = slots * (0.7 + 0.6 * uniforms("observe", "facings", ids=keys))
+        facings = np.where(buys, np.maximum(1, np.rint(drawn)), 0)
+        theirs = slots * (low + (high - low) * uniforms("observe", "competitor", ids=keys))
+        if kavalir is not None and spot.region == kavalir.region:
+            theirs = np.where(lines == kavalir.line, theirs * (1 + kavalir.lift), theirs)
+        competitor = np.rint(theirs)
+        dry = buys & (demand.basket[p, lines] >= crew.field.shelf_cycles * demand.cycle[p] * base) & (base > 0)
+        executed = uniforms("observe", "promo", ids=keys) < crew.field.promo_compliance
+        for k, i in enumerate(lines.tolist()):
+            code = demand.lines[i].code
+            runs = v.kind == "sales" and any(m.line == code and admits(m, spot, customer, day) for m in mandatory)
+            ours, other = int(facings[k]), int(competitor[k])
+            rows.append(
+                row(
+                    "visit_observation",
+                    visit_id=v.visit_id,
+                    product_line_id=crew.line_ids[i],
+                    facings=ours,
+                    shelf_share_pct=round(100 * ours / (ours + other), 2) if ours + other else 0.0,
+                    out_of_stock=bool(dry[k]),
+                    secondary_placement=(v.tourplan.delivery_point_id, code) in lent,
+                    promo_compliant=bool(executed[k]) if runs else None,
+                    competitor_facings=other,
+                    extra=None,
+                )
+            )
+    return rows

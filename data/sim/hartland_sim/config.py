@@ -414,6 +414,11 @@ class Field:
     day_starts: str  # HH:MM
     day_ends: str  # HH:MM
     outcomes: Mapping[str, Mapping[str, float]]  # a visit's kind → closed / refused / not_found → its share
+    observed_lines: Mapping[str, tuple[str, ...]]  # store class → the product lines a visit observes
+    facings: Mapping[str, int]  # size class → Hartland's facings across the observed lines
+    competitor_facings: tuple[float, float]  # × a line's slots
+    shelf_cycles: float
+    promo_compliance: float
 
 
 @dataclass(frozen=True)

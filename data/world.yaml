@@ -288,6 +288,19 @@ field:
     sales: { closed: 0.03, refused: 0.01, not_found: 0.002 }
     acquisition: { closed: 0.03, refused: 0.15, not_found: 0.01 }
     merchandising: { closed: 0.01, refused: 0.0, not_found: 0.0 }
+  # The perfect-store check (`visit_observation`, G2 S2.1 T4): the lines a recorded visit looks at, by store class
+  # (`dials.observation_lines: store_class`; `all` looks at every line); Hartland's facings across them by the store's
+  # size class, each line's by its share of the store's demand; the competitors' beside a line, × its slots.
+  observed_lines:
+    convenience: [CLASSIC, GOLD, SMESI, POLEVKY, KELIMKY, NUDLE]
+    minimarket: [CLASSIC, GOLD, ESPRESSO, SMESI, POLEVKY, KELIMKY, NUDLE]
+    super: [CLASSIC, GOLD, ESPRESSO, SMESI, BEZKOFEIN, POLEVKY, KELIMKY, NUDLE, PREMIUM]
+    village: [CLASSIC, GOLD, SMESI, POLEVKY, NUDLE]
+    petrol: [CLASSIC, GOLD, SMESI, KELIMKY, NUDLE]
+  facings: { S: 14, M: 30, L: 60 }
+  competitor_facings: [0.6, 1.4]
+  shelf_cycles: 1.0 # a line is out of stock once its basket holds this many of the store's order cycles of demand
+  promo_compliance: 0.8 # a running mandatory promotion of the line is executed at the store
 
 delivery:
   carriers_per_dc: 3

@@ -201,25 +201,26 @@ def test_a_converting_visit_takes_the_triggered_basket_or_the_basket_as_it_stand
     shares = demand.catalogue.shares(day, len(demand.lines))
     retail = [c for c in world.customers.values() if c.channel == "small_retail" and c.active_on(day) and c.store]
     triggered, standing, empty = retail[0], retail[1], retail[2]
-    for customer, cases in ((standing, 4.0), (empty, 0.0)):
-        demand.basket[crew.points[customer.customer_id]] = 0.0
-        demand.basket[crew.points[customer.customer_id], 0] = cases
-    other = _world(opening)  # the basket that triggered today: another World's, taken there
-    assert other.demand is not None
-    other.demand.basket[crew.points[triggered.customer_id], 0] = 3.0
-    events = demand_step.take(other, day, np.array([crew.points[triggered.customer_id]]), shares)
-    assert len(events) == 1 and events[0].visit is None
 
     def converting(customer_id: int) -> Visit:
         tourplan = world.tourplans[world.tourplan_of[world.customers[customer_id].store or ""]]
         return Visit(customer_id, None, tourplan, "sales", "no_order", True, True, None, None)
 
     made = [converting(c.customer_id) for c in (triggered, standing, empty)]
+    points = [crew.points[v.tourplan.delivery_point_id] for v in made]
+    for p, cases in ((points[1], 4.0), (points[2], 0.0)):
+        demand.basket[p] = 0.0
+        demand.basket[p, 0] = cases
+    other = _world(opening)  # the basket that triggered today: another World's, taken there
+    assert other.demand is not None
+    other.demand.basket[points[0], 0] = 3.0
+    events = demand_step.take(other, day, np.array([points[0]]), shares)
+    assert len(events) == 1 and events[0].visit is None
     out = field.take_orders(world, crew, day, made, events, shares)
     assert [e.customer_id for e in out] == [triggered.customer_id, standing.customer_id]
     assert [e.visit for e in out] == [(v.visit_id, v.tourplan.employee_id) for v in made[:2]]
     assert [v.outcome for v in made] == ["order", "order", "no_order"]
-    p = crew.points[standing.customer_id]
+    p = points[1]
     assert demand.basket[p].sum() == 0 and demand.offset[p] == day.toordinal() % demand.cycle[p]
     assert sum(cases for _, cases, _ in out[1].lines) > 0
 
