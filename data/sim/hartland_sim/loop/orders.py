@@ -9,8 +9,9 @@ customers' asks for a discount.
   retail's), stream `order` by the order's id. A visit or a phone order is taken by who holds the customer that day —
   its area's rep, its KAM (`pricing.granter`) — the others by no one. When no one holds it that day (an area or an
   account unheld), the same draw, rescaled within the source it picked, picks again among the mix's other sources,
-  their shares renormalised (review-221 N3, RR4): no visit nobody made. `visit_id` stays empty: the visits are G2
-  S2.1's.
+  their shares renormalised (review-221 N3, RR4): no visit nobody made. A basket a visit took (G2 S2.1,
+  `loop.field`) is a `visit` order with its `visit_id`, taken by the visit's rep; small retail's and the station
+  shops' mixes hold no visit, so their visit orders are what the visits' conversion makes.
 - `requested_on` is the next working day (`setup.calendar`'s Czech days off); `dc_site_id` the DC of the point's
   region (`world.yaml sites.dcs`); `status` the credit check's — `released`, or `held` with its reason (A-14).
 Its lines are `pricing.price_order`'s, numbered in that order (the free lines last), each with the purchase price of
@@ -185,10 +186,15 @@ def order(
         return Order(None, [], [], priced, value, status, reason)
     number = order_no(customer.code, day, n)
     order_id = business_id("sales_order", number)  # `row_id`'s: its id_key is its `order_no`
-    kind = source(desk, terms(customer), draw)
-    taker = granter(world, customer, day) if kind in TAKEN else None
-    if kind in TAKEN and taker is None:
-        kind = source(desk, terms(customer), rescaled(desk, terms(customer), draw), taken=False)
+    visit_id: int | None = None
+    taker: int | None
+    if basket.visit is not None:  # a visit took the basket (G2 S2.1)
+        kind, (visit_id, taker) = "visit", basket.visit
+    else:
+        kind = source(desk, terms(customer), draw)
+        taker = granter(world, customer, day) if kind in TAKEN else None
+        if kind in TAKEN and taker is None:
+            kind = source(desk, terms(customer), rescaled(desk, terms(customer), draw), taken=False)
     demand = world.demand
     assert demand is not None
     spot = demand.spots[rules.points[basket.delivery_point_id]]
@@ -203,7 +209,7 @@ def order(
         requested_on=next_working_day(day),
         source=kind,
         taken_by_employee_id=taker,
-        visit_id=None,
+        visit_id=visit_id,
         status=status,
         hold_reason=reason,
         dc_site_id=desk.dcs[spot.region],

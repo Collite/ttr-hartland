@@ -407,7 +407,13 @@ class Calendar:
 class Field:
     cycle_weeks: Mapping[str, int]  # store class (or "potential") → weeks
     adherence: float
+    adherence_spread: float
+    ad_hoc_share: float
     visit_minutes: tuple[int, int]
+    travel_minutes: tuple[int, int]
+    day_starts: str  # HH:MM
+    day_ends: str  # HH:MM
+    outcomes: Mapping[str, Mapping[str, float]]  # a visit's kind → closed / refused / not_found → its share
 
 
 @dataclass(frozen=True)

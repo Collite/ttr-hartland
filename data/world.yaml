@@ -48,11 +48,11 @@ channels:
     since_until: 2023-12-31
     order_grain: case
     order_cycle_days: 14
-    order_sources: { visit: 0.45, phone: 0.35, portal: 0.20 }
+    order_sources: { phone: 0.64, portal: 0.36 } # a visit's order is the field's (G2 S2.1): what conversion makes
   special_retail: # every station shop but OMV's and Shell's: a small-retail sub-channel (NH-D5)
     order_grain: case
     order_cycle_days: 14
-    order_sources: { visit: 0.30, phone: 0.40, portal: 0.30 }
+    order_sources: { phone: 0.57, portal: 0.43 } # as small retail's, the visits' orders the field's
   gas_ka:
     accounts: [OMV, SHELL]
     order_grain: case
@@ -276,7 +276,18 @@ field:
     petrol: 4
     potential: 8
   adherence: 0.90 # planned visits made, the average rep (A-7 pins three below)
+  adherence_spread: 0.04 # a rep's own adherence: drawn within ± this of the average (stream `visit`, by the rep)
+  ad_hoc_share: 0.05 # unplanned visits: this share of a rep's planned ones that day, at its stores not planned
   visit_minutes: [15, 45]
+  travel_minutes: [10, 30] # between two visits of a rep's day, from `day_starts`
+  day_starts: "08:00"
+  day_ends: "17:00" # a day of more visits than fit is compressed into it (a dense area's quick calls)
+  # A visit's outcome when the store cannot be dealt with, by the visit's kind — closed, the owner refused, the store
+  # not found; otherwise a sales visit orders when its conversion fires (S3) and any other visit has no order.
+  outcomes:
+    sales: { closed: 0.03, refused: 0.01, not_found: 0.002 }
+    acquisition: { closed: 0.03, refused: 0.15, not_found: 0.01 }
+    merchandising: { closed: 0.01, refused: 0.0, not_found: 0.0 }
 
 delivery:
   carriers_per_dc: 3

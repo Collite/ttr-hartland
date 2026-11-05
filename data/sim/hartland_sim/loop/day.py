@@ -11,7 +11,8 @@ before `history.first_day`).
   has one; the warm-up's first month has none (no month before it);
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
 - 2 `field` (`loop.field`): the tourplans re-cut on a rep's area move (the month-end re-cuts the stores won and
-  lost), the day's visit plan; the visits and prompts — G2's;
+  lost), the day's visit plan, the visits — a converting one takes its customer's basket as its order, among the
+  day's baskets the orders step makes; the prompts are G2 S2.2's;
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);
 - 5 `supply`, 6 `delivery` (G3), 7 `finance`, 8 `shops` (G4), 8b `documents` (DOC): stubs, called and returning
   nothing;
@@ -24,7 +25,8 @@ before `history.first_day`).
   re-parameterised build can start.
 
 `Loop` holds what a run reads beside the `World` — the demand's and the reps' terms, the order desk, the period ends'
-terms, the climate — built again from the configs for a run (never pickled), and what the run did (`Report`).
+terms, the climate, the visits' crew — built again from the configs for a run (never pickled), and what the run did
+(`Report`).
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import month_end, quarter_end
 from hartland_sim.loop import acquisition, demand, orders
-from hartland_sim.loop.field import plan, recut, visit_plan_row
+from hartland_sim.loop.field import Crew, calls, plan, recut, take_orders, visit, visit_plan_row, visit_row
 from hartland_sim.loop.pricing import Rules
 from hartland_sim.loop.warmup import Output
 from hartland_sim.loop.weather import Climate
@@ -118,6 +120,7 @@ class Loop:
     desk: orders.Desk
     closing: Closing
     climate: Climate
+    crew: Crew
     last_day_done: date
     report: Report = field(default_factory=Report)
     warm_up_end: Checkpoint | None = None
@@ -138,6 +141,7 @@ class Loop:
             orders.Desk.of(world, rules, config),
             Closing.of(world, config, stories, skus, rules),
             Climate.load(),
+            Crew.of(world, config, stories),
             world.day,
         )
 
@@ -200,6 +204,10 @@ class Loop:
             recut(self.world, day, self.config.field)
         planned = plan(self.world, day)
         self.output.append(day, "visit_plan", (visit_plan_row(p, day) for p in planned))
+        made = visit(self.world, self.crew, day, calls(self.world, self.crew, day, planned))
+        today = self.today
+        today.events = take_orders(self.world, self.crew, day, made, today.events, today.shares)
+        self.output.append(day, "visit", (visit_row(v, day) for v in made))
 
     def orders(self, day: date) -> None:
         self.report.add(day, orders.step(self.world, self.desk, day, self.today.events, self.output))

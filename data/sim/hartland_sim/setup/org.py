@@ -45,7 +45,6 @@ from typing import TYPE_CHECKING, Any
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
-from hartland_sim.loop.field import open_tourplan
 from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup.reference import Geography, regions
 from hartland_sim.setup.rows import Tables, row
@@ -215,6 +214,8 @@ def build(
 def tourplans(state: World, made: Customers, world: WorldConfig) -> None:
     """The opening tourplans (`loop.field`): on the warm-up's first day, one per store a rep serves — a small-retail
     customer's, a potential one's too, and a gas key account's station — for its area's rep, in setup's order."""
+    from hartland_sim.loop.field import open_tourplan  # the loop's module reads the demand, which reads the org's
+
     first = state.day + timedelta(days=1)
     stores = {store["osm_id"]: store for store in made.stores}
     for customer in made.customers:

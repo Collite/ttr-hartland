@@ -931,6 +931,7 @@ class BasketReady:
     delivery_point_id: int
     channel: str
     lines: tuple[tuple[int, float, float], ...]  # (sku_id, cases, pieces)
+    visit: tuple[int, int] | None = None  # (visit_id, employee_id): the visit that took it (G2 S2.1, `loop.field`)
 
 
 Shares = tuple[Array, Array, Array]  # `Catalogue.shares` of a day
@@ -967,6 +968,23 @@ def step(world: World, terms: Terms, day: date, temps: Array, shares: Shares | N
     dry = held >= DRY_CYCLES * (demand.base * buys).sum(axis=1) * demand.cycle
     ready = np.flatnonzero(active & (on_cycle | dry | demand.due) & (held > 0))
     return _orders(demand, day, ready, share)
+
+
+def take(world: World, day: date, points: Array, shares: Shares) -> list[BasketReady]:
+    """The baskets of `points` (indices of the points) ordered now, whatever their cycle — a visit takes them
+    (G2 S2.1, `loop.field`) — split and rounded as `step`'s are; a basket of nothing orders nothing. A point that
+    orders restarts its cycle from today (`offset`), so its next order is a cycle after this one, not the rest of
+    the old cycle."""
+    demand = world.demand
+    if demand is None:
+        raise ValueError("the World has no demand state (setup makes it)")
+    held = points[demand.basket[points].sum(axis=1) > 0]
+    out = _orders(demand, day, held, shares[0])
+    index = {int(demand.point_ids[p]): int(p) for p in held}
+    ordered = np.array([index[event.delivery_point_id] for event in out], dtype=np.int64)
+    if len(ordered):
+        demand.offset[ordered] = day.toordinal() % demand.cycle[ordered]
+    return out
 
 
 def _orders(demand: Demand, day: date, ready: Array, share: Array) -> list[BasketReady]:
