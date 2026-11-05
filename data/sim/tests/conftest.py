@@ -2,17 +2,20 @@
 opening world setup builds from the committed inputs (`osm_market`, `opening`, one run per session); for the build
 tier (`-m build`), the story and the null world built to 2025 (`story_world`, `null_world`, once a session); and, for
 the component tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
-(`hartland_db`), and `put`, which writes one hand-built row into it."""
+(`hartland_db`), and `put`, which writes one hand-built row into it; and S6's hand-built case (`s6_case`), the rows
+both its twin and its SQL read (G1 S1.5 T1), with each way it leaves its agreement out (`s6_left_out`, a parameter)."""
 
 from __future__ import annotations
 
+import csv
 import itertools
 import os
 import secrets
 from collections.abc import Callable, Iterator, Mapping
-from datetime import UTC, date, datetime, time
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import psycopg
 import pytest
@@ -88,6 +91,162 @@ def story_world(tmp_path_factory: pytest.TempPathFactory, osm_market: Market) ->
 def null_world(tmp_path_factory: pytest.TempPathFactory, osm_market: Market) -> Built:
     """The build tier's null world: every story and planted case off, to `BUILT_UNTIL`."""
     return build(tmp_path_factory.mktemp("null-world") / "run", BUILT_UNTIL, null=True, market=osm_market)
+
+
+Rows = dict[str, list[dict[str, Any]]]
+
+
+@dataclass(frozen=True)
+class S6Case:
+    """`s6_case`: the rows by table, and what made them."""
+
+    tables: Rows
+    start: date  # each agreement's first day
+    end: date  # and its last
+    pct: float  # its discount, %
+    elasticity: Mapping[int, float]  # by customer: the lift of its agreed line is 1 + e × pct ÷ 100
+    margin: Mapping[int, float]  # by customer: the agreed line's Customer Margin a case at list
+    daily: float  # the agreed line's cases a day, unlifted
+
+    # T1(b), one case each: how customer 1's agreement is left out → the twin's reason
+    LEFT_OUT: ClassVar[Mapping[str, str]] = {
+        "no order before": "no order",
+        "an agreement ending before": "before",
+        "an agreement starting after": "after",
+        "past the history": "history",
+        "no cases of the line before": "no cases",
+        "no cases of the others in the window": "no cases",
+    }
+
+    def leave_out(self, case: str) -> None:
+        """Change the rows so that customer 1's agreement is left out as `case` (`LEFT_OUT`) says: no order of its
+        in the 8 weeks before; another agreement of its line ending in them, or starting within 14 days after the end;
+        the history ending before the fortnight after it (every order after its last day + 13 dropped, both
+        customers'); its line's cases before, or its other lines' in the window, dropped."""
+        before, window = (self.start - timedelta(days=56), self.start), (self.start, self.end + timedelta(days=15))
+
+        def days(order: dict[str, Any], span: tuple[date, date], customer: int | None = 1) -> bool:
+            return customer in (None, order["customer_id"]) and span[0] <= order["ordered_on"] < span[1]
+
+        orders = {o["sales_order_id"]: o for o in self.tables["sales_order"]}
+        agreement = self.tables["price_agreement"][0] | {"price_agreement_id": 3}
+        if case == "no order before":
+            gone = {n for n, o in orders.items() if days(o, before)}
+        elif case == "past the history":
+            gone = {n for n, o in orders.items() if days(o, (self.end + timedelta(days=14), date.max), None)}
+        else:
+            gone = set()
+        if case == "an agreement ending before":
+            first = self.start - timedelta(days=90)
+            self.tables["price_agreement"].append(agreement | {"valid_from": first, "valid_to": before[0]})
+        elif case == "an agreement starting after":
+            first = self.end + timedelta(days=14)
+            self.tables["price_agreement"].append(agreement | {"valid_from": first, "valid_to": first})
+        lines = self.tables["sales_order_line"]
+        if case == "no cases of the line before":
+            lines[:] = [r for r in lines if not (r["sku_id"] == 1 and days(orders[r["sales_order_id"]], before))]
+        elif case == "no cases of the others in the window":
+            lines[:] = [r for r in lines if not (r["sku_id"] != 1 and days(orders[r["sales_order_id"]], window))]
+        self.tables["sales_order"] = [o for n, o in orders.items() if n not in gone]
+        lines[:] = [r for r in lines if r["sales_order_id"] not in gone]
+        kept = {r["sales_order_line_id"] for r in lines}
+        discounts = self.tables["sales_order_line_discount"]
+        discounts[:] = [r for r in discounts if r["sales_order_line_id"] in kept]
+
+    def write(self, run: Path) -> None:
+        """The tables as a CSV build's files (the CSV writer's format: ISO dates, `true`/`false`, empty = NULL)."""
+        run.mkdir(parents=True, exist_ok=True)
+        for table, rows in self.tables.items():
+            if not rows:
+                continue
+            with (run / f"{table}.csv").open("w", encoding="utf-8", newline="") as out:
+                writer = csv.DictWriter(out, fieldnames=list(rows[0]), lineterminator="\n")
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow({k: _cell(v) for k, v in row.items()})
+
+
+def _cell(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return value.isoformat() if isinstance(value, date) else str(value)
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """`s6_left_out`: every case of `S6Case.LEFT_OUT`, so the CSV and the component tier run the same ones
+    (review-225 R3)."""
+    if "s6_left_out" in metafunc.fixturenames:
+        metafunc.parametrize("s6_left_out", list(S6Case.LEFT_OUT))
+
+
+@pytest.fixture
+def s6_case() -> S6Case:
+    """G1 S1.5 T1's S6 case, hand-built (no build run): the rows the S6 twin and `s6.sql` read, fresh for each test.
+
+    Two small-retail customers, each with five lines (1–5) and an order every 14 days: line 1 10 cases an order at
+    1 000 CZK a case, lines 2–5 40 cases each at 500. Each has an agreed discount on line 1 that starts mid-cycle
+    (2025-03-10, 7 days after an order), runs 45 days at 6 % and lifts the line's daily demand by 1 + e × 0.06 from its
+    first day: customer 1 of SJC-02's rep (disciplined), e = 3.5, a delivery cost of 30 and a warehouse cost of 20 a
+    case; customer 2 of SMS-02's (undisciplined), e = 0.4, no costs (NULL). An order carries the demand of the 14 days
+    before it, so the first order inside the agreement carries 7 days of unlifted demand at the discount, and the first
+    after it the lifted remainder at list. The orders run from 9 weeks before the agreement to 11 weeks after its
+    start, past its fortnight after."""
+    start, days, pct = date(2025, 3, 10), 45, 6.0
+    elasticity, costs = {1: 3.5, 2: 0.4}, {1: (30.0, 20.0), 2: (None, None)}
+    price, daily = {1: 1000.0, 2: 500.0, 3: 500.0, 4: 500.0, 5: 500.0}, 10 / 14
+    tables: Rows = {
+        "product_line": [{"product_line_id": n, "code": f"L{n}"} for n in price],
+        "product": [{"product_id": n, "product_line_id": n} for n in price],
+        "sku": [{"sku_id": n, "product_id": n} for n in price],
+        "okres": [{"okres_id": 1}],
+    }
+    for table in ("area", "assignment", "customer", "delivery_point", "price_agreement", "sales_order"):
+        tables[table] = []
+    tables["sales_order_line"], tables["sales_order_line_discount"] = [], []
+    end = start + timedelta(days=days - 1)
+    for n, slot in ((1, "SJC-02"), (2, "SMS-02")):
+        tables["area"].append({"area_id": n, "code": slot})
+        tables["assignment"].append(
+            {"assignment_id": n, "employee_id": n, "kind": "rep_area", "area_id": n}
+            | {"valid_from": date(2023, 1, 1), "valid_to": date(9999, 12, 31)}
+        )
+        tables["customer"].append({"customer_id": n, "channel": "small_retail"})
+        tables["delivery_point"].append({"delivery_point_id": n, "customer_id": n, "store_id": None, "okres_id": 1})
+        tables["price_agreement"].append(
+            {"price_agreement_id": n, "customer_id": n, "product_line_id": 1, "kind": "agreed_discount"}
+            | {"discount_pct": pct, "valid_from": start, "valid_to": end, "agreed_by_employee_id": n}
+        )
+        lift = 1 + elasticity[n] * pct / 100
+        delivery, warehouse = costs[n]
+        for k in range(-5, 6):  # day −63 … 77 of the agreement
+            day = start + timedelta(days=14 * k + 7)
+            order = 100 * n + k + 5
+            tables["sales_order"].append(
+                {"sales_order_id": order, "customer_id": n, "delivery_point_id": n, "channel": "small_retail"}
+                | {"ordered_on": day}
+            )
+            carried = [day - timedelta(days=back) for back in range(1, 15)]
+            agreed = start <= day <= end
+            for line, list_price in price.items():
+                cases = 40.0
+                if line == 1:
+                    cases = round(daily * sum(lift if start <= d <= end else 1.0 for d in carried), 3)
+                off = round(list_price * pct / 100, 2) if line == 1 and agreed else 0.0
+                tables["sales_order_line"].append(
+                    {"sales_order_line_id": 10 * order + line, "sales_order_id": order, "line_no": line}
+                    | {"sku_id": line, "qty_cases": cases, "list_price_case": list_price}
+                    | {"invoice_price_case": list_price - off, "purchase_price_case": 0.45 * list_price}
+                    | {"delivery_cost_case": delivery, "warehouse_cost_case": warehouse, "is_free_goods": False}
+                )
+                if off:
+                    tables["sales_order_line_discount"].append(
+                        {"sales_order_line_id": 10 * order + line, "seq": 1, "kind": "agreed", "price_agreement_id": n}
+                        | {"pct": pct, "amount_case": off, "amount_line": round(off * cases, 2)}
+                    )
+    margin = {n: price[1] - sum(cost or 0.0 for cost in costs[n]) for n in costs}
+    return S6Case(tables, start, end, pct, elasticity, margin, daily)
 
 
 @pytest.fixture(scope="session")

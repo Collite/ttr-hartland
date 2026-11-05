@@ -30,6 +30,7 @@ from hartland_sim.setup.run import Setup
 from hartland_sim.world import OPEN, Agreement, Loan, Promotion, World
 
 STORIES = StoriesConfig.load()
+HIGH, LOW = (STORIES.story("S6").parameters["elasticity"][k] for k in ("high", "low"))
 LINES = lines()
 CODES = [line.code for line in LINES]
 GOLD, CLASSIC = CODES.index("GOLD"), CODES.index("CLASSIC")
@@ -186,7 +187,7 @@ def test_an_agreed_discount_adds_elasticity_times_its_percent(demand: Demand) ->
     terms = Terms.of(demand, STORIES)
     world = _world(agreements={9: Agreement(1, "CLASSIC", 8.0, date(2025, 1, 1), OPEN)})
     e = terms.elasticity[0, CLASSIC]
-    assert e in (2.0, 0.4)
+    assert e in (HIGH, LOW)
     assert _lift(terms, world)[0, CLASSIC] == pytest.approx(1 + e * 0.08)
     assert _lift(terms, world)[2, CLASSIC] == 1.0
 
@@ -194,12 +195,12 @@ def test_an_agreed_discount_adds_elasticity_times_its_percent(demand: Demand) ->
 def test_thirty_percent_of_the_customer_lines_are_elastic(opening: Setup) -> None:
     assert opening.world.demand is not None
     found = elasticity(opening.world.demand, STORIES)
-    assert set(np.unique(found)) == {0.4, 2.0}
-    assert (found == 2.0).mean() == pytest.approx(0.30, abs=0.02)
+    assert set(np.unique(found)) == {LOW, HIGH} == {0.4, 3.0}  # s6.yaml; high derived on paper (G1 S1.5 T2)
+    assert (found == HIGH).mean() == pytest.approx(0.30, abs=0.02)
     again = elasticity(opening.world.demand, STORIES)
     assert np.array_equal(found, again)
     null = replace(STORIES, stories=tuple(replace(s, enabled=False) if s.story == "S6" else s for s in STORIES.stories))
-    assert np.allclose(elasticity(opening.world.demand, null), 0.3 * 2.0 + 0.7 * 0.4)
+    assert np.allclose(elasticity(opening.world.demand, null), 0.3 * HIGH + 0.7 * LOW)
 
 
 def test_the_elasticity_is_keyed_by_the_line_s_id_not_its_position(opening: Setup) -> None:
