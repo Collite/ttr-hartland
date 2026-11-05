@@ -38,14 +38,13 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
-from functools import cache
+from datetime import date
 from typing import Any, get_args
 
 import numpy as np
 
 from hartland_sim.config import Channel, WorldConfig
-from hartland_sim.dates import quarter_end, quarter_start
+from hartland_sim.dates import next_working_day, quarter_end, quarter_start
 from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.io.reference import Row
 from hartland_sim.loop.demand import BasketReady
@@ -66,7 +65,6 @@ from hartland_sim.loop.pricing import (
 )
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms
-from hartland_sim.setup.calendar import holidays
 from hartland_sim.setup.customers import terms
 from hartland_sim.setup.rows import row
 from hartland_sim.world import Agreement, Bought, Customer, Promotion, World
@@ -75,19 +73,6 @@ ORDER_NO = "{day:%Y%m%d}-{code}-{n}"
 TAKEN = ("visit", "phone")  # the sources a person takes: the customer's rep or KAM
 ASKING = (*TIERED, *KAM_CHANNELS)  # the channels whose customers a rep or a KAM answers (`pricing.granter`)
 Array = np.ndarray[Any, Any]
-
-
-@cache
-def _days_off(year: int) -> frozenset[date]:
-    return frozenset(holidays(year))
-
-
-def next_working_day(day: date) -> date:
-    """The first day after `day` that is neither a weekend nor a Czech day off."""
-    following = day + timedelta(days=1)
-    while following.weekday() >= 5 or following in _days_off(following.year):
-        following += timedelta(days=1)
-    return following
 
 
 @dataclass(frozen=True)

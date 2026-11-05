@@ -10,7 +10,8 @@ before `history.first_day`).
   (`month_end.conditions`), after the acquisitions, so a store lost on the 1st has none and one acquired on the 1st
   has one; the warm-up's first month has none (no month before it);
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
-- 2 `field`: the tourplans, visits and prompts — G2's, a stub here;
+- 2 `field` (`loop.field`): the tourplans re-cut on a rep's area move (the month-end re-cuts the stores won and
+  lost), the day's visit plan; the visits and prompts — G2's;
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);
 - 5 `supply`, 6 `delivery` (G3), 7 `finance`, 8 `shops` (G4), 8b `documents` (DOC): stubs, called and returning
   nothing;
@@ -40,6 +41,7 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import month_end, quarter_end
 from hartland_sim.loop import acquisition, demand, orders
+from hartland_sim.loop.field import plan, recut, visit_plan_row
 from hartland_sim.loop.pricing import Rules
 from hartland_sim.loop.warmup import Output
 from hartland_sim.loop.weather import Climate
@@ -156,6 +158,17 @@ class Loop:
             day += timedelta(days=1)
 
     @property
+    def moves(self) -> frozenset[date]:
+        """The days a rep takes another area (`04` S3's area moves): its duty's first day, after the opening."""
+        found = self.__dict__.get("_moves")
+        if found is None:
+            opening = self.config.history.warm_up_from
+            duties = self.world.duties
+            found = frozenset(d.valid_from for d in duties if d.kind == "rep_area" and d.valid_from > opening)
+            self.__dict__["_moves"] = found
+        return found
+
+    @property
     def today(self) -> Today:
         if self._today is None:
             raise ValueError("the day's weather has not run")
@@ -182,7 +195,11 @@ class Loop:
         today.events = demand.step(self.world, self.terms, day, today.temps, today.shares)
 
     def field(self, day: date) -> None:
-        """Step 2: G2 S2.1–S2.3."""
+        """Step 2: a rep's area move re-cuts the area's tourplans on its day; the day's visit plan; G2 S2.1–S2.3."""
+        if day in self.moves:
+            recut(self.world, day, self.config.field)
+        planned = plan(self.world, day)
+        self.output.append(day, "visit_plan", (visit_plan_row(p, day) for p in planned))
 
     def orders(self, day: date) -> None:
         self.report.add(day, orders.step(self.world, self.desk, day, self.today.events, self.output))

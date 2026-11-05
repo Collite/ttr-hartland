@@ -40,15 +40,19 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
+from hartland_sim.loop.field import open_tourplan
 from hartland_sim.rng import draw_day, rng
 from hartland_sim.setup.reference import Geography, regions
 from hartland_sim.setup.rows import Tables, row
-from hartland_sim.world import OPEN, Actor, Duty, Skills
+from hartland_sim.world import OPEN, Actor, Duty, Skills, World
+
+if TYPE_CHECKING:
+    from hartland_sim.setup.customers import Customers
 
 HIRED_FROM = date(2008, 1, 1)
 FEMALE_SHARE = 0.45
@@ -206,6 +210,27 @@ def build(
             org.duties.append(Duty(actor.employee_id, kind, post.target, actor.hired_on))
     regions(out, {post.target: actor.employee_id for post, actor in org.by_role("area_manager") if post.target}, root)
     return org
+
+
+def tourplans(state: World, made: Customers, world: WorldConfig) -> None:
+    """The opening tourplans (`loop.field`): on the warm-up's first day, one per store a rep serves — a small-retail
+    customer's, a potential one's too, and a gas key account's station — for its area's rep, in setup's order."""
+    first = state.day + timedelta(days=1)
+    stores = {store["osm_id"]: store for store in made.stores}
+    for customer in made.customers:
+        if customer.channel == "small_retail" and customer.status != "lost" and customer.store:
+            calls = [customer.store]
+        elif customer.channel == "gas_ka":
+            calls = [place.store for place in made.places[customer.code] if place.store]
+        else:
+            continue
+        for osm in calls:
+            store = stores[osm]
+            duty = state.duty("rep_area", store["area"], first)
+            if duty is not None:
+                open_tourplan(
+                    state, duty.employee_id, osm, customer, store["area"], store["store_class"], first, world.field
+                )
 
 
 def employee_row(actor: Actor) -> Row:

@@ -16,12 +16,12 @@ import numpy as np
 import pytest
 
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.dates import quarter_end
+from hartland_sim.dates import next_working_day, quarter_end
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import orders
 from hartland_sim.loop.demand import BasketReady
-from hartland_sim.loop.orders import Desk, next_working_day, order, order_no, source
+from hartland_sim.loop.orders import Desk, order, order_no, source
 from hartland_sim.loop.pricing import Refusal, Rules, condition, granter, price_order
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms

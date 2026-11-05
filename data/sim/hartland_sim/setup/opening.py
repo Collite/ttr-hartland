@@ -12,10 +12,11 @@ channels that hold a budget, a rep's or a KAM's: the web consumers and the own s
 The warm-up year's reorder runs (G3) bring the stock to the plan's own rate, theirs included, before the first written
 day. The opening `stock_day` rows are dated the day before the warm-up.
 
-**The state tables** (`STATE_TABLES`, ⚑R201-A): `employee`, `assignment`, `customer`, `lifecycle_phase` and
-`discount_budget` hold state the loop changes — a churned customer's `until`, a closed phase episode or duty, a
-budget's `used_amount`. They are rendered from the `World` when a build ends (`state_rows`), never appended, and a
-prolong renders them from the checkpoint alone. The opening is a build of zero days: setup makes no rows for them.
+**The state tables** (`STATE_TABLES`, ⚑R201-A): `employee`, `assignment`, `customer`, `lifecycle_phase`,
+`discount_budget` and `tourplan` (G2 S2.1) hold state the loop changes — a churned customer's `until`, a closed phase
+episode or duty, a budget's `used_amount`, a re-cut tourplan's `valid_to`. They are rendered from the `World` when a
+build ends (`state_rows`), never appended, and a prolong renders them from the checkpoint alone. The opening is a build
+of zero days: setup makes no rows for them.
 
 **Writing** (`write`): setup's other tables and the state tables, through the CSV writer in `load_order`,
 `_sim_meta` (the inputs' hashes, the day before the warm-up as `last_day_done`) and the opening checkpoint. A run
@@ -45,6 +46,7 @@ from hartland_sim.dates import quarter_end
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import REFERENCE_DIR
+from hartland_sim.loop.field import tourplan_row
 from hartland_sim.setup.customers import Customers, customer_row, phases
 from hartland_sim.setup.org import assignment, employee_row
 from hartland_sim.setup.policies import budget_row
@@ -54,7 +56,7 @@ from hartland_sim.setup.rows import Tables, row, tables
 from hartland_sim.world import CHECKPOINT_FILE, META_FILE, Checkpoint, Meta, Stock, World, digest
 
 REPO_DIR = DATA_DIR.parent
-STATE_TABLES = ("employee", "assignment", "customer", "lifecycle_phase", "discount_budget")
+STATE_TABLES = ("employee", "assignment", "customer", "lifecycle_phase", "discount_budget", "tourplan")
 RENDERED = ("promotion", *STATE_TABLES)  # rendered at a build's end, never appended to (module docstring)
 OWN = (CHECKPOINT_FILE, META_FILE)  # the run's own files
 
@@ -175,6 +177,7 @@ def state_rows(world_state: World, world: WorldConfig) -> Tables:
     out["customer"] = [customer_row(customer, world) for customer in world_state.customers.values()]
     out["lifecycle_phase"] = phases(world_state.customers.values())
     out["discount_budget"] = [budget_row(*key, budget) for key, budget in world_state.budgets.items()]
+    out["tourplan"] = [tourplan_row(tourplan_id, held) for tourplan_id, held in world_state.tourplans.items()]
     return out
 
 
