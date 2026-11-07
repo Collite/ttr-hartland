@@ -161,6 +161,7 @@ def seeded(templates: Templates, years: Iterable[int], code: str) -> dict[int, P
                 reward_qty=template.reward_qty,
                 mandatory=template.mandatory,
                 excludes=planned.excludes,
+                name=template.name_cs,
             )
     return out
 

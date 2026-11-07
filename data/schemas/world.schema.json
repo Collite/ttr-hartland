@@ -1483,7 +1483,19 @@
       "required": [
         "cycle_weeks",
         "adherence",
-        "visit_minutes"
+        "adherence_spread",
+        "ad_hoc_share",
+        "visit_minutes",
+        "travel_minutes",
+        "day_starts",
+        "day_ends",
+        "outcomes",
+        "observed_lines",
+        "facings",
+        "competitor_facings",
+        "shelf_cycles",
+        "promo_compliance",
+        "sightings"
       ],
       "properties": {
         "cycle_weeks": {
@@ -1502,6 +1514,16 @@
           "minimum": 0,
           "maximum": 1
         },
+        "adherence_spread": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5
+        },
+        "ad_hoc_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "visit_minutes": {
           "type": "array",
           "items": {
@@ -1510,6 +1532,203 @@
           },
           "minItems": 2,
           "maxItems": 2
+        },
+        "travel_minutes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "day_starts": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        },
+        "day_ends": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sales",
+            "acquisition",
+            "merchandising"
+          ],
+          "properties": {
+            "sales": {
+              "$ref": "#/$defs/visit_outcomes"
+            },
+            "acquisition": {
+              "$ref": "#/$defs/visit_outcomes"
+            },
+            "merchandising": {
+              "$ref": "#/$defs/visit_outcomes"
+            }
+          }
+        },
+        "observed_lines": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "facings": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "competitor_facings": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "shelf_cycles": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "promo_compliance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sightings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "share",
+            "confirmed",
+            "kinds",
+            "price",
+            "home",
+            "home_weight",
+            "promotions_planted"
+          ],
+          "properties": {
+            "share": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "confirmed": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "kinds": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "promotion",
+                "listing",
+                "display",
+                "price_cut"
+              ],
+              "properties": {
+                "promotion": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "listing": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "display": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "price_cut": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "price": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "promotion",
+                "listing",
+                "display",
+                "price_cut"
+              ],
+              "properties": {
+                "promotion": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "listing": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "display": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "price_cut": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "home": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "home_weight": {
+              "type": "number",
+              "minimum": 1
+            },
+            "promotions_planted": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
         }
       }
     },
@@ -1878,6 +2097,34 @@
             "per_line",
             "per_order"
           ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "visit_outcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "closed",
+        "refused",
+        "not_found"
+      ],
+      "properties": {
+        "closed": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "refused": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "not_found": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       }
     }

@@ -48,11 +48,11 @@ channels:
     since_until: 2023-12-31
     order_grain: case
     order_cycle_days: 14
-    order_sources: { visit: 0.45, phone: 0.35, portal: 0.20 }
+    order_sources: { phone: 0.64, portal: 0.36 } # a visit's order is the field's (G2 S2.1): what conversion makes
   special_retail: # every station shop but OMV's and Shell's: a small-retail sub-channel (NH-D5)
     order_grain: case
     order_cycle_days: 14
-    order_sources: { visit: 0.30, phone: 0.40, portal: 0.30 }
+    order_sources: { phone: 0.57, portal: 0.43 } # as small retail's, the visits' orders the field's
   gas_ka:
     accounts: [OMV, SHELL]
     order_grain: case
@@ -78,7 +78,7 @@ channels:
     potential: 2000
     order_grain: case
     order_cycle_days: 10
-    order_sources: { phone: 0.50, portal: 0.30, visit: 0.20 }
+    order_sources: { phone: 0.625, portal: 0.375 } # no visit: the KAMs' HoReCa visits are not modelled (G2 S2.1)
   # What a channel may buy (channel_listing, R-7): the retail packs of these lines and the Professional packs of
   # those. `all` = every line.
   listings:
@@ -276,7 +276,50 @@ field:
     petrol: 4
     potential: 8
   adherence: 0.90 # planned visits made, the average rep (A-7 pins three below)
+  adherence_spread: 0.04 # a rep's own adherence: drawn within ± this of the average (stream `visit`, by the rep)
+  ad_hoc_share: 0.05 # unplanned visits: this share of a rep's planned ones that day, at its stores not planned
   visit_minutes: [15, 45]
+  travel_minutes: [10, 30] # between two visits of a rep's day, from `day_starts`
+  day_starts: "08:00"
+  day_ends: "17:00" # a day of more visits than fit is compressed into it (a dense area's quick calls)
+  # A visit's outcome when the store cannot be dealt with, by the visit's kind — closed, the owner refused, the store
+  # not found; otherwise a sales visit orders when its conversion fires (S3) and any other visit has no order.
+  outcomes:
+    sales: { closed: 0.03, refused: 0.01, not_found: 0.002 }
+    acquisition: { closed: 0.03, refused: 0.15, not_found: 0.01 }
+    merchandising: { closed: 0.01, refused: 0.0, not_found: 0.0 }
+  # The perfect-store check (`visit_observation`, G2 S2.1 T4): the lines a recorded visit looks at, by store class
+  # (`dials.observation_lines: store_class`; `all` looks at every line); Hartland's facings across them by the store's
+  # size class, each line's by its share of the store's demand; the competitors' beside a line, × its slots.
+  observed_lines:
+    convenience: [CLASSIC, GOLD, SMESI, POLEVKY, KELIMKY, NUDLE]
+    minimarket: [CLASSIC, GOLD, ESPRESSO, SMESI, POLEVKY, KELIMKY, NUDLE]
+    super: [CLASSIC, GOLD, ESPRESSO, SMESI, BEZKOFEIN, POLEVKY, KELIMKY, NUDLE, PREMIUM]
+    village: [CLASSIC, GOLD, SMESI, POLEVKY, NUDLE]
+    petrol: [CLASSIC, GOLD, SMESI, KELIMKY, NUDLE]
+  facings: { S: 14, M: 30, L: 60 }
+  competitor_facings: [0.6, 1.4]
+  # A line is out of stock once what the store sold since its last order holds this many of its order cycles of
+  # demand: ~10 % of the lines a store buys on H1 2024. The visits see the shelf mid-cycle since a visit's order stands
+  # in for the store's next one (review-231 R1); 2.0, tuned while they fell on its order days, gave 1.7 %.
+  shelf_cycles: 1.3
+  promo_compliance: 0.8 # a running mandatory promotion of the line is executed at the store
+  # Competitor sightings (`competitor_sighting`, G2 S2.1 T5): at `share` of the recorded visits a competitor's
+  # activity on one of the store's observed lines — its product of that line, the kind by `kinds`, the price seen ×
+  # a draw in the kind's `price` range of the product's typical price — confirmed at `confirmed`. A competitor is
+  # `home_weight` times as likely in its `home` region; one of `promotions_planted` promotes only in its anomaly (A-6).
+  sightings:
+    share: 0.03
+    confirmed: 0.8
+    kinds: { promotion: 0.25, listing: 0.25, display: 0.2, price_cut: 0.3 }
+    price:
+      promotion: [0.7, 0.85]
+      listing: [0.95, 1.05]
+      display: [0.95, 1.05]
+      price_cut: [0.75, 0.9]
+    home: { KAVALIR: VCH }
+    home_weight: 3
+    promotions_planted: [KAVALIR]
 
 delivery:
   carriers_per_dc: 3

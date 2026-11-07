@@ -9,8 +9,9 @@ customers' asks for a discount.
   retail's), stream `order` by the order's id. A visit or a phone order is taken by who holds the customer that day —
   its area's rep, its KAM (`pricing.granter`) — the others by no one. When no one holds it that day (an area or an
   account unheld), the same draw, rescaled within the source it picked, picks again among the mix's other sources,
-  their shares renormalised (review-221 N3, RR4): no visit nobody made. `visit_id` stays empty: the visits are G2
-  S2.1's.
+  their shares renormalised (review-221 N3, RR4): no visit nobody made. A basket a visit took (G2 S2.1,
+  `loop.field`) is a `visit` order with its `visit_id`, taken by the visit's rep; no channel's mix holds a visit, so
+  a `visit` order is always the field's, what the visits' conversion makes (HoReCa's KAMs make no visits yet).
 - `requested_on` is the next working day (`setup.calendar`'s Czech days off); `dc_site_id` the DC of the point's
   region (`world.yaml sites.dcs`); `status` the credit check's — `released`, or `held` with its reason (A-14).
 Its lines are `pricing.price_order`'s, numbered in that order (the free lines last), each with the purchase price of
@@ -38,14 +39,13 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
-from functools import cache
+from datetime import date
 from typing import Any, get_args
 
 import numpy as np
 
 from hartland_sim.config import Channel, WorldConfig
-from hartland_sim.dates import quarter_end, quarter_start
+from hartland_sim.dates import next_working_day, quarter_end, quarter_start
 from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.io.reference import Row
 from hartland_sim.loop.demand import BasketReady
@@ -66,7 +66,6 @@ from hartland_sim.loop.pricing import (
 )
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms
-from hartland_sim.setup.calendar import holidays
 from hartland_sim.setup.customers import terms
 from hartland_sim.setup.rows import row
 from hartland_sim.world import Agreement, Bought, Customer, Promotion, World
@@ -75,19 +74,6 @@ ORDER_NO = "{day:%Y%m%d}-{code}-{n}"
 TAKEN = ("visit", "phone")  # the sources a person takes: the customer's rep or KAM
 ASKING = (*TIERED, *KAM_CHANNELS)  # the channels whose customers a rep or a KAM answers (`pricing.granter`)
 Array = np.ndarray[Any, Any]
-
-
-@cache
-def _days_off(year: int) -> frozenset[date]:
-    return frozenset(holidays(year))
-
-
-def next_working_day(day: date) -> date:
-    """The first day after `day` that is neither a weekend nor a Czech day off."""
-    following = day + timedelta(days=1)
-    while following.weekday() >= 5 or following in _days_off(following.year):
-        following += timedelta(days=1)
-    return following
 
 
 @dataclass(frozen=True)
@@ -200,10 +186,15 @@ def order(
         return Order(None, [], [], priced, value, status, reason)
     number = order_no(customer.code, day, n)
     order_id = business_id("sales_order", number)  # `row_id`'s: its id_key is its `order_no`
-    kind = source(desk, terms(customer), draw)
-    taker = granter(world, customer, day) if kind in TAKEN else None
-    if kind in TAKEN and taker is None:
-        kind = source(desk, terms(customer), rescaled(desk, terms(customer), draw), taken=False)
+    visit_id: int | None = None
+    taker: int | None
+    if basket.visit is not None:  # a visit took the basket (G2 S2.1)
+        kind, (visit_id, taker) = "visit", basket.visit
+    else:
+        kind = source(desk, terms(customer), draw)
+        taker = granter(world, customer, day) if kind in TAKEN else None
+        if kind in TAKEN and taker is None:
+            kind = source(desk, terms(customer), rescaled(desk, terms(customer), draw), taken=False)
     demand = world.demand
     assert demand is not None
     spot = demand.spots[rules.points[basket.delivery_point_id]]
@@ -218,7 +209,7 @@ def order(
         requested_on=next_working_day(day),
         source=kind,
         taken_by_employee_id=taker,
-        visit_id=None,
+        visit_id=visit_id,
         status=status,
         hold_reason=reason,
         dc_site_id=desk.dcs[spot.region],
