@@ -300,8 +300,9 @@ field:
   facings: { S: 14, M: 30, L: 60 }
   competitor_facings: [0.6, 1.4]
   # A line is out of stock once what the store sold since its last order holds this many of its order cycles of
-  # demand (the shelf holds two; ~14 % of the lines a store buys on a 2024 build).
-  shelf_cycles: 2.0
+  # demand: ~10 % of the lines a store buys on H1 2024. The visits see the shelf mid-cycle since a visit's order stands
+  # in for the store's next one (review-231 R1); 2.0, tuned while they fell on its order days, gave 1.7 %.
+  shelf_cycles: 1.3
   promo_compliance: 0.8 # a running mandatory promotion of the line is executed at the store
   # Competitor sightings (`competitor_sighting`, G2 S2.1 T5): at `share` of the recorded visits a competitor's
   # activity on one of the store's observed lines — its product of that line, the kind by `kinds`, the price seen ×
