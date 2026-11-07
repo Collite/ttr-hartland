@@ -19,7 +19,7 @@ from hartland_sim.loop.day import STEPS, Loop
 from hartland_sim.loop.pricing import channel_list, standard_list
 from hartland_sim.loop.warmup import Output
 from hartland_sim.setup.run import Setup
-from hartland_sim.world import Checkpoint, World
+from hartland_sim.world import Checkpoint, Duty, World
 
 WORLD = WorldConfig.load()
 STORIES = StoriesConfig.load()
@@ -129,3 +129,18 @@ def test_the_warm_up_switch_writes_from_2024_and_the_last_warm_up_day_is_kept(op
 def test_the_module_names_every_step_as_a_method() -> None:
     assert all(callable(getattr(Loop, name, None)) for name in STEPS)
     assert day_loop.quarter(date(2024, 12, 31)) == "2024-Q4"
+
+
+def test_a_rep_area_duty_added_mid_run_is_a_move_day(opening: Setup, tmp_path: Path) -> None:
+    """review-231 R6: `Loop.moves` is built again whenever `duties` is another list or another length, as
+    `World.duty`'s index is — a duty the month-end's turnover adds later re-cuts the tourplans on its first day."""
+    world = Checkpoint.of(opening.world).restore()
+    loop, writer = _loop(opening, world, tmp_path)
+    with writer:
+        before = loop.moves
+        held = next(d for d in world.duties if d.kind == "rep_area")
+        day = date(2024, 5, 6)
+        world.duties.append(Duty(held.employee_id, "rep_area", held.target, day))
+        assert day not in before and loop.moves == before | {day}
+        world.duties = [d for d in world.duties if d.valid_from != day]  # another list
+        assert loop.moves == before
