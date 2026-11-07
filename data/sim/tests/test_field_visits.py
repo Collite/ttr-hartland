@@ -1,7 +1,8 @@
 """The visits (G2 S2.1 T3, `loop.field`): a planned visit is made with its rep's adherence (A-7's three at 0.55), the
 ad-hoc ones add `field.ad_hoc_share`; a visit's kind follows the store's customer, its outcome the kind's shares, and a
 sales visit converts with S3's chance (`conversion_base` × the rep's skill), taking the customer's basket as its
-`visit` order — never a second one; A-8's rep leaves 70 % unrecorded. The plans are the opening `World`'s over eight
+`visit` order — never a second one, and in place of the store's next scheduled one (⚑R231-A); A-8's rep leaves 70 %
+unrecorded. The plans are the opening `World`'s over eight
 weeks of 2023; the orders' cases run a January of the loop with the visits and without."""
 
 from __future__ import annotations
@@ -197,6 +198,7 @@ def test_a_converting_visit_takes_the_triggered_basket_or_the_basket_as_it_stand
     world = _world(opening)
     demand = world.demand
     assert demand is not None
+    offsets = demand.offset.copy()
     day = date(2023, 1, 16)
     shares = demand.catalogue.shares(day, len(demand.lines))
     retail = [c for c in world.customers.values() if c.channel == "small_retail" and c.active_on(day) and c.store]
@@ -221,7 +223,8 @@ def test_a_converting_visit_takes_the_triggered_basket_or_the_basket_as_it_stand
     assert [e.visit for e in out] == [(v.visit_id, v.tourplan.employee_id) for v in made[:2]]
     assert [v.outcome for v in made] == ["order", "order", "no_order"]
     p = points[1]
-    assert demand.basket[p].sum() == 0 and demand.offset[p] == day.toordinal() % demand.cycle[p]
+    assert demand.basket[p].sum() == 0 and np.array_equal(demand.offset, offsets)  # the order days stay
+    assert demand.skip[points[1]] and not demand.skip[points[2]]  # the next one passes; an empty basket took nothing
     assert sum(cases for _, cases, _ in out[1].lines) > 0
 
 
@@ -264,7 +267,13 @@ def test_the_visits_orders_move_the_month_s_cases_by_under_2_pc(
             v["customer_id"],
             v["day"],
         )
+    assert all(o["visit_id"] for o in orders if o["source"] == "visit")  # review-231 R5: HoReCa's too
     retail = [o for o in orders if o["channel"] == "small_retail"]
-    assert all(o["visit_id"] for o in retail if o["source"] == "visit")
     days = Counter((o["customer_id"], o["ordered_on"]) for o in retail)
     assert max(days.values()) == 1  # one point, one basket: never two orders a day
+    # review-231 R1 (⚑R231-A): the store's order days stay its own, so a call that takes no order rarely meets one —
+    # as built, the cycle restarted on each converting visit put every later call on an order day
+    own = {(o["customer_id"], o["ordered_on"]) for o in orders if o["source"] != "visit"}
+    idle = [v for v in visits.values() if v["kind"] == "sales" and v["outcome"] == "no_order"]
+    beside = sum((v["customer_id"], v["day"]) in own for v in idle)
+    assert len(idle) > 1_000 and beside / len(idle) <= 0.15

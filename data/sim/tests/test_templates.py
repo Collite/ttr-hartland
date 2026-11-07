@@ -3,6 +3,7 @@ marketing seeds (DOC.1 fills those)."""
 
 from __future__ import annotations
 
+import copy
 import re
 from collections import Counter
 from pathlib import Path
@@ -190,11 +191,32 @@ def test_every_visit_outcome_has_its_sentences(notes: Any) -> None:
 
 
 def test_the_notes_use_the_declared_slots_and_read_as_czech(notes: Any) -> None:
-    sentences = [s for group in (*notes["outcomes"].values(), *notes["situations"].values()) for s in group]
+    groups = (*notes["outcomes"].values(), *notes["no_order_by_kind"].values(), *notes["situations"].values())
+    sentences = [s for group in groups for s in group]
     used = {slot for sentence in sentences for slot in SLOT.findall(sentence)}
     assert used == set(notes["slots"])
     plain = [SLOT.sub("", sentence) for sentence in sentences]
     assert_czech_all(plain + notes["objections"], what="visit notes")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda data: data["outcomes"]["closed"].pop(),  # a visit that met nothing draws two
+        lambda data: data["no_order_by_kind"]["merchandising"].pop(),
+        lambda data: data["situations"].pop("competitor_display"),  # `note` reads every situation by its name
+        lambda data: data["situations"].pop("promotion_missing"),
+    ],
+)
+def test_the_schema_admits_no_file_the_notes_cannot_draw_from(notes: Any, change: Any) -> None:
+    """review-231 R4: an outcome of one sentence, a missing situation."""
+    data = copy.deepcopy(notes)
+    while len(data["no_order_by_kind"]["merchandising"]) > 2:
+        data["no_order_by_kind"]["merchandising"].pop()
+    validate(data, "visit_note_templates", "visit_note_templates.yaml")
+    change(data)
+    with pytest.raises(ConfigError, match="visit_note_templates.yaml"):
+        validate(data, "visit_note_templates", "visit_note_templates.yaml")
 
 
 # ── the document seeds (DOC.1 fills the libraries) ──────────────────────────

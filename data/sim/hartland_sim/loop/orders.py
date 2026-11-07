@@ -10,8 +10,8 @@ customers' asks for a discount.
   its area's rep, its KAM (`pricing.granter`) — the others by no one. When no one holds it that day (an area or an
   account unheld), the same draw, rescaled within the source it picked, picks again among the mix's other sources,
   their shares renormalised (review-221 N3, RR4): no visit nobody made. A basket a visit took (G2 S2.1,
-  `loop.field`) is a `visit` order with its `visit_id`, taken by the visit's rep; small retail's and the station
-  shops' mixes hold no visit, so their visit orders are what the visits' conversion makes.
+  `loop.field`) is a `visit` order with its `visit_id`, taken by the visit's rep; no channel's mix holds a visit, so
+  a `visit` order is always the field's, what the visits' conversion makes (HoReCa's KAMs make no visits yet).
 - `requested_on` is the next working day (`setup.calendar`'s Czech days off); `dc_site_id` the DC of the point's
   region (`world.yaml sites.dcs`); `status` the credit check's — `released`, or `held` with its reason (A-14).
 Its lines are `pricing.price_order`'s, numbered in that order (the free lines last), each with the purchase price of

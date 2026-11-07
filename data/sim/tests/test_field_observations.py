@@ -1,8 +1,9 @@
-"""The perfect-store check (G2 S2.1 T4, `loop.field.observe`): a recorded visit observes each line of its store's
-class (`field.observed_lines`), its facings from the store's line share × its size class's shelf (0 for a line it
-does not buy), the competitors' beside them (A-6's Kavalír adds on Gold in East Bohemia from week 45 of 2025), out of
-stock once the line's basket holds `field.shelf_cycles` of its order cycles, a secondary placement while a display is
-lent, and promotion compliance where a mandatory promotion of the line runs. The visits are the opening `World`'s."""
+"""The perfect-store check (G2 S2.1 T4, `loop.field.observe`): a recorded visit that found the shop (not closed, not
+gone: review-231 R2) observes each line of its store's class (`field.observed_lines`), its facings from the store's
+line share × its size class's shelf (0 for a line it does not buy), the competitors' beside them (A-6's Kavalír adds
+on Gold in East Bohemia from week 45 of 2025), out of stock once the line's basket holds `field.shelf_cycles` of its
+order cycles, a secondary placement while a display is lent, and promotion compliance where a mandatory promotion of
+the line runs. The visits are the opening `World`'s."""
 
 from __future__ import annotations
 
@@ -64,13 +65,16 @@ def test_a_recorded_visit_observes_its_store_class_s_lines_an_unrecorded_one_not
     codes = {row_id("product_line", code=line.code): line.code for line in demand.lines}
     assert WORLD.dials.observation_lines == "store_class"
     seen = 0
+    shut = 0
     for _, v, rows in observed:
-        if not v.recorded:
+        if not v.recorded or v.outcome in field.SHUT:
             assert rows == []
+            shut += v.recorded
             continue
         assert [codes[r["product_line_id"]] for r in rows] == list(WORLD.field.observed_lines[v.tourplan.store_class])
         assert all(tuple(r) == columns("visit_observation") and r["visit_id"] == v.visit_id for r in rows)
         seen += len(rows)
+    assert shut > 10  # the closed and the gone shops a recorded visit found
     assert seen / sum(v.recorded for _, v, _ in observed) == pytest.approx(6, abs=1.5)  # 03 §9: ~6 of 11
 
 
@@ -125,7 +129,7 @@ def test_the_shelf_lacks_what_the_store_ordered_today(opening: Setup, crew: Crew
     demand = world.demand
     assert demand is not None
     day = DAYS[0]
-    v = next(v for v in _visits(world, crew, day) if v.recorded and v.kind == "sales")
+    v = next(v for v in _visits(world, crew, day) if v.recorded and v.kind == "sales" and v.outcome not in field.SHUT)
     rows = field.observe(world, crew, day, [v])
     p = crew.points[v.tourplan.delivery_point_id]
     first = next(r for r in rows if r["facings"] > 0)
@@ -145,7 +149,7 @@ def test_the_shelf_lacks_what_the_store_ordered_today(opening: Setup, crew: Crew
 def test_a_lent_display_is_a_secondary_placement(opening: Setup, crew: Crew) -> None:
     world = Checkpoint.of(opening.world).restore()
     day = DAYS[0]
-    v = next(v for v in _visits(world, crew, day) if v.recorded and v.kind == "sales")
+    v = next(v for v in _visits(world, crew, day) if v.recorded and v.kind == "sales" and v.outcome not in field.SHUT)
     rows = field.observe(world, crew, day, [v])
     assert not any(r["secondary_placement"] for r in rows)
     demand = world.demand

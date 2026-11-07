@@ -78,7 +78,7 @@ channels:
     potential: 2000
     order_grain: case
     order_cycle_days: 10
-    order_sources: { phone: 0.50, portal: 0.30, visit: 0.20 }
+    order_sources: { phone: 0.625, portal: 0.375 } # no visit: the KAMs' HoReCa visits are not modelled (G2 S2.1)
   # What a channel may buy (channel_listing, R-7): the retail packs of these lines and the Professional packs of
   # those. `all` = every line.
   listings:

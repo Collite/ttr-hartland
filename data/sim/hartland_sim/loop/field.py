@@ -7,10 +7,11 @@ reps' tourplans and merchandised (`01` §4.3, NH-D5). The cycle is `world.yaml f
 Friday) and its week in an 8-week cycle are drawn once, by the store (`slot`, stream `visit`), so its calls keep their
 day whoever holds the area. Setup opens one per store for its area's rep on the warm-up's first day
 (`setup.org.tourplans`); `recut` closes one the day before a change and opens the next from that day, keeping the
-store's slot:
-- the area's rep changes — `04` S3's two area moves, on their days (the day loop's field step);
-- the customer is won (its class's cycle from then) or lost (no next tourplan) — the month-end's, from the next
-  month's first day (`period.month_end.close`).
+store's slot. It runs on an area move's day (`04` S3's two, the day loop's field step) and at the month-end, from the
+next month's first day (`period.month_end.close`), and re-cuts whatever has changed by its day:
+- the area's rep changes;
+- the customer is won (its class's cycle from then) or lost (no next tourplan) — the month-end's, and a move day's
+  for a store won or lost since the last month-end.
 
 The rows are rendered from the `World` when a build ends (`setup.opening.state_rows`): a tourplan's `valid_to` moves
 when it is re-cut, as a duty's does.
@@ -29,18 +30,20 @@ tourplan's or the visit's id:
   `sales` at a customer's; its outcome: closed, refused or not found by the kind's shares (`field.outcomes`), else a
   sales visit converts with S3's chance, `conversion_base` × the rep's conversion skill (`04` S3, read on the visit),
   and any other has no order;
-- a converting visit takes the customer's basket — what it ordered since its last order — as its `visit` order: the
-  basket that triggered that day, else the basket as it stands (`demand.take`); never a second order. Its outcome is
-  `order` when the basket held anything, else `no_order`. A key account's station orders through the key account,
-  and an acquisition leaves S1.2's acquisitions as they are: neither visit takes an order;
+- a converting visit takes the customer's basket — what it sold since its last order — as its `visit` order: the
+  basket that triggered that day, else the basket as it stands (`demand.take`); never a second order. The visit's
+  order stands in for the store's next scheduled one (⚑R231-A): the store's order days stay its own, so a call and an
+  order day meet only where the store's slot falls on one. Its outcome is `order` when the basket held anything, else
+  `no_order`. A key account's station orders through the key account, and an acquisition leaves S1.2's acquisitions
+  as they are: neither visit takes an order;
 - the rep's day starts at `field.day_starts`; each visit after a travel of `field.travel_minutes`, lasting
   `field.visit_minutes` (Prague time), and a day of more than fit by `field.day_ends` is compressed into it, every
   travel and visit by the same factor (the areas' loads differ, a dense one's calls are quick); A-8's rep leaves
   `unrecorded_share` of its visits unrecorded — no times, no observations, no note.
 
-**The observations** (`visit_observation`, T4; `observe`): a recorded visit looks at its store class's lines
-(`field.observed_lines`; every line under `dials.observation_lines: all`), before it takes any order, every draw from
-stream `observe` by the visit and the line:
+**The observations** (`visit_observation`, T4; `observe`): a recorded visit that found the shop (`SHUT`: not closed,
+not gone) looks at its store class's lines (`field.observed_lines`; every line under `dials.observation_lines: all`),
+before it takes any order, every draw from stream `observe` by the visit and the line:
 - `facings`: the store's size class's shelf (`field.facings`) shared by the lines' parts of its demand (the base),
   × a draw in [0.7, 1.3], at least one — on a line the customer buys; none on another, nor at a potential store;
 - `competitor_facings`: the line's slots × a draw in `field.competitor_facings`, and A-6's Kavalír adds its
@@ -53,22 +56,25 @@ stream `observe` by the visit and the line:
 - `promo_compliant`: at a sales visit, where a mandatory promotion of the line runs and admits the store, executed
   with `field.promo_compliance`; else null.
 
-**The competitor sightings** (`competitor_sighting`, T5; `sight`), at most one a recorded visit, every draw from
-stream `sighting` by the visit: A-6's first — in its region from its sightings to its end, its `sighting_share` of the
-visits see Kavalír's promotion of a product of its line, described in a hand-written note (`PLANTED_SIGHTINGS`) —
-then the background: `field.sightings.share` of the visits see a competitor's activity on a product of one of the
-store's observed lines (`competitor_product.csv`'s equivalent product), a competitor `home_weight` times as likely in
-its home region, the kind by `kinds` (no promotion of a competitor in `promotions_planted`: Kavalír's are A-6's), the
-price seen × the kind's `price` draw of its typical price, confirmed at `confirmed`, described in Czech.
+**The competitor sightings** (`competitor_sighting`, T5; `sight`), at most one a recorded visit that found the shop,
+every draw from stream `sighting` by the visit: A-6's first — in its region from its sightings to its end, its
+`sighting_share` of the visits see Kavalír's promotion of a product of its line, described in a hand-written note
+(`PLANTED_SIGHTINGS`, the sighting `planted`) — then the background: `field.sightings.share` of the visits see a
+competitor's activity on a product of one of the store's observed lines (`competitor_product.csv`'s equivalent
+product), a competitor `home_weight` times as likely in its home region, the kind by `kinds` (no promotion of a
+competitor in `promotions_planted`: Kavalír's are A-6's), the price seen × the kind's `price` draw of its typical
+price, confirmed at `confirmed`, described in Czech.
 
 **The notes** (`visit.note`, T6; `note`), after the visit's order, every draw from stream `note` by the visit: a
-sentence of the visit's outcome (`visit_note_templates.yaml`) and one of each situation it met — a mandatory promotion
-of a line running (`promotion`), a line out of stock (`out_of_stock`), a competitor seen (`competitor`; A-6's
-hand-written sighting goes in verbatim), a display lent (`display`) — at most three, and a second outcome sentence when
-it met none: 2–4 sentences. The slots are the visit's: a SKU of a line the customer buys (or of the situation's
-line) by its name or its nickname (`product.csv`), the competitor's name, the promotion's, an objection. An unrecorded
-visit has no note, nor has any visit of A-8's rep, who records nothing; S2.2's prompts add the listing situation and
-A-13's refusals.
+sentence of the visit's outcome (`visit_note_templates.yaml`; an acquisition's or a merchandising visit's `no_order`
+reads its kind's, `no_order_by_kind`) and one of each situation it met, as its rows say it — a mandatory promotion of a
+line running, executed or not (`promotion_executed`, `promotion_missing`), a line out of stock (`out_of_stock`), a
+competitor seen (`competitor_<activity kind>`; A-6's hand-written sighting goes in verbatim), a display lent
+(`display`) — at most three, and a second outcome sentence when it met none: 2–4 sentences. A visit that found the
+shop closed or gone met none: two outcome sentences. The slots are the visit's: a product on sale that day (a SKU of
+it launched and not delisted, `catalogue.csv`) of a line the customer buys (or of the situation's line) by its name or
+its nickname (`product.csv`), the competitor's name, the promotion's, an objection. An unrecorded visit has no note,
+nor has any visit of A-8's rep, who records nothing; S2.2's prompts add the listing situation and A-13's refusals.
 """
 
 from __future__ import annotations
@@ -97,6 +103,7 @@ from hartland_sim.world import OPEN, Customer, Tourplan, World
 CYCLE_WEEKS = 8  # a store's week is drawn in the longest cycle, so every shorter one divides it
 PRAGUE = ZoneInfo("Europe/Prague")
 UNREACHED = ("closed", "refused", "not_found")  # the outcomes of a visit that dealt with no one, in draw order
+SHUT = ("closed", "not_found")  # of those, a visit that saw no shelf: the shop closed or gone (a refused one stood in)
 Array = np.ndarray[Any, Any]
 
 
@@ -260,9 +267,11 @@ class Kavalir:
 
 @dataclass(frozen=True)
 class NoteBook:
-    """`visit_note_templates.yaml`: the sentences by outcome and by situation, the owners' objections."""
+    """`visit_note_templates.yaml`: the sentences by outcome, an acquisition's and a merchandising visit's `no_order`
+    ones, the sentences by situation, the owners' objections."""
 
     outcomes: Mapping[str, tuple[str, ...]]
+    no_order_by_kind: Mapping[str, tuple[str, ...]]
     situations: Mapping[str, tuple[str, ...]]
     objections: tuple[str, ...]
 
@@ -272,9 +281,29 @@ class NoteBook:
         validate(data, "visit_note_templates", path.name)
         return cls(
             {k: tuple(v) for k, v in data["outcomes"].items()},
+            {k: tuple(v) for k, v in data["no_order_by_kind"].items()},
             {k: tuple(v) for k, v in data["situations"].items()},
             tuple(data["objections"]),
         )
+
+    def outcome(self, v: Visit) -> tuple[str, ...]:
+        """The sentences of `v`'s outcome; an acquisition's or a merchandising visit's `no_order`: its kind's."""
+        if v.outcome == "no_order" and v.kind in self.no_order_by_kind:
+            return self.no_order_by_kind[v.kind]
+        return self.outcomes[v.outcome]
+
+
+@dataclass(frozen=True)
+class Product:
+    """A product as a note names it (`product.csv`): its name, its nicknames, and when its SKUs are on sale
+    (`catalogue.csv`: from the launch to the day before the delisting)."""
+
+    name: str
+    nicknames: tuple[str, ...]
+    on_sale: tuple[tuple[date, date | None], ...]  # a SKU's launched_on, delisted_on
+
+    def sells(self, day: date) -> bool:
+        return any(launched <= day and (gone is None or day < gone) for launched, gone in self.on_sale)
 
 
 @dataclass(frozen=True)
@@ -303,7 +332,7 @@ class Crew:
     kavalir: Kavalir | None
     rivals: Mapping[int, tuple[Rival, ...]]  # line index → the competitors' products of it
     notebook: NoteBook
-    products: Mapping[int, tuple[tuple[str, tuple[str, ...]], ...]]  # line index → its products' (name, nicknames)
+    products: Mapping[int, tuple[Product, ...]]  # line index → its products
     competitors: Mapping[str, str]  # code → name
     sku_line: Mapping[int, int]  # sku_id → its line's index
 
@@ -343,16 +372,21 @@ class Crew:
                 str(held["competitor"]),
                 float(held["sighting_share"]),
             )
-        line_of = {product["code"]: product["product_line"] for product in read("product")}
+        product_rows = read("product")
+        line_of = {product["code"]: product["product_line"] for product in product_rows}
         rivals: dict[int, list[Rival]] = {i: [] for i in range(len(demand.lines))}
         for product in read("competitor_product"):
             rival = Rival(product["competitor"], product["code"], product["name"], float(product["typical_price"]))
             rivals[index[line_of[product["equivalent_product"]]]].append(rival)
         held_rivals = {i: tuple(found) for i, found in rivals.items()}
-        products: dict[int, list[tuple[str, tuple[str, ...]]]] = {i: [] for i in range(len(demand.lines))}
-        for product in read("product"):
+        on_sale: dict[str, list[tuple[date, date | None]]] = defaultdict(list)
+        for sku in read("catalogue"):
+            on_sale[sku["product"]].append((sku["launched_on"], sku["delisted_on"]))
+        products: dict[int, list[Product]] = {i: [] for i in range(len(demand.lines))}
+        for product in product_rows:
             nicknames = tuple(nick for nick in (product["nicknames_cs"] or "").split(";") if nick)
-            products[index[product["product_line"]]].append((product["name_cs"], nicknames))
+            found = Product(product["name_cs"], nicknames, tuple(on_sale[product["code"]]))
+            products[index[product["product_line"]]].append(found)
         return cls(
             field,
             conversion,
@@ -519,9 +553,9 @@ def visit_row(v: Visit, day: date) -> Row:
 def observe(
     world: World, crew: Crew, day: date, visits: Sequence[Visit], events: Sequence[BasketReady] = ()
 ) -> list[Row]:
-    """The recorded visits' `visit_observation` rows (module docstring), before the visits' orders; `events` are the
-    day's baskets ordered so far, whose cases the shelves still lack."""
-    recorded = [v for v in visits if v.recorded]
+    """The `visit_observation` rows of the recorded visits that found the shop (module docstring), before the visits'
+    orders; `events` are the day's baskets ordered so far, whose cases the shelves still lack."""
+    recorded = [v for v in visits if v.recorded and v.outcome not in SHUT]
     demand = world.demand
     if not recorded or demand is None:
         return []
@@ -607,6 +641,7 @@ class Sighting:
     price: float
     description: str
     confirmed: bool
+    planted: bool = False  # A-6's: its description is the rep's own, verbatim in the note
 
 
 def _pick(weights: Sequence[float], draw: float) -> int:
@@ -620,8 +655,8 @@ def _price(typical: float, span: tuple[float, float], draw: float) -> float:
 
 
 def sight(world: World, crew: Crew, day: date, visits: Sequence[Visit]) -> list[Sighting]:
-    """The recorded visits' competitor sightings (module docstring)."""
-    recorded = [v for v in visits if v.recorded]
+    """The competitor sightings of the recorded visits that found the shop (module docstring)."""
+    recorded = [v for v in visits if v.recorded and v.outcome not in SHUT]
     demand = world.demand
     if not recorded or demand is None:
         return []
@@ -640,8 +675,8 @@ def sight(world: World, crew: Crew, day: date, visits: Sequence[Visit]) -> list[
             chosen = products[min(int(rival[k] * len(products)), len(products) - 1)]
             description = PLANTED_SIGHTINGS[min(int(note[k] * len(PLANTED_SIGHTINGS)), len(PLANTED_SIGHTINGS) - 1)]
             cost = _price(chosen.typical_price, config.price["promotion"], price[k])
-            out.append(Sighting(v.visit_id, chosen.competitor, chosen.code, "promotion", cost, description, True))
-            out[-1] = replace(out[-1], confirmed=confirmed[k] < config.confirmed)
+            sure = confirmed[k] < config.confirmed
+            out.append(Sighting(v.visit_id, chosen.competitor, chosen.code, "promotion", cost, description, sure, True))
             continue
         if seen[k] >= config.share:
             continue
@@ -715,30 +750,33 @@ def note(
         bought = np.flatnonzero(demand.carried[demand.point_customer[p]]).tolist()
         pool = bought or list(crew.observed[v.tourplan.store_class])
         met: dict[str, str] = {}
-        for observation in rows[v.visit_id]:
+        inside = v.outcome not in SHUT  # a shop closed or gone: no shelf, no competitor
+        for observation in rows[v.visit_id] if inside else ():
             line = lines[observation["product_line_id"]]
             code = demand.lines[line].code
             if "promotion" not in met and observation["promo_compliant"] is not None:
                 promotion = next(m for m in mandatory if m.line == code and admits(m, spot, customer, day))
-                held = {**_slots(crew, [line], draw), "promotion": promotion.name or promotion.code}
-                met["promotion"] = _fill(_one(book.situations["promotion"], draw), held)
+                held = {**_slots(crew, [line], day, draw), "promotion": promotion.name or promotion.code}
+                said = "promotion_executed" if observation["promo_compliant"] else "promotion_missing"
+                met["promotion"] = _fill(_one(book.situations[said], draw), held)
             if "out_of_stock" not in met and observation["out_of_stock"]:
-                met["out_of_stock"] = _fill(_one(book.situations["out_of_stock"], draw), _slots(crew, [line], draw))
+                held = _slots(crew, [line], day, draw)
+                met["out_of_stock"] = _fill(_one(book.situations["out_of_stock"], draw), held)
             if "display" not in met and observation["secondary_placement"]:
-                met["display"] = _fill(_one(book.situations["display"], draw), _slots(crew, [line], draw))
-        sighting = seen.get(v.visit_id)
+                met["display"] = _fill(_one(book.situations["display"], draw), _slots(crew, [line], day, draw))
+        sighting = seen.get(v.visit_id) if inside else None
         if sighting is not None:
-            if sighting.description in PLANTED_SIGHTINGS:
+            if sighting.planted:
                 met["competitor"] = sighting.description
             else:
-                held = {**_slots(crew, pool, draw), "competitor": crew.competitors[sighting.competitor]}
-                met["competitor"] = _fill(_one(book.situations["competitor"], draw), held)
+                held = {**_slots(crew, pool, day, draw), "competitor": crew.competitors[sighting.competitor]}
+                met["competitor"] = _fill(_one(book.situations[f"competitor_{sighting.kind}"], draw), held)
         sentences = [met[name] for name in SITUATIONS if name in met][:3]
-        outcome = list(book.outcomes[v.outcome])
+        outcome = list(book.outcome(v))
         first = outcome.pop(int(draw.integers(len(outcome))))
-        sentences.insert(0, _fill(first, _slots(crew, pool, draw)))
+        sentences.insert(0, _fill(first, _slots(crew, pool, day, draw)))
         if len(sentences) < 2:
-            sentences.append(_fill(_one(outcome, draw), _slots(crew, pool, draw)))
+            sentences.append(_fill(_one(outcome, draw), _slots(crew, pool, day, draw)))
         v.note = " ".join(sentences)
 
 
@@ -746,13 +784,14 @@ def _one(sentences: Sequence[str], draw: Generator) -> str:
     return sentences[int(draw.integers(len(sentences)))]
 
 
-def _slots(crew: Crew, lines: Sequence[int], draw: Generator) -> dict[str, str]:
-    """A sentence's slots: a SKU of `lines` by its name and a nickname, an objection (the caller adds the rest)."""
-    products = [product for i in lines for product in crew.products[i]]
-    name, nicknames = products[int(draw.integers(len(products)))]
+def _slots(crew: Crew, lines: Sequence[int], day: date, draw: Generator) -> dict[str, str]:
+    """A sentence's slots: a product of `lines` on sale on `day` by its name and a nickname, an objection (the caller
+    adds the rest)."""
+    products = [product for i in lines for product in crew.products[i] if product.sells(day)]
+    chosen = products[int(draw.integers(len(products)))]
     return {
-        "sku": name,
-        "nickname": _one(nicknames, draw) if nicknames else name,
+        "sku": chosen.name,
+        "nickname": _one(chosen.nicknames, draw) if chosen.nicknames else chosen.name,
         "objection": _one(crew.notebook.objections, draw),
         "competitor": "",
         "promotion": "",

@@ -298,6 +298,7 @@ class Demand:
     basket: Array  # (P, L) the latent cases not yet ordered
     extras: dict[int, Array]  # SKU index → (P,) its cases beyond its share of the pool (`lifted`)
     due: Array  # (P,) bool: orders today whatever the cycle (a new customer's first order)
+    skip: Array  # (P,) bool: a visit took the basket, so the next order day orders nothing (`take`, ⚑R231-A)
     generation: int = 0  # moved by `rebase`: what a `Terms` cached of the points is stale
 
     def __eq__(self, other: object) -> bool:
@@ -455,6 +456,7 @@ def opening(
         basket=np.zeros(units.shape),
         extras={},
         due=np.zeros(len(found), dtype=bool),
+        skip=np.zeros(len(found), dtype=bool),
     )
 
 
@@ -943,11 +945,12 @@ def step(world: World, terms: Terms, day: date, temps: Array, shares: Shares | N
 
     **The trigger**: a point orders on its cycle's days (`offset`), when its basket has run its shelf dry — more than
     `DRY_CYCLES` cycles' expected demand since its last order (a promotion empties a shelf early) — or when it is
-    `due` (a new customer's first order). **The order**: the basket's cases split into SKUs by their shares
-    (`sku_cases`), in the point's grain, each rounded to a whole unit up with the chance of its fraction (stream
-    `basket`, by point, SKU and day: the same basket on the same day gives the same lines). An order of nothing
-    leaves the basket to fill on; an order empties it. `shares` are the day's `Catalogue.shares`, when the caller
-    has them already (`acquisition.step` reads the same)."""
+    `due` (a new customer's first order). A point a visit took the basket of (`take`) lets its next cycle day pass:
+    that day consumes the `skip` mark, whether or not the basket would have ordered. **The order**: the basket's
+    cases split into SKUs by their shares (`sku_cases`), in the point's grain, each rounded to a whole unit up with
+    the chance of its fraction (stream `basket`, by point, SKU and day: the same basket on the same day gives the
+    same lines). An order of nothing leaves the basket to fill on; an order empties it. `shares` are the day's
+    `Catalogue.shares`, when the caller has them already (`acquisition.step` reads the same)."""
     demand = world.demand
     if demand is None:
         raise ValueError("the World has no demand state (setup makes it)")
@@ -965,6 +968,9 @@ def step(world: World, terms: Terms, day: date, temps: Array, shares: Shares | N
         demand.extras[sku] = demand.extras[sku] + extra if sku in demand.extras else extra
     held = demand.basket.sum(axis=1)
     on_cycle = (today - demand.offset) % demand.cycle == 0
+    skipped = on_cycle & demand.skip
+    demand.skip[on_cycle] = False
+    on_cycle &= ~skipped
     dry = held >= DRY_CYCLES * (demand.base * buys).sum(axis=1) * demand.cycle
     ready = np.flatnonzero(active & (on_cycle | dry | demand.due) & (held > 0))
     return _orders(demand, day, ready, share)
@@ -973,8 +979,8 @@ def step(world: World, terms: Terms, day: date, temps: Array, shares: Shares | N
 def take(world: World, day: date, points: Array, shares: Shares) -> list[BasketReady]:
     """The baskets of `points` (indices of the points) ordered now, whatever their cycle — a visit takes them
     (G2 S2.1, `loop.field`) — split and rounded as `step`'s are; a basket of nothing orders nothing. A point that
-    orders restarts its cycle from today (`offset`), so its next order is a cycle after this one, not the rest of
-    the old cycle."""
+    orders keeps its order days (`offset`): the visit's order stands in for its next scheduled one, which `step` lets
+    pass (`skip`, ⚑R231-A), so a basket is ordered once a cycle and the store keeps its trade week."""
     demand = world.demand
     if demand is None:
         raise ValueError("the World has no demand state (setup makes it)")
@@ -982,8 +988,7 @@ def take(world: World, day: date, points: Array, shares: Shares) -> list[BasketR
     out = _orders(demand, day, held, shares[0])
     index = {int(demand.point_ids[p]): int(p) for p in held}
     ordered = np.array([index[event.delivery_point_id] for event in out], dtype=np.int64)
-    if len(ordered):
-        demand.offset[ordered] = day.toordinal() % demand.cycle[ordered]
+    demand.skip[ordered] = True
     return out
 
 

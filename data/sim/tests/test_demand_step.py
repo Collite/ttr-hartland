@@ -1,6 +1,7 @@
 """Baskets and order triggers (G1 S1.2 T5): the day's latent demand fills each point's basket; a basket orders on its
-point's cycle, when it has run the shelf dry, or when due; the lines of an order are the same for the same basket on
-the same day; the rounding keeps the volume."""
+point's cycle, when it has run the shelf dry, or when due; a basket a visit took stands in for the next cycle day's
+(G2 S2.1, ⚑R231-A); the lines of an order are the same for the same basket on the same day; the rounding keeps the
+volume."""
 
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import numpy as np
 import pytest
 
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.loop.demand import CHANNELS, DRY_CYCLES, REFERENCE_MONDAY, BasketReady, Demand, Terms, step
+from hartland_sim.loop.demand import CHANNELS, DRY_CYCLES, REFERENCE_MONDAY, BasketReady, Demand, Terms, step, take
 from hartland_sim.loop.weather import Climate
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import Checkpoint, World
@@ -186,3 +187,25 @@ def test_the_rounding_keeps_the_volume(opening: Setup, monkeypatch: pytest.Monke
     ordered = sum(c for e in events for _, c, _ in e.lines)
     assert len(events) > 1900
     assert ordered == pytest.approx(held, rel=0.01)
+
+
+def test_a_basket_a_visit_took_stands_in_for_the_next_cycle_day_s(opening: Setup) -> None:
+    """⚑R231-A: `take` between two order days leaves the point's order days as they are; the next one orders nothing
+    (it consumes the mark) and the one after orders."""
+    world, demand, terms = _copy(opening)
+    today = FIRST.toordinal()
+    p = next(
+        p
+        for p in range(len(demand.spots))
+        if demand.point_channel[p] == CHANNELS.index("small_retail")
+        and demand.customer_since[demand.point_customer[p]] <= today <= demand.customer_until[demand.point_customer[p]]
+        and (demand.offset[p] - today) % demand.cycle[p] >= 8
+    )
+    point, offset, cycle = int(demand.point_ids[p]), int(demand.offset[p]), int(demand.cycle[p])
+    visit = FIRST + timedelta(days=(offset - today) % cycle - 1)  # the day before its next order day
+    assert point not in {e.delivery_point_id for e in _run(world, terms, FIRST, (visit - FIRST).days + 1)}
+    (taken,) = take(world, visit, np.array([p]), demand.catalogue.shares(visit, len(demand.lines)))
+    assert taken.delivery_point_id == point and demand.skip[p] and demand.offset[p] == offset
+    after = _run(world, terms, visit + timedelta(days=1), cycle + 1)
+    assert [e.day for e in after if e.delivery_point_id == point] == [visit + timedelta(days=cycle + 1)]
+    assert not demand.skip[p] and demand.offset[p] == offset

@@ -7,12 +7,14 @@ the S1, S2 and S4 twins pass on the story world and fail on the null one.
 (`checks.stories.gains`, s6.sql's measure) ranks with its hidden `discount_discipline` (the answer key: the story
 world's checkpoint) — Spearman ≥ 0.8 over all reps, the null world's |ρ| < 0.3 — and `04` S6's bounds on the pinned reps
 (review-196 ⚑D): the disciplined ones' ratio > 1, the undisciplined ones' < 0.5; s6.sql's twin passes on the story world
-and fails on the null one. The story world falls short of three of the four bars (the pinned undisciplined pass, 0.12 on
-G2 S2.1's build, 0.45 on S1.5's, inside the noise either way): the lift — a ratio of the few cases an agreement's
-windows hold — scatters far wider than the discount moves it, so strict expected failures hold the numbers and the PR's
-Found line carries them (the list's stop condition: S1.5 does not solve it; review-225 ⚑R225-A). **The field** (G2 S2.1
-T7): A-7's and A-8's probes find the pinned reps, S3's first rate — the sales visits' conversion — ranks with the hidden
-skill, the field's probes pass and find nothing in the null world, and the visits' notes read as Czech."""
+and fails on the null one. The story world falls short of three of the four bars (the pinned undisciplined pass, 0.37 on
+G2 S2.1's build after review-231, 0.45 on S1.5's, inside the noise either way): the lift — a ratio of the few cases an
+agreement's windows hold — scatters far wider than the discount moves it, so strict expected failures hold the numbers
+and the PR's Found line carries them (the list's stop condition: S1.5 does not solve it; review-225 ⚑R225-A).
+**The field** (G2 S2.1 T7): A-7's and A-8's probes find the pinned reps, S3's first rate — the sales visits'
+conversion — ranks with the hidden skill, the field's probes pass and find nothing in the null world, the visits' notes
+read as Czech, and small retail's own orders keep the trade week (a visit's order stands in for the store's next one:
+review-231 ⚑R231-A)."""
 
 from __future__ import annotations
 
@@ -117,7 +119,8 @@ def spearman(frame: pd.DataFrame) -> float:
 
 
 @pytest.mark.xfail(
-    strict=True, reason="Found (S1.5 T5, redrawn G2 S2.1): Spearman 0.16 on 2024–2025; residual SD 1.49 vs T2"
+    strict=True,
+    reason="Found (S1.5 T5, redrawn G2 S2.1 review-231): Spearman 0.10 on 2024–2025; residual SD 1.32 vs T2",
 )
 def test_s6_the_reps_gain_a_crown_ranks_with_their_discipline(story_world: Built) -> None:
     assert spearman(by_rep(story_world.run, _reps(story_world))) >= 0.8
@@ -129,7 +132,8 @@ def test_s6_in_the_null_world_the_ranking_is_gone(story_world: Built, null_world
 
 
 @pytest.mark.xfail(
-    strict=True, reason="Found (S1.5 T5, redrawn G2 S2.1): the pinned disciplined 0.53 a crown, not > 1 (T2: 1.59)"
+    strict=True,
+    reason="Found (S1.5 T5, redrawn G2 S2.1 review-231): the pinned disciplined −0.31 a crown, not > 1 (T2: 1.59)",
 )
 def test_s6_the_pinned_disciplined_reps_discounts_pay(story_world: Built) -> None:
     assert s6_reps(Build(story_world.run), StoriesConfig.load())[True] > 1
@@ -140,7 +144,8 @@ def test_s6_the_pinned_undisciplined_reps_lose_on_their_discounts(story_world: B
 
 
 @pytest.mark.xfail(
-    strict=True, reason="Found (S1.5 T5, redrawn G2 S2.1): s6.sql's pinned difference 0.41 on 2024–2025, not ≥ 0.5"
+    strict=True,
+    reason="Found (S1.5 T5, redrawn G2 S2.1 review-231): s6.sql's pinned difference −0.68 on 2024–2025, not ≥ 0.5",
 )
 def test_s6_s_twin_passes_on_the_story_world(story_world: Built) -> None:
     (s6,) = [v for v in check(story_world.run, StoriesConfig.load()) if v.check == "detectors/s6.sql"]
@@ -216,3 +221,13 @@ def test_the_notes_are_czech(story_world: Built) -> None:
     names = [*(r["name_cs"] for r in read_reference("product")), *(r["name"] for r in read_reference("competitor"))]
     names += [n for r in read_reference("product") for n in (r["nicknames_cs"] or "").split(";") if n]
     assert_czech_all(notes.sample(1_000, random_state=0).tolist(), what="visit.note", allow=names)
+
+
+def test_small_retail_s_own_orders_keep_the_trade_week(story_world: Built) -> None:
+    """review-231 R1: the phone and portal orders' Saturday and Sunday within 3 pp of the trade week's (`s1.yaml`
+    `weekday.trade`, 11.7 %); a visit that restarted the store's cycle put its order days on its calls (1.7 %)."""
+    orders = Build(story_world.run)["sales_order"]
+    own = orders[(orders["channel"] == "small_retail") & orders["source"].isin(["phone", "portal"])]
+    weekend = float((pd.to_datetime(own["ordered_on"]).dt.day_of_week >= 5).mean())
+    trade = np.array(StoriesConfig.load().story("S1").parameters["weekday"]["trade"], dtype=float)
+    assert abs(weekend - trade[5:].sum() / trade.sum()) <= 0.03, weekend

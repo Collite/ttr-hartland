@@ -158,7 +158,8 @@ def test_the_source_follows_the_channel_s_mix_and_a_station_shop_takes_special_r
         "portal",
         "portal",
     ]
-    assert [source(desk, "horeca", u) for u in (0.0, 0.5, 0.8, 0.999)] == ["phone", "portal", "visit", "visit"]
+    # nor HoReCa's: its KAMs' visits are not modelled (review-231 R5)
+    assert [source(desk, "horeca", u) for u in (0.0, 0.62, 0.63, 0.999)] == ["phone", "phone", "portal", "portal"]
     assert {source(desk, channel, u) for channel in ("big_retail", "gas_ka") for u in (0.0, 0.5, 0.999)} == {"edi"}
     assert (source(desk, "web", 0.3), source(desk, "own_shops", 0.3)) == ("web", "replenishment")
     shop = _customers(world, "small_retail", "special_retail")[0]

@@ -1,4 +1,5 @@
-"""Competitor sightings (G2 S2.1 T5, `loop.field.sight`): at `field.sightings.share` of the recorded visits a
+"""Competitor sightings (G2 S2.1 T5, `loop.field.sight`): at `field.sightings.share` of the recorded visits that
+found the shop (review-231 R2) a
 competitor's activity on one of the store's observed lines — its product of that line (`competitor_product.csv`'s
 equivalent), the kind by its shares, the price seen against the product's typical price — confirmed at its share; a
 competitor is likelier in its home region, and A-6's Kavalír promotes Gold in East Bohemia from week 45 of 2025 — its
@@ -50,10 +51,10 @@ def seen(opening: Setup, crew: Crew) -> list[tuple[date, list[Visit], list[Sight
 
 
 def test_a_recorded_visit_sees_a_competitor_at_its_share(seen: list[tuple[date, list[Visit], list[Sighting]]]) -> None:
-    recorded = {v.visit_id: v for _, visits, _ in seen for v in visits if v.recorded}
+    inside = {v.visit_id: v for _, visits, _ in seen for v in visits if v.recorded and v.outcome not in field.SHUT}
     sightings = [s for _, _, day_sightings in seen for s in day_sightings]
-    assert all(s.visit_id in recorded for s in sightings)
-    assert len(sightings) / len(recorded) == pytest.approx(SIGHTINGS.share, abs=0.006)
+    assert all(s.visit_id in inside for s in sightings)  # never a shop closed or gone
+    assert len(sightings) / len(inside) == pytest.approx(SIGHTINGS.share, abs=0.006)
     assert Counter(s.visit_id for s in sightings).most_common(1)[0][1] == 1
 
 
@@ -117,7 +118,7 @@ def test_a_6_kavalir_promotes_gold_in_east_bohemia_from_week_45(opening: Setup, 
             v = next(v for v in visits if v.visit_id == s.visit_id)
             assert demand.spots[crew.points[v.tourplan.delivery_point_id]].region == A6["region"]
             assert LINE_OF[PRODUCTS[s.product]["equivalent_product"]] == A6["line"]
-            assert s.description in field.PLANTED_SIGHTINGS
+            assert s.planted and s.description in field.PLANTED_SIGHTINGS
         counts[day] = len(planted)
     assert counts[first - timedelta(days=7)] == counts[last + timedelta(days=1)] == 0
     assert counts[first] >= 10 and counts[last] >= 10
