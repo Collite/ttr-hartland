@@ -5,6 +5,7 @@ checkpoint: a restored `World` pickles equal, not byte-identical (⚑R201-B, `wo
 - `closed(run, day)`: the sha256 of each table's rows closed by `day` — what a prolong to `day` must give as a straight
   build to any later day does. Those are setup's tables whole, and of the loop's:
   - the orders of `ordered_on` ≤ `day`, with their lines and their discounts;
+  - the visit plans of `planned_day` ≤ `day`, the visits of `day` ≤ `day` with their observations and sightings;
   - the agreements, conditions, price lists (with their prices) and weather from a day ≤ `day`;
   - the plan rows made by `day` (a row of month M, version v is made on the day before M − (E − v) months, E the
     months the roll plans).
@@ -69,10 +70,13 @@ def closed(run: Path, day: date, world: WorldConfig | None = None) -> dict[str, 
         "standard_price_list": lambda row: row["valid_from"] <= last,
         "channel_price_list": lambda row: row["valid_from"] <= last,
         "weather_daily": lambda row: row["day"] <= last,
+        "visit_plan": lambda row: row["planned_day"] <= last,
+        "visit": lambda row: row["day"] <= last,
         "sales_plan": made,
     }
     keys = {
         "sales_order": "sales_order_id",
+        "visit": "visit_id",
         "standard_price_list": "standard_price_list_id",
         "channel_price_list": "channel_price_list_id",
     }
@@ -87,6 +91,8 @@ def closed(run: Path, day: date, world: WorldConfig | None = None) -> dict[str, 
         "sales_order_line_discount": ("sales_order_line", "sales_order_line_id", None),
         "standard_price": ("standard_price_list", "standard_price_list_id", None),
         "channel_price": ("channel_price_list", "channel_price_list_id", None),
+        "visit_observation": ("visit", "visit_id", None),
+        "competitor_sighting": ("visit", "visit_id", None),
     }
     for name, (parent, column, key) in children.items():
         path = run / f"{name}.csv"

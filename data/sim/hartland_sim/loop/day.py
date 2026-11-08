@@ -10,7 +10,11 @@ before `history.first_day`).
   (`month_end.conditions`), after the acquisitions, so a store lost on the 1st has none and one acquired on the 1st
   has one; the warm-up's first month has none (no month before it);
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
-- 2 `field`: the tourplans, visits and prompts — G2's, a stub here;
+- 2 `field` (`loop.field`): the tourplans re-cut on a rep's area move (`field.recut`: the stores won and lost
+  since the month-end too), the day's visit plan, the visits, their observations and competitor sightings — a
+  converting one then takes its customer's basket as its order, among the day's baskets the orders step makes —
+  and their notes; in the warm-up only the visits and their orders, which move the `World` (nothing else is
+  written, and every draw is the visit's own); the prompts are G2 S2.2's;
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);
 - 5 `supply`, 6 `delivery` (G3), 7 `finance`, 8 `shops` (G4), 8b `documents` (DOC): stubs, called and returning
   nothing;
@@ -23,7 +27,8 @@ before `history.first_day`).
   re-parameterised build can start.
 
 `Loop` holds what a run reads beside the `World` — the demand's and the reps' terms, the order desk, the period ends'
-terms, the climate — built again from the configs for a run (never pickled), and what the run did (`Report`).
+terms, the climate, the visits' crew — built again from the configs for a run (never pickled), and what the run did
+(`Report`).
 """
 
 from __future__ import annotations
@@ -40,6 +45,20 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import month_end, quarter_end
 from hartland_sim.loop import acquisition, demand, orders
+from hartland_sim.loop.field import (
+    Crew,
+    calls,
+    note,
+    observe,
+    plan,
+    recut,
+    sight,
+    sighting_row,
+    take_orders,
+    visit,
+    visit_plan_row,
+    visit_row,
+)
 from hartland_sim.loop.pricing import Rules
 from hartland_sim.loop.warmup import Output
 from hartland_sim.loop.weather import Climate
@@ -116,6 +135,7 @@ class Loop:
     desk: orders.Desk
     closing: Closing
     climate: Climate
+    crew: Crew
     last_day_done: date
     report: Report = field(default_factory=Report)
     warm_up_end: Checkpoint | None = None
@@ -136,6 +156,7 @@ class Loop:
             orders.Desk.of(world, rules, config),
             Closing.of(world, config, stories, skus, rules),
             Climate.load(),
+            Crew.of(world, config, stories),
             world.day,
         )
 
@@ -154,6 +175,18 @@ class Loop:
         while day <= last:
             self.run(day)
             day += timedelta(days=1)
+
+    @property
+    def moves(self) -> frozenset[date]:
+        """The days a rep takes another area (`04` S3's area moves): its duty's first day, after the opening; built
+        again, as `World.duty`'s index is, whenever `duties` is another list or another length (a duty added later)."""
+        duties = self.world.duties
+        held = self.__dict__.get("_moves")
+        if held is None or held[0] is not duties or held[1] != len(duties):
+            opening = self.config.history.warm_up_from
+            found = frozenset(d.valid_from for d in duties if d.kind == "rep_area" and d.valid_from > opening)
+            held = self.__dict__["_moves"] = (duties, len(duties), found)
+        return held[2]
 
     @property
     def today(self) -> Today:
@@ -182,7 +215,24 @@ class Loop:
         today.events = demand.step(self.world, self.terms, day, today.temps, today.shares)
 
     def field(self, day: date) -> None:
-        """Step 2: G2 S2.1–S2.3."""
+        """Step 2: a rep's area move re-cuts the tourplans on its day; the day's visit plan, the visits and their
+        orders; on a written day their observations, sightings and notes (module docstring); G2 S2.1–S2.3."""
+        if day in self.moves:
+            recut(self.world, day, self.config.field)
+        planned = plan(self.world, day)
+        self.output.append(day, "visit_plan", (visit_plan_row(p, day) for p in planned))
+        made = visit(self.world, self.crew, day, calls(self.world, self.crew, day, planned))
+        today = self.today
+        if not self.output.writes(day):  # the warm-up: the visits and their orders move the World, the rest is dropped
+            today.events = take_orders(self.world, self.crew, day, made, today.events, today.shares)
+            return
+        observations = observe(self.world, self.crew, day, made, today.events)
+        self.output.append(day, "visit_observation", observations)
+        sightings = sight(self.world, self.crew, day, made)
+        self.output.append(day, "competitor_sighting", (sighting_row(s) for s in sightings))
+        today.events = take_orders(self.world, self.crew, day, made, today.events, today.shares)
+        note(self.world, self.crew, day, made, observations, sightings)
+        self.output.append(day, "visit", (visit_row(v, day) for v in made))
 
     def orders(self, day: date) -> None:
         self.report.add(day, orders.step(self.world, self.desk, day, self.today.events, self.output))

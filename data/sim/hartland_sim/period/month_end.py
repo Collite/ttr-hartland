@@ -29,6 +29,9 @@ written.
   quarter-end's budgets (`World.planned_gross`).
 - **The channel lists** (S1.3): each channel's list of M+1 from the standard list in force on M+1's first day, into
   the `World`, its rows written.
+- **The tourplans** (G2 S2.1, `loop.field.recut`): a store whose customer was won or lost in the month gets its
+  next tourplan from M+1's first day — its class's cycle, or none once lost — as does a store whose area changes
+  rep that day.
 
 `World.bought` keeps the months the next month-end and the next month's conditions read; the older ones are dropped.
 """
@@ -44,6 +47,7 @@ from hartland_sim.dates import add_months, month_end, quarter_end, quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
 from hartland_sim.loop.demand import CHANNELS
+from hartland_sim.loop.field import recut
 from hartland_sim.loop.pricing import TIERED, channel_list, channel_rows, condition, condition_row, standard_list
 from hartland_sim.loop.warmup import Output
 from hartland_sim.period import Closing
@@ -67,6 +71,7 @@ def close(world: World, closing: Closing, day: date, output: Output) -> None:
     phases(world, closing, day)
     plan(world, closing, day, output)
     lists(world, closing, first, output)
+    recut(world, first, closing.config.field)
     lookback = closing.config.policies.lifecycle.lookback_months
     keep = add_months(first, min(1 - lookback, -1))  # the next month-end reads from here, tomorrow's conditions M
     world.bought = {month: bought for month, bought in world.bought.items() if month >= keep}

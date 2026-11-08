@@ -69,6 +69,7 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
         state.actors = {actor.employee_id: actor for actor in org.actors.values()}
         state.duties = list(org.duties)
         state.customers = {customer.customer_id: customer for customer in made.customers}
+        org_setup.tourplans(state, made, world)
         state.budgets = policies.budgets(world, planned(state))
         state.stock = opening.stock(out, world, products, covers, made, geography)
         years = range(world.history.warm_up_from.year, world.history.until.year + 1)

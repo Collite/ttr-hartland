@@ -1,8 +1,10 @@
 # The reps' visit notes (`visit.note`, G2 S2.1 T6): a note is 2–4 sentences picked from these by the visit's outcome
-# and its situations (stream `note`), the slots filled from the visit — {{ sku }} a SKU's name, {{ nickname }} its
-# nickname (catalogue), {{ competitor }} a competitor's name, {{ promotion }} a promotion's name, {{ objection }} one of
-# `objections`. The planted situations (A-6's sightings, A-13's refusals) keep their own hand-written notes; A-8's rep
-# leaves the note empty. Schema: data/schemas/visit_note_templates.schema.json.
+# and its situations (stream `note`), the slots filled from the visit — {{ sku }} a product's name, {{ nickname }} its
+# nickname (catalogue; a product on sale that day), {{ competitor }} a competitor's name, {{ promotion }} a promotion's
+# name, {{ objection }} one of `objections`. A note says only what its visit's rows say: the promotion sentence by
+# whether the store executes it, the competitor's by the sighting's kind. The planted situations (A-6's sightings,
+# A-13's refusals) keep their own hand-written notes; A-8's rep leaves the note empty. An outcome holds at least two
+# sentences (a visit that met no situation takes two). Schema: data/schemas/visit_note_templates.schema.json.
 
 slots: [sku, nickname, competitor, promotion, objection]
 
@@ -12,7 +14,7 @@ outcomes:
     - Majitel objednal i {{ nickname }}, prý se mu to teď dobře prodává.
     - Objednávka podle plánu, regál srovnaný, cenovky v pořádku.
     - Domluvena týdenní objednávka, příště přivezu ochutnávku.
-  no_order:
+  no_order: # a sales visit's; an acquisition's and a merchandising visit's are `no_order_by_kind`
     - Bez objednávky, zboží mají ještě dost z minulé dodávky.
     - Majitel tentokrát neobjednal, důvod – {{ objection }}.
     - Zásoba vystačí do příští návštěvy, objednávku pošlou přes portál.
@@ -27,18 +29,43 @@ outcomes:
     - Prodejnu jsem na adrese nenašel, na místě je jiný obchod.
     - Provozovna je zrušená, prostory se pronajímají.
 
+no_order_by_kind: # the visits that take no order by their kind: a store not yet a customer, a key account's station
+  acquisition:
+    - Představil jsem naši nabídku, majitel si ji nechá projít.
+    - Majitel zatím nemá zájem, důvod – {{ objection }}.
+    - Nechal jsem katalog a ceník, ozvu se za dva týdny.
+    - Majitel by zkusil {{ nickname }}, čeká na nabídku s cenami.
+  merchandising:
+    - Regál srovnaný podle planogramu, cenovky doplněné.
+    - Zkontroloval jsem planogram, {{ sku }} přesunuto do výšky očí.
+    - Doplnil jsem regál ze skladu stanice, objednávky jdou přes centrálu.
+    - Vedoucí stanice spokojený, regál v pořádku, nic nechybí.
+
 situations:
-  promotion:
-    - Představil jsem akci {{ promotion }}, majitel zvažuje větší objednávku.
+  promotion_executed: # a mandatory promotion of a line the store executes
     - Akce {{ promotion }} je vystavená u pokladny, letáky na místě.
+    - Akce {{ promotion }} běží podle plánu, cenovky a letáky v pořádku.
+  promotion_missing: # one it does not
+    - Představil jsem akci {{ promotion }}, majitel zvažuje větší objednávku.
+    - Akce {{ promotion }} v prodejně není vystavená, letáky leží ve skladu.
+    - Akce {{ promotion }} chybí na regálu, domluvili jsme nápravu do příští návštěvy.
   out_of_stock:
     - Chybělo {{ sku }}, regál prázdný asi týden.
     - Výpadek {{ nickname }}, zákazníci se ptali, doplnit co nejdřív.
-  competitor:
+  competitor_promotion: # a competitor's activity by its kind (`competitor_sighting.activity_kind`)
     - "{{ competitor }} má novou akci, cena o několik korun nižší než naše."
+    - U konkurence běží akce značky {{ competitor }}, letáky jsou u pokladny.
+  competitor_listing:
     - Na regálu přibyly výrobky značky {{ competitor }}, vzaly nám dvě pozice.
+    - Prodejna nově zalistovala {{ competitor }}, zatím jen pár kusů.
+  competitor_display:
+    - U pokladny stojí stojan značky {{ competitor }}, je hodně vidět.
+    - "{{ competitor }} dostal místo na čele regálu."
+  competitor_price_cut:
+    - "{{ competitor }} zlevnil, cena o několik korun nižší než naše."
+    - "{{ competitor }} snížil ceny, majitel se ptá, jestli půjdeme dolů taky."
   display:
-    - Stojan na Gold umístěný u vchodu, majitel spokojený.
+    - Stojan na {{ sku }} umístěný u vchodu, majitel spokojený.
     - Stojan je poškozený, je potřeba ho vyměnit.
   listing:
     - Nabídl jsem {{ sku }}, zatím nechtějí, důvod – {{ objection }}.

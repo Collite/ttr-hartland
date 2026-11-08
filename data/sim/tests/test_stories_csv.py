@@ -19,11 +19,16 @@ from hartland_sim.checks.stories import (
     Build,
     _ntile,
     _sales_pl,
+    a6,
+    a7,
+    a8,
     adjusted_rand,
     check,
+    expected,
     gains,
     kmeans,
     measured,
+    probes,
     read,
     report,
     s1,
@@ -37,6 +42,7 @@ from hartland_sim.checks.stories import (
 )
 from hartland_sim.cli import main
 from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop.warmup import Output
 from hartland_sim.setup.promotions import Templates
@@ -479,3 +485,73 @@ def test_s6_s_note_names_the_agreements_left_out(tmp_path: Path, s6_case: Any) -
     assert s6_note(Build(tmp_path), STORIES).endswith(
         "a crown; 1 of 3 agreements counted (left out: 1 another before · 1 another after)"
     )
+
+
+# ── the field's probes (G2 S2.1 T7): the cases of the SQL's component tests ────
+
+
+def _plans(run: Path, made: dict[int, int]) -> None:
+    """Ten planned visits of 2025 per rep, `made` of them made, and one of 2024 never made; an ad-hoc visit."""
+    plans: list[dict[str, Any]] = []
+    visits: list[dict[str, Any]] = []
+    for rep, count in made.items():
+        for k in range(10):
+            plan = rep * 100 + k
+            plans.append({"visit_plan_id": plan, "employee_id": rep, "planned_day": date(2025, 3, 3) + timedelta(k)})
+            if k < count:
+                visits.append({"visit_id": plan, "visit_plan_id": plan, "employee_id": rep, "recorded": True})
+    plans.append({"visit_plan_id": 9, "employee_id": 3, "planned_day": date(2024, 6, 3)})
+    visits.append({"visit_id": 9_000, "visit_plan_id": None, "employee_id": 3, "recorded": True})
+    _write(run, "visit_plan", plans)
+    _write(run, "visit", visits)
+
+
+def test_a7_counts_the_reps_who_made_65_pc_or_fewer_of_their_2025_visits(tmp_path: Path) -> None:
+    _plans(tmp_path, {1: 6, 2: 7, 3: 10})  # 0.6 · 0.7 · 1.0
+    assert a7(Build(tmp_path), STORIES) == 1
+
+
+def test_a8_counts_the_reps_whose_visits_go_unrecorded_60_pc_or_more(tmp_path: Path) -> None:
+    visits = [
+        {"visit_id": rep * 100 + k, "visit_plan_id": None, "employee_id": rep, "recorded": k >= unrecorded}
+        for rep, unrecorded in ((1, 7), (2, 6), (3, 5))
+        for k in range(10)
+    ]
+    _write(tmp_path, "visit", visits)
+    assert a8(Build(tmp_path), STORIES) == 2
+
+
+def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path: Path) -> None:
+    held = STORIES.anomaly("A-6").parameters
+    first, last = date.fromisoformat(str(held["sightings_from"])), date.fromisoformat(str(held["until"]))
+    _write(tmp_path, "region", [{"region_id": 1, "code": held["region"]}, {"region_id": 2, "code": "JMV"}])
+    _write(tmp_path, "area", [{"area_id": 1, "region_id": 1}, {"area_id": 2, "region_id": 2}])
+    _write(tmp_path, "store", [{"store_id": 1, "area_id": 1}, {"store_id": 2, "area_id": 2}])
+    kavalir, other = row_id("competitor", code=held["competitor"]), row_id("competitor", code="NORDCAFE")
+    cases = [  # (store, day, competitor, kind): only the first two count
+        (1, first, kavalir, "promotion"),
+        (1, last, kavalir, "promotion"),
+        (1, first - timedelta(days=1), kavalir, "promotion"),
+        (1, last + timedelta(days=1), kavalir, "promotion"),
+        (2, first, kavalir, "promotion"),
+        (1, first, kavalir, "price_cut"),
+        (1, first, other, "promotion"),
+    ]
+    _write(tmp_path, "visit", [{"visit_id": k, "store_id": s, "day": d} for k, (s, d, _, _) in enumerate(cases)])
+    _write(
+        tmp_path,
+        "competitor_sighting",
+        [{"visit_id": k, "competitor_id": c, "activity_kind": kind} for k, (_, _, c, kind) in enumerate(cases)],
+    )
+    assert a6(Build(tmp_path), STORIES) == 2
+
+
+def test_a_probe_s_expectation_and_the_null_world_s_opposite(tmp_path: Path) -> None:
+    assert (expected(">= 3"), expected("= 0"), expected("rows")) == ((">=", 3.0), ("between", 0.0), (">", 0.0))
+    _plans(tmp_path, {1: 5, 2: 6, 3: 6, 4: 10})  # three reps skip
+    found = {v.story: v for v in probes(Build(tmp_path), STORIES)}
+    assert (found["A-7"].value, found["A-7"].passed) == (3, True)
+    assert found["A-8"].passed is False  # every visit recorded: A-8's rep not there
+    assert found["A-1"].passed is None and found["A-1"].note == "no pandas twin yet"
+    null = {v.story: v for v in probes(Build(tmp_path), STORIES, null=True)}
+    assert (null["A-7"].passed, null["A-8"].passed) == (False, True)

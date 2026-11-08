@@ -205,6 +205,7 @@ class Promotion:
     condition_qty: float | None = None  # cases of the condition SKU (or, 1+1, of the target) a reward needs
     reward_qty: float | None = None  # cases free per `condition_qty`
     mandatory: bool = False  # the reps must offer it (S2.2's prompt)
+    name: str = ""  # its template's Czech name (the visit notes cite it, G2 S2.1)
     excludes: tuple[str, ...] = ()  # the codes it may not combine with on an order (`promotion_exclusion`)
 
 
@@ -277,6 +278,28 @@ class Loan:
 
 
 @dataclass
+class Tourplan:
+    """A rep's call on a store (`tourplan`, G2 S2.1, `loop.field`): every `cycle_weeks` weeks on `weekday` (1 Monday …
+    5 Friday), in the weeks whose index (`loop.field.week_of`) ≡ `week` (mod `cycle_weeks`), from `valid_from` to
+    `valid_to`, both included. The store's `weekday` and `week` are drawn once per store, so they follow it from rep to
+    rep; a re-cut closes the tourplan in place (`valid_to`) and opens the next."""
+
+    employee_id: int
+    employee: str  # the rep's code, for the row's business key
+    store: str  # osm_id
+    store_id: int
+    customer_id: int  # the store's customer (a potential one too), or the key account whose station it is
+    delivery_point_id: int  # the store's: its customer's (or the key account's) point there
+    area: str
+    store_class: str
+    cycle_weeks: int
+    weekday: int
+    week: int  # 0–7: the store's week in an 8-week cycle, taken mod `cycle_weeks`
+    valid_from: date
+    valid_to: date = OPEN
+
+
+@dataclass
 class World:
     """The state after `day`, the last simulated day (setup's world: the day before the warm-up)."""
 
@@ -290,7 +313,8 @@ class World:
     open_orders: dict[int, object] = field(default_factory=dict)  # S1.4
     open_shipments: dict[int, object] = field(default_factory=dict)  # G3
     open_invoices: dict[int, OpenInvoice] = field(default_factory=dict)  # G4: by invoice_id
-    tourplans: dict[int, object] = field(default_factory=dict)  # G2: by employee_id
+    tourplans: dict[int, Tourplan] = field(default_factory=dict)  # G2 S2.1: by tourplan_id, closed ones too
+    tourplan_of: dict[str, int] = field(default_factory=dict)  # G2 S2.1: a store's (osm_id) open tourplan
     loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
     agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id (`add_agreement`)

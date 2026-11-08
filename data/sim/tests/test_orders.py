@@ -16,12 +16,12 @@ import numpy as np
 import pytest
 
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.dates import quarter_end
+from hartland_sim.dates import next_working_day, quarter_end
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import orders
 from hartland_sim.loop.demand import BasketReady
-from hartland_sim.loop.orders import Desk, next_working_day, order, order_no, source
+from hartland_sim.loop.orders import Desk, order, order_no, source
 from hartland_sim.loop.pricing import Refusal, Rules, condition, granter, price_order
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms
@@ -151,20 +151,21 @@ def test_the_next_working_day_skips_weekends_and_the_czech_days_off() -> None:
 def test_the_source_follows_the_channel_s_mix_and_a_station_shop_takes_special_retail_s(
     world: World, desk: Desk
 ) -> None:
-    assert [source(desk, "small_retail", u) for u in (0.0, 0.449, 0.45, 0.799, 0.8, 0.999)] == [
-        "visit",
-        "visit",
+    # small retail's mix holds no visit: a visit's order is the field's (G2 S2.1)
+    assert [source(desk, "small_retail", u) for u in (0.0, 0.639, 0.64, 0.999)] == [
         "phone",
         "phone",
         "portal",
         "portal",
     ]
+    # nor HoReCa's: its KAMs' visits are not modelled (review-231 R5)
+    assert [source(desk, "horeca", u) for u in (0.0, 0.62, 0.63, 0.999)] == ["phone", "phone", "portal", "portal"]
     assert {source(desk, channel, u) for channel in ("big_retail", "gas_ka") for u in (0.0, 0.5, 0.999)} == {"edi"}
     assert (source(desk, "web", 0.3), source(desk, "own_shops", 0.3)) == ("web", "replenishment")
     shop = _customers(world, "small_retail", "special_retail")[0]
     store = _customers(world, "small_retail")[0]
-    assert _head(world, desk, _basket(world, shop), 0.35)["source"] == "phone"  # special retail: visit 0.30
-    assert _head(world, desk, _basket(world, store), 0.35)["source"] == "visit"  # small retail: visit 0.45
+    assert _head(world, desk, _basket(world, shop), 0.6)["source"] == "portal"  # special retail: phone 0.57
+    assert _head(world, desk, _basket(world, store), 0.6)["source"] == "phone"  # small retail: phone 0.64
 
 
 def test_the_sources_of_a_day_s_orders_are_drawn_per_order(world: World, desk: Desk) -> None:
@@ -194,7 +195,7 @@ def test_a_visit_or_a_phone_order_no_one_can_take_draws_again_among_the_others(
     """review-221 N3: the same draw, the mix's other sources renormalised (small retail's: the portal alone)."""
     store = _customers(world, "small_retail")[0]
     held = _head(world, desk, _basket(world, store), 0.0)
-    assert (held["source"], held["taken_by_employee_id"]) == ("visit", granter(world, store, DAY))
+    assert (held["source"], held["taken_by_employee_id"]) == ("phone", granter(world, store, DAY))
     store.area = None  # its area unheld
     for draw in (0.0, 0.5, 0.9):
         head = _head(world, desk, _basket(world, store), draw)

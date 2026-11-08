@@ -7,6 +7,7 @@
   "required": [
     "slots",
     "outcomes",
+    "no_order_by_kind",
     "situations",
     "objections"
   ],
@@ -32,7 +33,7 @@
       "properties": {
         "order": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
           "items": {
             "type": "string",
             "minLength": 1
@@ -40,7 +41,7 @@
         },
         "no_order": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
           "items": {
             "type": "string",
             "minLength": 1
@@ -48,7 +49,7 @@
         },
         "closed": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
           "items": {
             "type": "string",
             "minLength": 1
@@ -56,7 +57,7 @@
         },
         "refused": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
           "items": {
             "type": "string",
             "minLength": 1
@@ -64,7 +65,33 @@
         },
         "not_found": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "no_order_by_kind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acquisition",
+        "merchandising"
+      ],
+      "properties": {
+        "acquisition": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "merchandising": {
+          "type": "array",
+          "minItems": 2,
           "items": {
             "type": "string",
             "minLength": 1
@@ -74,13 +101,90 @@
     },
     "situations": {
       "type": "object",
-      "minProperties": 1,
-      "additionalProperties": {
-        "type": "array",
-        "minItems": 1,
-        "items": {
-          "type": "string",
-          "minLength": 1
+      "additionalProperties": false,
+      "required": [
+        "promotion_executed",
+        "promotion_missing",
+        "out_of_stock",
+        "competitor_promotion",
+        "competitor_listing",
+        "competitor_display",
+        "competitor_price_cut",
+        "display",
+        "listing"
+      ],
+      "properties": {
+        "promotion_executed": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "promotion_missing": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "out_of_stock": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "competitor_promotion": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "competitor_listing": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "competitor_display": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "competitor_price_cut": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "display": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "listing": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
