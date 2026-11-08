@@ -1,0 +1,174 @@
+{
+  "day": "2025-06-15",
+  "offers": [
+    {
+      "product": "ESPRESSO",
+      "skus": [
+        "2931000000296",
+        "2931000000302"
+      ]
+    },
+    {
+      "product": "GOLD-INTENZIVNI",
+      "skus": [
+        "2931000000258",
+        "2931000000234",
+        "2931000000241",
+        "2931000000227"
+      ]
+    },
+    {
+      "product": "ESPRESSO-BEZKOFEINU",
+      "skus": [
+        "2931000000326",
+        "2931000000333"
+      ]
+    },
+    {
+      "product": "GOLD",
+      "skus": [
+        "2931000000197",
+        "2931000000166"
+      ]
+    },
+    {
+      "product": "GOLD-BEZKOFEINU",
+      "skus": [
+        "2931000000517",
+        "2931000000500"
+      ]
+    },
+    {
+      "product": "CLASSIC-BEZKOFEINU",
+      "skus": [
+        "2931000000494",
+        "2931000000487"
+      ]
+    },
+    {
+      "product": "CLASSIC",
+      "skus": [
+        "2931000000043",
+        "2931000000050",
+        "2931000000012"
+      ]
+    },
+    {
+      "product": "CLASSIC-SILNA",
+      "skus": [
+        "2931000000104",
+        "2931000000081",
+        "2931000000098",
+        "2931000000111"
+      ]
+    },
+    {
+      "product": "CLASSIC-JEMNA",
+      "skus": [
+        "2931000000142",
+        "2931000000128",
+        "2931000000135",
+        "2931000000159"
+      ]
+    },
+    {
+      "product": "2V1",
+      "skus": [
+        "2931000000388",
+        "2931000000395"
+      ]
+    },
+    {
+      "product": "CAPPUCCINO",
+      "skus": [
+        "2931000000425"
+      ]
+    },
+    {
+      "product": "3V1",
+      "skus": [
+        "2931000000364"
+      ]
+    }
+  ],
+  "prompts": [
+    {
+      "line": "ESPRESSO",
+      "product": "ESPRESSO",
+      "skus": [
+        "2931000000296",
+        "2931000000302"
+      ],
+      "reasons": [
+        {
+          "sku": "2931000000296",
+          "importance": 10,
+          "avg_revenue_czk_month": 1716.0,
+          "last_bought": null
+        },
+        {
+          "sku": "2931000000302",
+          "importance": 5,
+          "avg_revenue_czk_month": 795.6,
+          "last_bought": null
+        }
+      ]
+    },
+    {
+      "line": "GOLD",
+      "product": "GOLD-INTENZIVNI",
+      "skus": [
+        "2931000000258",
+        "2931000000234",
+        "2931000000241"
+      ],
+      "reasons": [
+        {
+          "sku": "2931000000258",
+          "importance": 5,
+          "avg_revenue_czk_month": 1767.12,
+          "last_bought": null
+        },
+        {
+          "sku": "2931000000234",
+          "importance": 5,
+          "avg_revenue_czk_month": 1524.6,
+          "last_bought": null
+        },
+        {
+          "sku": "2931000000241",
+          "importance": 5,
+          "avg_revenue_czk_month": 1386.0,
+          "last_bought": null
+        }
+      ]
+    },
+    {
+      "line": "ESPRESSO",
+      "product": "ESPRESSO-BEZKOFEINU",
+      "skus": [
+        "2931000000326",
+        "2931000000333"
+      ],
+      "reasons": [
+        {
+          "sku": "2931000000326",
+          "importance": 5,
+          "avg_revenue_czk_month": 1716.0,
+          "last_bought": null
+        },
+        {
+          "sku": "2931000000333",
+          "importance": 5,
+          "avg_revenue_czk_month": 795.6,
+          "last_bought": null
+        }
+      ]
+    }
+  ],
+  "explanations": [
+    "Nabídněte Harcafé Espresso: v listingu kanálu, neodebíráno 365 dní, důležitost 10, srovnatelné prodejny odebírají v průměru 1 716 Kč/měsíc.",
+    "Nabídněte Harcafé Gold Intenzivní: v listingu kanálu, neodebíráno 365 dní, důležitost 5, srovnatelné prodejny odebírají v průměru 1 767 Kč/měsíc.",
+    "Nabídněte Harcafé Espresso bez kofeinu: v listingu kanálu, neodebíráno 365 dní, důležitost 5, srovnatelné prodejny odebírají v průměru 1 716 Kč/měsíc."
+  ]
+}

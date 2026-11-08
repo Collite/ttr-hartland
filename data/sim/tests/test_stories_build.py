@@ -19,6 +19,7 @@ review-231 ⚑R231-A)."""
 from __future__ import annotations
 
 import csv
+import json
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,7 @@ import pytest
 from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.checks.stories import S6_FROM, Build, Verdict, check, gains, s6_reps
 from hartland_sim.cli import main
-from hartland_sim.config import StoriesConfig
+from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read as read_reference
 from hartland_sim.loop.build import Built
 from hartland_sim.setup.run import Setup
@@ -159,7 +160,7 @@ def test_s6_s_twin_fails_on_the_null_world(null_world: Built) -> None:
 
 # ── the field (G2 S2.1 T7) ────────────────────────────────────────────────────
 
-FIELD_PROBES = ("A-6", "A-7", "A-8")
+FIELD_PROBES = ("A-6", "A-7", "A-8", "A-13")  # A-13: G2 S2.2
 
 
 def _actors(story_world: Built) -> dict[int, Any]:
@@ -224,10 +225,52 @@ def test_the_notes_are_czech(story_world: Built) -> None:
 
 
 def test_small_retail_s_own_orders_keep_the_trade_week(story_world: Built) -> None:
-    """review-231 R1: the phone and portal orders' Saturday and Sunday within 3 pp of the trade week's (`s1.yaml`
-    `weekday.trade`, 11.7 %); a visit that restarted the store's cycle put its order days on its calls (1.7 %)."""
+    """review-231 R1: the phone and portal orders' Saturday and Sunday no less than 3 pp under the trade week's
+    (`s1.yaml` `weekday.trade`, 11.7 %) — a visit that restarted the store's cycle put its order days on its calls
+    (1.7 %). Above it there is room to 6 pp (re-review 1's RR1): the excess is the dry trigger's, which orders on any
+    weekday after the order day a visit's order stood in for (⚑R231-A, NH-D16; 14.3 % on 2024–2025)."""
     orders = Build(story_world.run)["sales_order"]
     own = orders[(orders["channel"] == "small_retail") & orders["source"].isin(["phone", "portal"])]
     weekend = float((pd.to_datetime(own["ordered_on"]).dt.day_of_week >= 5).mean())
     trade = np.array(StoriesConfig.load().story("S1").parameters["weekday"]["trade"], dtype=float)
-    assert abs(weekend - trade[5:].sum() / trade.sum()) <= 0.03, weekend
+    share = trade[5:].sum() / trade.sum()
+    assert share - 0.03 <= weekend <= share + 0.06, weekend
+
+
+# ── the prompts (G2 S2.2 T7) ───────────────────────────────────────────────────
+
+
+def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) -> None:
+    """On 2025: ~4 prompts a planned call on a small-retail store, each with its rule, its JSON payload and a Czech
+    explanation; R-7's listing prompts the most, then the tips, then the mandatory promotions (no display before
+    S2.3); every outcome class met, the classified ones with a reason where R-11 gives one; and on no visit more
+    prompts discussed than its customer's phase allows (`policies.prompt_caps`)."""
+    build = Build(story_world.run)
+    prompts = build["rep_prompt"]
+    prompts = prompts[prompts["generated_on"].dt.year == 2025]
+    plans = build["visit_plan"]
+    plans = plans[plans["planned_day"].dt.year == 2025]
+    assert 3.0 <= len(prompts) / len(plans) <= 5.0, len(prompts) / len(plans)
+    assert prompts["prompt_rule_id"].notna().all() and (prompts["generated_by"] == "rules").all()
+    assert all(isinstance(json.loads(payload), dict) for payload in prompts["payload"])
+    shares = prompts["kind"].value_counts(normalize=True)
+    assert set(shares.index) == {"unsupplied_items", "ai_tip", "mandatory_promotion"}, shares
+    assert shares["unsupplied_items"] > shares["ai_tip"] > shares["mandatory_promotion"], shares
+    names = [r["name_cs"] for r in read_reference("product")] + [r["name_cs"] for r in read_reference("catalogue")]
+    sample = prompts["explanation"].sample(1_000, random_state=0).tolist()
+    assert_czech_all(sample, what="rep_prompt.explanation", allow=names)
+    assert prompts["visit_id"].dropna().isin(build["visit"]["visit_id"]).all()
+    assert not (prompts["kind"].eq("mandatory_promotion") & prompts["outcome"].eq("rejected")).any()
+    outcomes = prompts["outcome"].value_counts()
+    assert set(outcomes.index) == {"open", "not_discussed", "unsuccessful", "successful", "rejected"}, outcomes
+    reasoned = prompts["outcome"].isin(["unsuccessful", "rejected"])
+    assert prompts.loc[reasoned, "outcome_reason"].notna().all()
+    assert prompts.loc[~reasoned, "outcome_reason"].isna().all()
+    assert (prompts["classified_on"].notna() == (prompts["outcome"] != "open")).all()
+    phases = build["lifecycle_phase"].sort_values("valid_from")
+    discussed = prompts[prompts["outcome"] != "open"].sort_values("generated_on")
+    held = phases[["customer_id", "valid_from", "phase"]]
+    at = pd.merge_asof(discussed, held, left_on="generated_on", right_on="valid_from", by="customer_id")
+    caps = WorldConfig.load().policies.prompt_caps
+    per_visit = at.groupby(["visit_id", "phase"]).size().reset_index(name="n")
+    assert (per_visit["n"] <= per_visit["phase"].map(caps)).all()

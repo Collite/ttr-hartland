@@ -1,9 +1,10 @@
--- A-13 — the rejected prompt pattern: customers who rejected three unsupplied-items prompts naming the noodle line and
--- got no noodle prompt after the third rejection: the prompt that brought the running count of rejections to 3 is
--- their last one. A customer who goes on getting (and rejecting) them is not the pattern.
+-- A-13 — the rejected prompt pattern: customers who rejected three unsupplied-items prompts naming the noodle line
+-- with "no shelf" (A-13's reason) and got no noodle prompt after the third: the prompt that brought the running count
+-- of those rejections to 3 is their last one. A customer who goes on getting (and rejecting) them is not the pattern,
+-- nor is a rep's own rejection with another reason (G2 S2.2: the rule stops any line after three).
 WITH noodle AS (
     SELECT rp.customer_id, rp.generated_on, rp.outcome,
-           COUNT(*) FILTER (WHERE rp.outcome = 'rejected') OVER (
+           COUNT(*) FILTER (WHERE rp.outcome = 'rejected' AND rp.outcome_reason = 'nemáme místo v regálu') OVER (
                PARTITION BY rp.customer_id ORDER BY rp.generated_on, rp.rep_prompt_id
            ) AS rejected_so_far
     FROM rep_prompt rp

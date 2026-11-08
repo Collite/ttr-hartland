@@ -120,6 +120,10 @@ def test_the_warm_up_switch_writes_from_2024_and_the_last_warm_up_day_is_kept(op
     assert {r["month"] for r in _rows(tmp_path, "customer_condition")} == {"2024-01-01"}
     assert min(r["month"] for r in _rows(tmp_path, "sales_plan")) == "2024-01-01"
     assert all(r["valid_from"] >= "2024-01-01" for r in _rows(tmp_path, "price_agreement"))
+    prompted = _rows(tmp_path, "rep_prompt")  # G2 S2.2: none before the data (1 January is a holiday: no plan)
+    assert prompted and {r["generated_on"] for r in prompted} == {"2024-01-02"}
+    visits = {r["visit_id"] for r in _rows(tmp_path, "visit")}
+    assert all(r["visit_id"] in visits for r in prompted if r["visit_id"])
     assert loop.warm_up_end is not None and loop.warm_up_end.day == date(2023, 12, 31)
     kept = loop.warm_up_end.restore()
     assert kept.day == date(2023, 12, 31) and kept.standard_list is not None

@@ -26,7 +26,8 @@ changes (`Demand.rebase`).
 **The listing.** A point buys what its listing group lists on the day (`channel_listing`, setup's rows): its
 customer's channel, a big-retail chain its own rows, a station shop small retail's (the listing has no sub-channel,
 S1.1). Within a line a SKU's share of the cases is its weight (`importance + 1`) ÷ its price at the group's channel
-factor, among the SKUs listed that day.
+factor, among the SKUs listed that day. Which lines a customer buys is its breadth (`breadth`, S3); A-13's store buys
+every line its listing holds but the one it has no shelf for (`refusals`, G2 S2.2), and never adds it.
 """
 
 from __future__ import annotations
@@ -407,8 +408,9 @@ def opening(
     start = starts(point_customer, len(customers))
     first = world.history.warm_up_from
     _, listed, price_line = goods.shares(first, len(line_set))
-    span = stories.story("S3").parameters["opening_breadth"]
-    carried = breadth(customers, units, point_group, listed, start, (int(span[0]), int(span[1])))
+    low, high = stories.story("S3").parameters["opening_breadth"]
+    refused = refusals(customers, stories, line_set)
+    carried = breadth(customers, units, point_group, listed, start, (int(low), int(high)), refused)
     gross = (units * (listed * price_line)[point_group] * carried[point_customer]).sum(axis=1)  # a day, at scale 1
     by_id = {customer.customer_id: customer for customer in customers}
     scale = np.zeros(len(found))
@@ -461,14 +463,31 @@ def opening(
 
 
 BREADTH_CHANNELS = ("small_retail",)  # the field reps' customers, whose breadth S3 moves
+REFUSES = "rejects_noodle_prompts"  # A-13's store (`anomalies.yaml pins.customers`): it never takes A-13's line
+
+
+def refusals(customers: Sequence[Customer], stories: StoriesConfig, line_set: Sequence[Line]) -> dict[int, int]:
+    """A-13's store, while A-13 is enabled: its index among `customers` → the index of the line it has no shelf for."""
+    a13 = stories.anomaly("A-13")
+    if not a13.enabled:
+        return {}
+    line = [found.code for found in line_set].index(str(a13.parameters["line"]))
+    return {c: line for c, customer in enumerate(customers) if REFUSES in customer.traits}
 
 
 def breadth(
-    customers: Sequence[Customer], units: Array, point_group: Array, listed: Array, start: Array, span: tuple[int, int]
+    customers: Sequence[Customer],
+    units: Array,
+    point_group: Array,
+    listed: Array,
+    start: Array,
+    span: tuple[int, int],
+    refused: Mapping[int, int] | None = None,
 ) -> Array:
     """(C, L) the lines each customer buys at the opening. A small-retail customer buys `k` of the lines its listing
     holds (`k` in `span`, both included: `s3.yaml opening_breadth`; stream `breadth`): those its store sells most of,
-    by its base, so the line its street leads with is always among them. Any other customer buys every line it is
+    by its base, so the line its street leads with is always among them. A-13's store (`refused`) buys every line its
+    listing holds but the one it refuses, so R-7 offers it that line first. Any other customer buys every line it is
     listed."""
     out = np.ones((len(customers), units.shape[1]), dtype=bool)
     ids = np.array([customer.customer_id for customer in customers], dtype=np.int64)
@@ -478,6 +497,10 @@ def breadth(
         if customer.channel not in BREADTH_CHANNELS:
             continue
         p = int(start[c])
+        if refused and c in refused:
+            out[c] = listed[point_group[p]]
+            out[c, refused[c]] = False
+            continue
         rank = np.argsort(-np.where(listed[point_group[p]], units[p], -1.0), kind="stable")
         out[c] = False
         out[c, rank[: min(int(k[c]), int(listed[point_group[p]].sum()))]] = True

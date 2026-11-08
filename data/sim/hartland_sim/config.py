@@ -348,6 +348,20 @@ class PromptRule:
 
 
 @dataclass(frozen=True)
+class PromptOutcomes:
+    rejected: float  # of the discussed prompts not ordered: the share the rep rejects (R-11)
+    unsuccessful: float  # and the share it logs unsuccessful
+    short_visit_minutes: int  # a visit shorter discusses only the most urgent prompts
+    short_visit_priority: int  # the priorities it discusses: this one and the more urgent (lower)
+
+
+@dataclass(frozen=True)
+class PromptReasons:
+    unsuccessful: tuple[str, ...]  # Czech
+    rejected: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Policies:
     stock: Mapping[str, Cover]  # "default" · "professional"
     credit_limit: Mapping[Channel, int]
@@ -356,6 +370,8 @@ class Policies:
     prompt_caps: Mapping[Phase, int]
     seasonal_exclusion: Mapping[str, tuple[int, ...]]  # product line code → months
     prompt_rules: tuple[PromptRule, ...]
+    prompt_outcomes: PromptOutcomes
+    prompt_reasons: PromptReasons
 
 
 @dataclass(frozen=True)

@@ -31,7 +31,7 @@ before its orders, so an order of that day carries what was agreed; the demand l
 before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day; what only
 the rows need — the order ids, the source draws, the agreement rows — is made on a written day only). A
 tiered customer's order is booked on its month (`book`, `World.bought`): its net revenue, its product lines — what
-the month-end reads the next month's tiers and the phases from.
+the month-end reads the next month's tiers and the phases from — and by SKU into `World.purchases` (G2 S2.2's prompts).
 """
 
 from __future__ import annotations
@@ -64,6 +64,7 @@ from hartland_sim.loop.pricing import (
     price_order,
     running,
 )
+from hartland_sim.loop.prompts import bought
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.customers import terms
@@ -245,9 +246,10 @@ def order(
 
 def book(world: World, rules: Rules, customer: Customer, day: date, made: Order) -> None:
     """`made` on its customer's month (module docstring): only a tiered customer's, the one with monthly
-    conditions and phase rows."""
+    conditions and phase rows; and into its purchase history by SKU, which the rep prompts read (`prompts.bought`)."""
     if customer.channel not in TIERED:
         return
+    bought(world, rules, customer.customer_id, day, made.priced)
     held = world.bought.setdefault(day.replace(day=1), {}).setdefault(customer.customer_id, Bought())
     held.net_revenue = round(held.net_revenue + made.value, 2)
     held.orders += 1

@@ -2,10 +2,11 @@
 
 `World` holds everything the day loop carries from one day to the next — customers with their condition, phase
 episodes and basket, stock per SKU × DC, open orders, shipments and invoices, tourplans, loans, running promotions,
-budgets, the actors' hidden skills and their duties. Setup (`setup.build`) makes the opening `World`; the loop moves
-it a day at a time. The tables that hold the state the loop changes (`customer`, `lifecycle_phase`, `employee`,
-`assignment`, `discount_budget`) are rendered from the `World` when a build ends (`setup.opening.state_rows`), so it
-holds every value of their rows: the customer's name, the actor's name and manager.
+budgets, the actors' hidden skills and their duties, what the reps' customers bought by SKU and the prompts' memory.
+Setup (`setup.build`) makes the opening `World`; the loop moves it a day at a time. The tables that hold the state the
+loop changes (`customer`, `lifecycle_phase`, `employee`, `assignment`, `discount_budget`) are rendered from the `World`
+when a build ends (`setup.opening.state_rows`), so it holds every value of their rows: the customer's name, the
+actor's name and manager.
 
 `Checkpoint` is the pickled `World` after a day, hashed, stored as `_sim_checkpoint(day, sha256, blob)`; `prolong`
 resumes from the last one, and the 2023-12-31 checkpoint (the end of the warm-up year) lets a null-world or
@@ -40,6 +41,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hartland_sim.loop.demand import Demand
+    from hartland_sim.loop.prompts import Purchases
 
 PROTOCOL = 5
 CHECKPOINT_FILE = "_sim_checkpoint.csv"
@@ -330,6 +332,11 @@ class World:
     bought: dict[date, dict[int, Bought]] = field(default_factory=dict)
     planned_gross: dict[str, float] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)
+    purchases: Purchases | None = None  # G2 S2.2: what the reps' customers bought, by SKU, and the prompts' memory
+    # G2 S2.3 fills these two, which S2.2's display prompts read: a display's expected uplift of a line at a delivery
+    # point, by (delivery_point_id, line code), and the display budget (CZK) a region's manager has left.
+    display_uplift: dict[tuple[int, str], float] = field(default_factory=dict)
+    display_budget: dict[str, float] = field(default_factory=dict)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
