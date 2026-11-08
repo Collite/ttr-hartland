@@ -226,10 +226,12 @@ def test_an_order_books_its_skus_and_the_mandatory_ones_cases(opening: Setup) ->
     condition = rules.sku_ids[_zima(world)[1].condition_sku or ""]
     other = next(sku for sku in rules.sku_ids.values() if sku != condition and rules.sku_line[sku] == "GOLD")
     day = date(2023, 1, 10)
+    watch = prompts.Watch.of(world, rules)
+    assert condition in watch.measured
     lines = [_priced(condition, 2.0), _priced(other, 1.0, "promotion"), _priced(other, 1.0, free=True)]
-    prompts.bought(world, rules, customer.customer_id, day, lines)
+    prompts.bought(world, rules, watch, customer.customer_id, day, lines)
     r = int(world.purchases.rows[rules.customers[customer.customer_id]])
-    column = prompts.sku_columns(world.demand.catalogue.sku_ids)
+    column = rules.columns
     assert world.purchases.last_bought[r, column[condition]] == day.toordinal()
     assert world.purchases.last_bought[r, column[other]] == day.toordinal()
     assert world.purchases.recent[customer.customer_id] == [(day.toordinal(), condition, 2.0)]
@@ -237,11 +239,46 @@ def test_an_order_books_its_skus_and_the_mandatory_ones_cases(opening: Setup) ->
     assert world.purchases.revenue[slot, column[condition]] == 180.0  # 2 cases × 90
     assert world.purchases.revenue[slot, column[other]] == 0.0  # a promotional sale is left out
     later = day + timedelta(days=28)
-    prompts.bought(world, rules, customer.customer_id, later, [_priced(other, 1.0)])
+    prompts.bought(world, rules, watch, customer.customer_id, later, [_priced(other, 1.0)])
     assert customer.customer_id not in world.purchases.recent  # 28 days on: the condition cases are out of the period
     horeca = next(c for c in world.customers.values() if c.channel == "horeca")
-    prompts.bought(world, rules, horeca.customer_id, day, lines)
+    prompts.bought(world, rules, watch, horeca.customer_id, day, lines)
     assert horeca.customer_id not in world.purchases.recent
+
+
+def test_the_month_s_figures_are_the_twelve_months_before_its_first_day_s_orders(
+    opening: Setup, tmp_path: Path
+) -> None:
+    """R-7 step 4's average (review-233 R2): the field step takes the month's figures on its 1st — a Saturday here,
+    with no call planned — before the orders book that day into the ring's slot of M − 12. They are the twelve months
+    before, M − 12 included, over the customers who bought in the lookback before the 1st, not one whose only purchase
+    is on the 1st; the plan's first working day reads them as they are."""
+    world = Checkpoint.of(opening.world).restore()
+    rules = Rules.of(world, WORLD, STORIES)
+    purchases = world.purchases
+    assert purchases is not None
+    first = date(2023, 4, 1)
+    assert first.weekday() == 5
+    month = month_index(first)
+    sku = rules.sku_ids["2931000000029"]  # Classic 100 g
+    s = rules.columns[sku]
+    for k in range(1, 13):
+        purchases.months[(month - k) % 12] = month - k
+        purchases.revenue[(month - k) % 12, s] = 100.0 * k  # M − 12 the most
+    customers = list(world.customers.values())
+    tiered = np.flatnonzero(purchases.rows >= 0)
+    for c in tiered[:3]:
+        purchases.last_bought[purchases.rows[c], s] = (first - timedelta(days=30)).toordinal()
+    with CsvWriter(tmp_path) as writer:
+        loop = Loop.of(world, WORLD, STORIES, opening.portfolio.skus, Output(writer, date(2023, 1, 1)))
+        loop.weather(first)
+        loop.field(first)
+    late = customers[int(tiered[3])]
+    prompts.bought(world, rules, loop.desk.watch, late.customer_id, first, [_priced(sku, 1.0)])  # step 4's order
+    expected = sum(100.0 * k for k in range(1, 13)) / 3 / 12
+    assert purchases.month == month and purchases.average[s] == pytest.approx(expected)
+    prompts.refresh(world, loop.rulebook, date(2023, 4, 3))
+    assert purchases.average[s] == pytest.approx(expected)
 
 
 # ── T3: the mandatory promotion ────────────────────────────────────────────────
@@ -354,14 +391,13 @@ def test_a_display_prompt_needs_the_uplift_and_the_region_s_budget(opening: Setu
         return [p for p in generate(world, book, rules, day, planned) if p.kind == "pos_placement"]
 
     assert displays() == []  # S2.3's: nothing yet
-    world.display_uplift[(t.delivery_point_id, "GOLD")] = 0.22
-    world.display_uplift[(t.delivery_point_id, "CLASSIC")] = 0.10  # under the bar
+    world.display_uplift[t.delivery_point_id] = {"GOLD": 0.22, "CLASSIC": 0.10}  # Classic under the bar
     assert displays() == []  # no budget
     world.display_budget[region] = 5000.0
     (found,) = displays()
     assert json.loads(found.payload) == {"display_uplift": 0.22, "line": "GOLD"} and found.priority == 3
     assert_czech(found.explanation)
-    world.display_uplift[(t.delivery_point_id, "GOLD")] = 0.14
+    world.display_uplift[t.delivery_point_id]["GOLD"] = 0.14
     assert displays() == []
 
 
@@ -403,6 +439,30 @@ def test_a_prompt_whose_sku_is_on_the_visit_s_order_is_successful(opening: Setup
     first = next(p for p in found if p.kind == "unsupplied_items" and p.outcome != "open")
     if first is listing:
         assert said[v.visit_id] == Listing(name, True)
+
+
+def test_an_item_ordered_at_a_short_visit_is_successful_and_the_set_s_others_not_discussed(
+    opening: Setup, book: Rulebook
+) -> None:
+    """review-233 R1: the system classifies an ordered item from the order, whatever the visit's length (R-11)."""
+    world, found = _one_set(opening, book)
+    odds = WORLD.policies.prompt_outcomes
+    day = date(2023, 3, 6)
+    listing = next(p for p in found if p.kind == "unsupplied_items" and p.shown)
+    assert listing.priority > odds.short_visit_priority
+    v = _visit(found[0], world, minutes=odds.short_visit_minutes - 1)
+    order = BasketReady(
+        day,
+        listing.customer_id,
+        v.tourplan.delivery_point_id,
+        "small_retail",
+        ((listing.skus[0], 1.0, 10.0),),
+        (v.visit_id, v.tourplan.employee_id),
+    )
+    classify(world, book, day, found, [v], [order])
+    assert listing.outcome == "successful" and listing.classified_on == day
+    others = [p for p in found if p is not listing and p.shown and p.priority > odds.short_visit_priority]
+    assert others and all(p.outcome == "not_discussed" for p in others)
 
 
 def test_the_bands_of_a_discussed_prompt_without_its_item(
@@ -478,11 +538,14 @@ def test_a13_s_store_rejects_every_noodle_listing_prompt_and_the_rule_stops_afte
             v = _visit(found[0], world) if found else None
             if v is not None:
                 v = replace(v, visit_id=found[0].rep_prompt_id)
-                classify(world, book, day, found, [v], [])
+                before = rejections
+                said = classify(world, book, day, found, [v], [])
                 for p in noodles:
                     if p.shown:
                         assert p.outcome == "rejected" and p.reason == reason
                         rejections += 1
+                if rejections > before:  # its note: the first refusal plainly, the later ones "again" (review-233 R6)
+                    assert said[v.visit_id].planted and said[v.visit_id].again == (before > 0)
         day += timedelta(days=14)
     assert rejections >= 3 and noodles_after == 0
     assert world.purchases is not None and world.purchases.rejections[store.customer_id]["NUDLE"] == rejections
@@ -501,8 +564,8 @@ def _rows(run: Path, table: str) -> list[dict[str, str]]:
 
 def test_the_loop_s_prompts_answer_to_their_visits_and_orders(opening: Setup, tmp_path: Path) -> None:
     """Two written weeks of January 2023: each prompt's visit is its customer's and its rep's of its day, never a
-    station's merchandising; a successful one has an offered SKU on that visit's order, and one the rep declined or
-    rejected has none; the notes tell the listing prompts as they came out."""
+    station's merchandising; a successful one has an offered SKU on that visit's order, and one the rep declined,
+    rejected or did not discuss has none (review-233 R1); the notes tell the listing prompts as they came out."""
     world = Checkpoint.of(opening.world).restore()
     with CsvWriter(tmp_path) as writer:
         loop = Loop.of(world, WORLD, STORIES, opening.portfolio.skus, Output(writer, date(2023, 1, 1)))
@@ -531,7 +594,7 @@ def test_the_loop_s_prompts_answer_to_their_visits_and_orders(opening: Setup, tm
         hit = bool(offered & ordered.get(r["visit_id"], set()))
         if r["outcome"] == "successful":
             assert hit
-        elif r["outcome"] in ("unsuccessful", "rejected"):
+        elif r["outcome"] in ("unsuccessful", "rejected", "not_discussed"):
             assert not hit
     noted = [v["note"] for v in visits.values() if v["note"]]
     assert any("zalistováno" in n or "je v dnešní objednávce" in n for n in noted)

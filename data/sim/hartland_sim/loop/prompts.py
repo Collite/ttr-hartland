@@ -4,11 +4,12 @@ visit, cut to the customer's lifecycle phase, classified after it — and the pu
 **The history** (`Purchases`, `World.purchases`): for each small-retail customer (the reps' customers, the tiered
 channel) the last day it bought each SKU, and its cases of the mandatory promotions' measured SKUs over the rules'
 period; the channel's net revenue of each SKU by month, its promotional sales left out (R-7 step 4). The orders step
-books every order into it (`bought`), the warm-up's too, so 2024-01-01's prompts read 2023's purchases. On a month's
-first prompt day (`refresh`) it takes the month's figures: each SKU's net revenue per buying point a month over the
-twelve months before (the revenue ÷ the customers who bought it in `lookback_days`, 0 when two or fewer did), and
-each store cluster's (`04` S4's street types) share of its active customers who bought it in `lookback_days` (the AI
-tip). It is pickled with the `World`, so a prolong reads what a straight build does.
+books every order into it (`bought`), the warm-up's too, so 2024-01-01's prompts read 2023's purchases. On a written
+month's first day, in the field step and so before that day's orders (`refresh`), it takes the month's figures over
+the twelve completed months before: each SKU's net revenue per buying point a month (its revenue of M − 1 … M − 12 ÷
+the customers who bought it in the `lookback_days` before the 1st, 0 when two or fewer did, ÷ 12), and each store
+cluster's (`04` S4's street types) share of its active customers who bought it in those days (the AI tip). It is
+pickled with the `World`, so a prolong reads what a straight build does.
 
 **The prompts** (`generate`, on a written day: the warm-up makes none, so the memory starts with the data) for each
 planned visit (`visit_plan`) to a small-retail customer or potential one in a phase with a cap — never a key account's
@@ -38,11 +39,12 @@ their priority, for H-A's "more of the same theme".
 
 **The classification** (`classify`, after the visit and its order; stream `prompt_outcome` by the prompt): a planned
 visit not made leaves its prompts open, with no visit; a made one gives them its `visit_id`. Its prompts beyond the
-cap stay open, and so do all of an unrecorded visit's (A-8). A visit that dealt with no one (closed, refused, gone)
-discussed nothing, and one shorter than `prompt_outcomes.short_visit_minutes` by its recorded times (as they are, a
-compressed day's too) only those of `short_visit_priority` or more urgent: the others are `not_discussed`. A
-discussed prompt with one of its SKUs on the visit's order is `successful`; A-13's store rejects every listing prompt
-of its line, with its reason; of the others the rep rejects `rejected` (a mandatory prompt cannot be: it is
+cap stay open, and so do all of an unrecorded visit's (A-8), their items ordered or not. A shown prompt with one of
+its SKUs on the visit's order is `successful`, whatever the visit's length: the system classifies it from the order
+(R-11). Of the others, a visit that dealt with no one (closed, refused, gone) discussed nothing, and one shorter than
+`prompt_outcomes.short_visit_minutes` by its recorded times (as they are, a compressed day's too) only those of
+`short_visit_priority` or more urgent: the rest are `not_discussed`. A-13's store rejects every discussed listing
+prompt of its line, with its reason; of the others the rep rejects `rejected` (a mandatory prompt cannot be: it is
 unsuccessful instead) and logs `unsuccessful` ones, each with a reason of `policies.prompt_reasons`, and leaves the
 rest open — it classifies only some (R-11). A classified prompt has the day as `classified_on`. A rejected listing
 prompt is remembered: its product for `rejection_memory_days`, its line's rejections towards the stop.
@@ -123,11 +125,6 @@ class Purchases:
             {},
         )
 
-    def __getstate__(self) -> dict[str, object]:
-        state = dict(self.__dict__)
-        state.pop("_measured", None)
-        return state
-
 
 def measured(promotion: Promotion, rules: Rules) -> tuple[int, ...]:
     """The SKUs (sku_id) whose purchase a mandatory promotion's prompt measures: its condition SKU, else its target
@@ -138,15 +135,6 @@ def measured(promotion: Promotion, rules: Rules) -> tuple[int, ...]:
     return tuple(sku for sku, line in rules.sku_line.items() if line == promotion.line)
 
 
-def _measured(world: World, purchases: Purchases, rules: Rules) -> frozenset[int]:
-    """Every mandatory promotion's measured SKUs, kept until `World.promotions` is another dict or length."""
-    held = purchases.__dict__.get("_measured")
-    if held is None or held[0] is not world.promotions or held[1] != len(world.promotions):
-        found = frozenset(sku for p in world.promotions.values() if p.mandatory for sku in measured(p, rules))
-        held = purchases.__dict__["_measured"] = (world.promotions, len(world.promotions), found)
-    return held[2]
-
-
 def period_days(config: WorldConfig) -> int:
     """The longest period a mandatory-promotion rule measures over: what `Purchases.recent` keeps."""
     return max(
@@ -155,11 +143,26 @@ def period_days(config: WorldConfig) -> int:
     )
 
 
-def bought(world: World, rules: Rules, customer_id: int, day: date, priced: Sequence[Priced]) -> None:
+@dataclass(frozen=True)
+class Watch:
+    """What `bought` reads beside the `World` and the pricing rules, for a run (never pickled; `orders.Desk` holds
+    it): every mandatory promotion's measured SKUs and the days `Purchases.recent` keeps them. Both are a run's
+    constants: setup makes every promotion, and the loop adds none."""
+
+    measured: frozenset[int]  # sku_id
+    period: int  # `period_days`
+
+    @classmethod
+    def of(cls, world: World, rules: Rules) -> Watch:
+        found = frozenset(sku for p in world.promotions.values() if p.mandatory for sku in measured(p, rules))
+        return cls(found, period_days(rules.world))
+
+
+def bought(world: World, rules: Rules, watch: Watch, customer_id: int, day: date, priced: Sequence[Priced]) -> None:
     """An order of `customer_id` on `day`, its lines `priced`, into the history (module docstring); a customer
     outside the tiered channel has none. The free lines are no purchase."""
-    purchases, demand = world.purchases, world.demand
-    if purchases is None or demand is None:
+    purchases = world.purchases
+    if purchases is None:
         return
     r = int(purchases.rows[rules.customers[customer_id]])
     if r < 0:
@@ -169,17 +172,15 @@ def bought(world: World, rules: Rules, customer_id: int, day: date, priced: Sequ
     if purchases.months[slot] != month:
         purchases.revenue[slot] = 0.0
         purchases.months[slot] = month
-    watched = _measured(world, purchases, rules)
-    column = sku_columns(demand.catalogue.sku_ids)
-    kept = [held for held in purchases.recent.get(customer_id, ()) if held[0] > today - period_days(rules.world)]
+    kept = [held for held in purchases.recent.get(customer_id, ()) if held[0] > today - watch.period]
     for line in priced:
         if line.is_free_goods:
             continue
-        s = column[line.sku_id]
+        s = rules.columns[line.sku_id]
         purchases.last_bought[r, s] = today
         if not any(discount.kind == "promotion" for discount in line.discounts):
             purchases.revenue[slot, s] += line.invoice_price_case * line.cases
-        if line.sku_id in watched:
+        if line.sku_id in watch.measured:
             kept.append((today, line.sku_id, line.cases))
     if kept:
         purchases.recent[customer_id] = kept
@@ -187,18 +188,9 @@ def bought(world: World, rules: Rules, customer_id: int, day: date, priced: Sequ
         purchases.recent.pop(customer_id, None)
 
 
-_COLUMNS: list[tuple[Array, dict[int, int]]] = []  # the last catalogue's: a run reads one
-
-
-def sku_columns(sku_ids: Array) -> dict[int, int]:
-    """sku_id → its column in the catalogue's order, kept while the catalogue's array is the same."""
-    if not _COLUMNS or _COLUMNS[0][0] is not sku_ids:
-        _COLUMNS[:] = [(sku_ids, {int(sku): s for s, sku in enumerate(sku_ids)})]
-    return _COLUMNS[0][1]
-
-
 def refresh(world: World, book: Rulebook, day: date) -> None:
-    """The month's figures (module docstring), once a month: on its first day that asks."""
+    """The month's figures (module docstring), once a month: the loop's field step asks on every written day, so they
+    are taken on the 1st, before its orders take over the ring's slot of M − 12."""
     purchases, demand = world.purchases, world.demand
     if purchases is None or demand is None:
         return
@@ -521,7 +513,7 @@ def mandatory(
     below = float(book.parameter("mandatory_promotion", "below_share_of_threshold"))
     customer, spot = world.customers[customer_id], demand.spots[point]
     held = [(sku, n) for ordinal, sku, n in purchases.recent.get(customer_id, ()) if ordinal > day.toordinal() - period]
-    column = sku_columns(demand.catalogue.sku_ids)
+    column = rules.columns
     out = []
     for _, promotion in briefing.mandatory:
         if not admits(promotion, spot, customer, day):
@@ -556,9 +548,7 @@ def display(world: World, book: Rulebook, delivery_point_id: int, region: str) -
         return []
     bar = float(book.parameter("pos_placement", "min_display_uplift"))
     found = [
-        (uplift, line)
-        for (point, line), uplift in world.display_uplift.items()
-        if point == delivery_point_id and uplift >= bar
+        (uplift, line) for line, uplift in world.display_uplift.get(delivery_point_id, {}).items() if uplift >= bar
     ]
     if not found:
         return []
@@ -570,11 +560,11 @@ def display(world: World, book: Rulebook, delivery_point_id: int, region: str) -
 
 
 def generate(world: World, book: Rulebook, rules: Rules, day: date, planned: Sequence[Planned]) -> list[Prompt]:
-    """The day's prompts for `planned` (module docstring), each visit's set ranked and cut to its phase's cap."""
+    """The day's prompts for `planned` (module docstring), each visit's set ranked and cut to its phase's cap; they
+    read the month's figures as `refresh` took them."""
     purchases, demand = world.purchases, world.demand
     if purchases is None or demand is None or not planned:
         return []
-    refresh(world, book, day)
     briefing = Briefing(
         day,
         demand.catalogue.live(day),
@@ -670,11 +660,6 @@ def classify(
         if not p.shown or not v.recorded:
             continue
         minutes = _minutes(v)
-        if v.outcome in UNREACHED or (
-            minutes is not None and minutes < short and p.priority > odds.short_visit_priority
-        ):
-            p.outcome, p.classified_on = "not_discussed", day
-            continue
         customer = world.customers[p.customer_id]
         planted = (
             book.a13 is not None
@@ -683,7 +668,12 @@ def classify(
             and p.line == book.line_codes[book.a13[0]]
         )
         if set(p.skus) & ordered.get(v.visit_id, set()):
-            p.outcome = "successful"
+            p.outcome = "successful"  # from the order, whatever the visit's length
+        elif v.outcome in UNREACHED or (
+            minutes is not None and minutes < short and p.priority > odds.short_visit_priority
+        ):
+            p.outcome, p.classified_on = "not_discussed", day
+            continue
         elif planted:
             assert book.a13 is not None
             p.outcome, p.reason = "rejected", book.a13[1]
@@ -694,13 +684,14 @@ def classify(
         else:
             continue  # the rep left it unclassified
         p.classified_on = day
+        again = planted and purchases.rejections.get(p.customer_id, {}).get(p.line, 0) > 0
         if p.outcome == "rejected" and p.kind == "unsupplied_items":
             remember(world, p, day)
         if p.kind == "unsupplied_items" and p.product:
             said = listings.get(v.visit_id)
             first = said is None and p.outcome != "rejected"  # a rep's own rejection offered nothing to say
             if first or (planted and not (said and said.planted)):  # A-13's refusal is the one said
-                listings[v.visit_id] = Listing(names[p.product], p.outcome == "successful", p.reason, planted)
+                listings[v.visit_id] = Listing(names[p.product], p.outcome == "successful", p.reason, planted, again)
     return listings
 
 

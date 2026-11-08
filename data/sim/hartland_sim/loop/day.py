@@ -11,7 +11,8 @@ before `history.first_day`).
   has one; the warm-up's first month has none (no month before it);
 - 1 `demand`: the day's latent demand into the baskets, and the baskets that order;
 - 2 `field` (`loop.field`): the tourplans re-cut on a rep's area move (`field.recut`: the stores won and lost
-  since the month-end too), the day's visit plan and its rep prompts (`loop.prompts.generate`), the visits, their
+  since the month-end too), the day's visit plan and its rep prompts (`loop.prompts.generate`; on a month's 1st
+  the month's figures first, `prompts.refresh`, before step 4 books the day's orders), the visits, their
   observations and competitor sightings — a converting one then takes its customer's basket as its order, among the
   day's baskets the orders step makes — the prompts classified after them (`prompts.classify`) and the notes; in the
   warm-up only the visits and their orders, which move the `World` (nothing else is written, and every draw is the
@@ -61,7 +62,7 @@ from hartland_sim.loop.field import (
     visit_row,
 )
 from hartland_sim.loop.pricing import Rules
-from hartland_sim.loop.prompts import Rulebook, classify, generate, prompt_row
+from hartland_sim.loop.prompts import Prompt, Rulebook, classify, generate, prompt_row, refresh
 from hartland_sim.loop.warmup import Output
 from hartland_sim.loop.weather import Climate
 from hartland_sim.period import Closing
@@ -227,7 +228,10 @@ class Loop:
         planned = plan(self.world, day)
         self.output.append(day, "visit_plan", (visit_plan_row(p, day) for p in planned))
         written = self.output.writes(day)
-        briefed = generate(self.world, self.rulebook, self.desk.rules, day, planned) if written else []
+        briefed: list[Prompt] = []
+        if written:
+            refresh(self.world, self.rulebook, day)  # on the 1st, before its orders (step 4) book into the ring
+            briefed = generate(self.world, self.rulebook, self.desk.rules, day, planned)
         made = visit(self.world, self.crew, day, calls(self.world, self.crew, day, planned))
         today = self.today
         if not written:  # the warm-up: the visits and their orders move the World, the rest is dropped

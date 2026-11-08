@@ -243,8 +243,9 @@ def test_small_retail_s_own_orders_keep_the_trade_week(story_world: Built) -> No
 def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) -> None:
     """On 2025: ~4 prompts a planned call on a small-retail store, each with its rule, its JSON payload and a Czech
     explanation; R-7's listing prompts the most, then the tips, then the mandatory promotions (no display before
-    S2.3); every outcome class met, the classified ones with a reason where R-11 gives one; and on no visit more
-    prompts discussed than its customer's phase allows (`policies.prompt_caps`)."""
+    S2.3); every outcome class met, the classified ones with a reason where R-11 gives one; on no visit more prompts
+    discussed than its customer's phase allows (`policies.prompt_caps`); and over 2024–2025 no prompt `not_discussed`
+    whose item went on its visit's order (review-233 R1)."""
     build = Build(story_world.run)
     prompts = build["rep_prompt"]
     prompts = prompts[prompts["generated_on"].dt.year == 2025]
@@ -274,3 +275,19 @@ def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) ->
     caps = WorldConfig.load().policies.prompt_caps
     per_visit = at.groupby(["visit_id", "phase"]).size().reset_index(name="n")
     assert (per_visit["n"] <= per_visit["phase"].map(caps)).all()
+    every = build["rep_prompt"]
+    undiscussed = every[every["outcome"] == "not_discussed"]
+    codes = {code: int(sku) for code, sku in zip(build["sku"]["sku_code"], build["sku"]["sku_id"], strict=True)}
+    offered = pd.DataFrame(
+        [
+            (int(visit), codes[code])
+            for visit, payload in zip(undiscussed["visit_id"], undiscussed["payload"], strict=True)
+            for code in json.loads(payload).get("skus", [])
+        ],
+        columns=["visit_id", "sku_id"],
+    )
+    orders = build["sales_order"]
+    visited = orders.loc[orders["source"] == "visit", ["sales_order_id", "visit_id"]]
+    lines = build["sales_order_line"][["sales_order_id", "sku_id"]].merge(visited, on="sales_order_id")
+    lines = lines.astype({"visit_id": "int64", "sku_id": "int64"})
+    assert len(offered) > 10_000 and offered.merge(lines, on=["visit_id", "sku_id"]).empty

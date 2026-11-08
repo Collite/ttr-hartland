@@ -334,8 +334,8 @@ class World:
     counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)
     purchases: Purchases | None = None  # G2 S2.2: what the reps' customers bought, by SKU, and the prompts' memory
     # G2 S2.3 fills these two, which S2.2's display prompts read: a display's expected uplift of a line at a delivery
-    # point, by (delivery_point_id, line code), and the display budget (CZK) a region's manager has left.
-    display_uplift: dict[tuple[int, str], float] = field(default_factory=dict)
+    # point, by delivery_point_id then line code, and the display budget (CZK) a region's manager has left.
+    display_uplift: dict[int, dict[str, float]] = field(default_factory=dict)
     display_budget: dict[str, float] = field(default_factory=dict)
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:

@@ -265,7 +265,11 @@ def test_small_retail_opens_buying_three_to_seven_lines_its_leader_among_them(op
     demand = opening.world.demand
     assert demand is not None
     customers = list(opening.world.customers.values())
-    small = [c for c, customer in enumerate(customers) if customer.channel == "small_retail" and not customer.traits]
+    small = [
+        c
+        for c, customer in enumerate(customers)
+        if customer.channel == "small_retail" and REFUSES not in customer.traits
+    ]
     counts = demand.carried[small].sum(axis=1)
     assert (counts.min(), counts.max()) == tuple(S3["opening_breadth"]) == (3, 7)
     _, listed, _ = demand.catalogue.shares(date(2023, 1, 1), len(demand.lines))
