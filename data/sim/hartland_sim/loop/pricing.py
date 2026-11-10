@@ -369,6 +369,7 @@ class Rules:
     points: Mapping[int, int]  # delivery_point_id → its index in the demand's points
     sku_line: Mapping[int, str]  # sku_id → its line's code
     sku_ids: Mapping[str, int]  # catalogue sku_code → sku_id
+    columns: Mapping[int, int]  # sku_id → its column in the catalogue's order
     units: Mapping[int, int]  # sku_id → units per case
     vat: Mapping[int, float]  # sku_id → its VAT rate, %
 
@@ -388,6 +389,7 @@ class Rules:
             {int(point): p for p, point in enumerate(demand.point_ids)},
             {sku: demand.lines[int(line)].code for sku, line in zip(sku_ids, goods.line, strict=True)},
             dict(zip(goods.sku_codes, sku_ids, strict=True)),
+            {sku: s for s, sku in enumerate(sku_ids)},
             {sku: int(units) for sku, units in zip(sku_ids, goods.units, strict=True)},
             {sku: float(rate) for sku, rate in zip(sku_ids, goods.vat, strict=True)},
         )

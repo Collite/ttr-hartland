@@ -31,7 +31,7 @@ before its orders, so an order of that day carries what was agreed; the demand l
 before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day; what only
 the rows need — the order ids, the source draws, the agreement rows — is made on a written day only). A
 tiered customer's order is booked on its month (`book`, `World.bought`): its net revenue, its product lines — what
-the month-end reads the next month's tiers and the phases from.
+the month-end reads the next month's tiers and the phases from — and by SKU into `World.purchases` (G2 S2.2's prompts).
 """
 
 from __future__ import annotations
@@ -64,6 +64,7 @@ from hartland_sim.loop.pricing import (
     price_order,
     running,
 )
+from hartland_sim.loop.prompts import Watch, bought
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.customers import terms
@@ -79,7 +80,8 @@ Array = np.ndarray[Any, Any]
 @dataclass(frozen=True)
 class Desk:
     """What the orders read beside the `World`, for a run (never pickled): the pricing rules, `world.yaml`, each
-    region's DC, each channel's source mix, and the asks' plan of each quarter (made when first asked for)."""
+    region's DC, each channel's source mix, what the purchase history keeps (`prompts.Watch`), and the asks' plan of
+    each quarter (made when first asked for)."""
 
     rules: Rules
     config: WorldConfig
@@ -87,6 +89,7 @@ class Desk:
     sources: Mapping[str, tuple[tuple[str, ...], Array]]  # a terms channel → its sources, their cumulative shares
     untaken: Mapping[str, tuple[tuple[str, ...], Array]]  # the same without the taken ones, for an order with no taker
     asking: Array  # the indices (in the World's order) of the customers a rep or a KAM answers
+    watch: Watch
     _plans: dict[date, tuple[dict[int, Array], Array]] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -106,7 +109,7 @@ class Desk:
                 untaken[name] = (tuple(other), np.cumsum(list(other.values())) / sum(other.values()))
         customers = list(world.customers.values())
         asking = np.array([c for c, customer in enumerate(customers) if customer.channel in ASKING], dtype=np.int64)
-        return cls(rules, config, dcs, sources, untaken, asking)
+        return cls(rules, config, dcs, sources, untaken, asking, Watch.of(world, rules))
 
     def plan(self, world: World, day: date) -> tuple[dict[int, Array], Array]:
         """The asks of `day`'s quarter: the asking customers by the day they ask (its ordinal), and each one's draw of
@@ -243,11 +246,13 @@ def order(
     return Order(head, lines, discounts, priced, value, status, reason)
 
 
-def book(world: World, rules: Rules, customer: Customer, day: date, made: Order) -> None:
+def book(world: World, desk: Desk, customer: Customer, day: date, made: Order) -> None:
     """`made` on its customer's month (module docstring): only a tiered customer's, the one with monthly
-    conditions and phase rows."""
+    conditions and phase rows; and into its purchase history by SKU, which the rep prompts read (`prompts.bought`)."""
     if customer.channel not in TIERED:
         return
+    rules = desk.rules
+    bought(world, rules, desk.watch, customer.customer_id, day, made.priced)
     held = world.bought.setdefault(day.replace(day=1), {}).setdefault(customer.customer_id, Bought())
     held.net_revenue = round(held.net_revenue + made.value, 2)
     held.orders += 1
@@ -317,7 +322,7 @@ def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], out
     heads, lines, discounts = [], [], []
     for event, n, draw in zip(events, counts, draws, strict=True):
         made = order(world, desk, event, n, draw, write, today)
-        book(world, desk.rules, world.customers[event.customer_id], day, made)
+        book(world, desk, world.customers[event.customer_id], day, made)
         done.lines += len(made.priced)
         if made.head is not None:
             heads.append(made.head)

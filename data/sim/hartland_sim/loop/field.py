@@ -70,11 +70,13 @@ sentence of the visit's outcome (`visit_note_templates.yaml`; an acquisition's o
 reads its kind's, `no_order_by_kind`) and one of each situation it met, as its rows say it — a mandatory promotion of a
 line running, executed or not (`promotion_executed`, `promotion_missing`), a line out of stock (`out_of_stock`), a
 competitor seen (`competitor_<activity kind>`; A-6's hand-written sighting goes in verbatim), a display lent
-(`display`) — at most three, and a second outcome sentence when it met none: 2–4 sentences. A visit that found the
-shop closed or gone met none: two outcome sentences. The slots are the visit's: a product on sale that day (a SKU of
-it launched and not delisted, `catalogue.csv`) of a line the customer buys (or of the situation's line) by its name or
-its nickname (`product.csv`), the competitor's name, the promotion's, an objection. An unrecorded visit has no note,
-nor has any visit of A-8's rep, who records nothing; S2.2's prompts add the listing situation and A-13's refusals.
+(`display`), a listing prompt the rep offered and classified (G2 S2.2, `loop.prompts.classify`: `listing` declined with
+its reason, `listing_taken` on the order; A-13's refusal hand-written, `FIRST_REFUSAL` then `PLANTED_REFUSALS`, and
+always said) — at most three, and a second outcome sentence when it met none: 2–4 sentences. A visit that found the shop
+closed or gone met none: two outcome sentences. The slots are the visit's: a product on sale that day (a SKU of it
+launched and not delisted, `catalogue.csv`) of a line the customer buys (or of the situation's line) by its name or its
+nickname (`product.csv`), the competitor's name, the promotion's, an objection. An unrecorded visit has no note, nor has
+any visit of A-8's rep, who records nothing.
 """
 
 from __future__ import annotations
@@ -714,7 +716,26 @@ def sighting_row(s: Sighting) -> Row:
 # ── the notes (T6) ─────────────────────────────────────────────────────────────
 
 SLOT = re.compile(r"\{\{ (\w+) \}\}")
-SITUATIONS = ("promotion", "out_of_stock", "competitor", "display")  # in a note's order; `listing` is S2.2's
+SITUATIONS = ("promotion", "out_of_stock", "competitor", "display", "listing")  # in a note's order
+FIRST_REFUSAL = "Nudle majitel odmítl, nemá pro ně místo v regálu."  # A-13's, hand-written: no shelf for the line
+PLANTED_REFUSALS = (  # its refusals after the first
+    "Nudle majitel znovu odmítl, prý pro ně nemá místo v regálu.",
+    "Nabídka nudlí opět odmítnuta – v regálu není místo.",
+    "Na nudle zase ne, majitel říká, že nemá kam je dát.",
+)
+
+
+@dataclass(frozen=True)
+class Listing:
+    """A listing prompt a visit discussed and the rep classified (G2 S2.2, `loop.prompts`), as its note says it: the
+    product offered, whether it went on the order, the reason given, whether it is A-13's planted refusal and one
+    after an earlier refusal of its line."""
+
+    product: str  # the product's name
+    taken: bool
+    reason: str | None = None
+    planted: bool = False
+    again: bool = False
 
 
 def _fill(sentence: str, values: Mapping[str, str]) -> str:
@@ -728,8 +749,10 @@ def note(
     visits: Sequence[Visit],
     observations: Sequence[Row],
     sightings: Sequence[Sighting],
+    listings: Mapping[int, Listing] | None = None,
 ) -> None:
-    """Each visit's `note` (module docstring), from its observations and its sighting."""
+    """Each visit's `note` (module docstring), from its observations, its sighting and its listing prompt (by
+    `visit_id`, `loop.prompts.classify`)."""
     demand = world.demand
     if demand is None:
         return
@@ -771,7 +794,20 @@ def note(
             else:
                 held = {**_slots(crew, pool, day, draw), "competitor": crew.competitors[sighting.competitor]}
                 met["competitor"] = _fill(_one(book.situations[f"competitor_{sighting.kind}"], draw), held)
-        sentences = [met[name] for name in SITUATIONS if name in met][:3]
+        listing = (listings or {}).get(v.visit_id) if inside else None
+        if listing is not None and listing.planted:
+            again = _one(PLANTED_REFUSALS, draw)  # drawn the first time too: the note's other draws stay
+            met["listing"] = again if listing.again else FIRST_REFUSAL
+        elif listing is not None:
+            said = "listing_taken" if listing.taken else "listing"
+            held = {**_slots(crew, pool, day, draw), "sku": listing.product}
+            if listing.reason:
+                held["objection"] = listing.reason
+            met["listing"] = _fill(_one(book.situations[said], draw), held)
+        named = [name for name in SITUATIONS if name in met]
+        if listing is not None and listing.planted:  # A-13's refusal is always said
+            named = ["listing", *(name for name in named if name != "listing")]
+        sentences = [met[name] for name in named][:3]
         outcome = list(book.outcome(v))
         first = outcome.pop(int(draw.integers(len(outcome))))
         sentences.insert(0, _fill(first, _slots(crew, pool, day, draw)))

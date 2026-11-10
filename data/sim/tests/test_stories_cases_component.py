@@ -458,7 +458,10 @@ def test_s6_leaves_out_what_the_twin_leaves_out(
 
 
 def test_a13_a_stop_after_the_third_rejection(db: psycopg.Connection, put: Put) -> None:
-    def prompts(customer: int, count: int) -> None:
+    """G2 S2.2: only A-13's reason counts — a rep's own rejections stop a line too (the rule), but are not the case."""
+    reason = str(StoriesConfig.load().anomaly("A-13").parameters["reason_cs"])
+
+    def prompts(customer: int, count: int, why: str = reason) -> None:
         for k in range(count):
             put(
                 db,
@@ -467,12 +470,15 @@ def test_a13_a_stop_after_the_third_rejection(db: psycopg.Connection, put: Put) 
                 customer_id=customer,
                 kind="unsupplied_items",
                 generated_on=date(2025, 1, 6) + timedelta(weeks=2 * k),
-                payload='{"lines": ["NUDLE"]}',
+                payload='{"line": "NUDLE", "product": "NUDLE-KURECI", "skus": ["2931000000944"]}',
                 outcome="rejected",
+                outcome_reason=why,
             )
 
     with db.transaction(force_rollback=True):
         prompts(1, 5)  # rejected five times: no stop
+        assert _one(db, "probes/a13.sql") == 0
+        prompts(3, 3, why="podnět se pro prodejnu nehodí")  # three of the rep's own: the rule, not the case
         assert _one(db, "probes/a13.sql") == 0
         prompts(2, 3)  # rejected three times, then none
         assert _one(db, "probes/a13.sql") == 1

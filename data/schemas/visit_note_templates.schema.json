@@ -111,7 +111,8 @@
         "competitor_display",
         "competitor_price_cut",
         "display",
-        "listing"
+        "listing",
+        "listing_taken"
       ],
       "properties": {
         "promotion_executed": {
@@ -179,6 +180,14 @@
           }
         },
         "listing": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "listing_taken": {
           "type": "array",
           "minItems": 1,
           "items": {

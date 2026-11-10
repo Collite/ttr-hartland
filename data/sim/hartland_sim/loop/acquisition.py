@@ -10,7 +10,7 @@ the customer's area **on the day** (`World.duty`): a skill follows the person th
 - **Churn** (stream `churn`): an active customer is lost with `churn_base ÷ skill` (retention) a month. The planted
   cases' customers (`Customer.traits`) stay.
 - **Breadth** (stream `breadth`): an active customer that does not buy every line its listing holds adds the next one,
-  by its base, with `cross_sell_base × skill` a month.
+  by its base, with `cross_sell_base × skill` a month — never the line A-13's store refuses (`demand.refusals`).
 
 Without a rep the churn and breadth act at skill 1. The null world needs no switch here: setup gives every rep skill
 1.0 when S3 is off, so the base rates act.
@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 
 from hartland_sim.config import StoriesConfig
-from hartland_sim.loop.demand import BREADTH_CHANNELS, NEVER, Demand, Shares
+from hartland_sim.loop.demand import BREADTH_CHANNELS, NEVER, Demand, Shares, refusals
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.customers import FIRST_ORDER
 from hartland_sim.world import Episode, World
@@ -80,6 +80,7 @@ class Reps:
     area: Array  # (n,) index into `areas`
     areas: tuple[str, ...]
     pinned: Array  # (n,) bool
+    closed: Array  # (n, L) bool: the lines a customer never takes (A-13's store)
     _appeal: Array = field(repr=False)  # (n,)
     _generation: int = field(repr=False)  # the `Demand.generation` `_appeal` was made at
 
@@ -94,6 +95,11 @@ class Reps:
             dtype=np.int64,
         )
         codes = [customers[c].area or "" for c in small]
+        closed = np.zeros((len(small), len(demand.lines)), dtype=bool)
+        refused = refusals(customers, stories, demand.lines)
+        for k, c in enumerate(small.tolist()):
+            if c in refused:
+                closed[k, refused[c]] = True
         areas = tuple(dict.fromkeys(codes))
         return cls(
             Rates.of(stories),
@@ -101,6 +107,7 @@ class Reps:
             np.array([areas.index(code) for code in codes], dtype=np.int64),
             areas,
             np.array([bool(customers[c].traits) for c in small], dtype=bool),
+            closed,
             store_appeal(demand, small),
             demand.generation,
         )
@@ -143,7 +150,8 @@ def chances(
     active = (since <= today) & (today <= until)
     if listed is None:
         _, listed, _ = demand.catalogue.shares(day, len(demand.lines))
-    room = (listed[demand.point_group[demand.customer_start[small]]] & ~demand.carried[small]).any(axis=1)
+    open_lines = listed[demand.point_group[demand.customer_start[small]]] & ~demand.carried[small] & ~reps.closed
+    room = open_lines.any(axis=1)
     acquire, churn, cross = (np.zeros(len(demand.customer_ids)) for _ in range(3))
     rates = reps.rates
     acquire[small] = np.where(potential & held[area], rates.acquisition * acquisition[area] * reps.appeal(demand), 0.0)
@@ -192,9 +200,10 @@ def step(world: World, reps: Reps, day: date, shares: Shares | None = None) -> O
             if not demand.extras[sku].any():
                 del demand.extras[sku]
     sold = []
+    row = {int(c): k for k, c in enumerate(small)}
     for c in added:
         p = int(demand.customer_start[c])
-        open_lines = listed[demand.point_group[p]] & ~demand.carried[c]
+        open_lines = listed[demand.point_group[p]] & ~demand.carried[c] & ~reps.closed[row[int(c)]]
         line = int(np.argmax(np.where(open_lines, demand.units[p], -1.0)))
         demand.carried[c, line] = True
         sold.append((int(ids[c]), demand.lines[line].code))

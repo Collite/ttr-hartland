@@ -20,7 +20,7 @@ from hartland_sim.checks.czech import assert_czech, has_diacritics
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read
 from hartland_sim.loop import field
-from hartland_sim.loop.field import PLANTED_SIGHTINGS, Crew, Visit
+from hartland_sim.loop.field import FIRST_REFUSAL, PLANTED_REFUSALS, PLANTED_SIGHTINGS, Crew, Listing, Visit
 from hartland_sim.setup.rows import Row
 from hartland_sim.setup.run import Setup
 
@@ -130,6 +130,17 @@ def test_a_situation_met_has_its_sentence_a_planted_sighting_goes_in_verbatim(op
         for sentence in _sentences(v.note)
         for s in book.situations["competitor_promotion"]
     )
+
+
+def test_a13_s_first_refusal_is_said_plainly_and_the_later_ones_again(opening: Setup, crew: Crew) -> None:
+    """review-233 R6: A-13's store has refused nothing before its first planted refusal."""
+    world, day = opening.world, DAYS[2]
+    v = _sales_visit(opening, crew, day)
+    for again, said in ((False, (FIRST_REFUSAL,)), (True, PLANTED_REFUSALS)):
+        v.note = None
+        refusal = Listing("Nudle Kuřecí", False, "nemáme místo v regálu", planted=True, again=again)
+        field.note(world, crew, day, [v], [], [], {v.visit_id: refusal})
+        assert v.note is not None and any(sentence in said for sentence in _sentences(v.note)), v.note
 
 
 def test_the_competitor_sentence_says_the_sighting_s_kind(opening: Setup, crew: Crew) -> None:

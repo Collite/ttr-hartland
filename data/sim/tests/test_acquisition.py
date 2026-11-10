@@ -12,7 +12,7 @@ import pytest
 
 from hartland_sim.config import StoriesConfig
 from hartland_sim.loop.acquisition import LOST, Outcome, Reps, chances, daily, step
-from hartland_sim.loop.demand import NEVER, Demand
+from hartland_sim.loop.demand import NEVER, REFUSES, Demand
 from hartland_sim.setup.customers import FIRST_ORDER
 from hartland_sim.setup.opening import state_rows
 from hartland_sim.setup.run import Setup
@@ -236,14 +236,48 @@ def test_a_cross_sale_adds_the_best_line_never_bought(opening: Setup) -> None:
     assert i == max(open_lines, key=lambda n: demand.units[p, n])
 
 
+def test_a13_s_store_is_never_cross_sold_the_line_it_refuses(opening: Setup, monkeypatch: pytest.MonkeyPatch) -> None:
+    """G2 S2.2: A-13's store has room for no line but its refused one, and a cross-sale never adds that; every other
+    customer of the channel has no line closed."""
+    world, demand, reps = _copy(opening)
+    customers = list(world.customers.values())
+    (a13,) = [c for c, customer in enumerate(customers) if REFUSES in customer.traits]
+    k = int(np.flatnonzero(reps.small == a13)[0])
+    refused = [line.code for line in demand.lines].index(STORIES.anomaly("A-13").parameters["line"])
+    assert reps.closed[k].tolist() == [n == refused for n in range(len(demand.lines))]
+    assert reps.closed.sum() == 1
+    day = date(2023, 3, 1)
+    _, _, cross = chances(world, demand, reps, day)
+    assert cross[a13] == 0.0
+    demand.carried[a13, 0] = False  # room for one more line: the draw adds it, never the refused one
+    target = int(demand.customer_ids[a13])
+
+    def forced(stream: str, *key: object, ids: np.ndarray) -> np.ndarray:
+        return np.where((ids == target) & (stream == "breadth"), 0.0, 1.0)
+
+    monkeypatch.setattr("hartland_sim.loop.acquisition.uniforms", forced)
+    assert step(world, reps, day).cross_sold == ((target, demand.lines[0].code),)
+    assert not demand.carried[a13, refused]
+
+
 def test_small_retail_opens_buying_three_to_seven_lines_its_leader_among_them(opening: Setup) -> None:
+    """A-13's store (G2 S2.2) buys every line its listing holds but the one it has no shelf for."""
     demand = opening.world.demand
     assert demand is not None
     customers = list(opening.world.customers.values())
-    small = [c for c, customer in enumerate(customers) if customer.channel == "small_retail"]
+    small = [
+        c
+        for c, customer in enumerate(customers)
+        if customer.channel == "small_retail" and REFUSES not in customer.traits
+    ]
     counts = demand.carried[small].sum(axis=1)
     assert (counts.min(), counts.max()) == tuple(S3["opening_breadth"]) == (3, 7)
     _, listed, _ = demand.catalogue.shares(date(2023, 1, 1), len(demand.lines))
+    (a13,) = [c for c, customer in enumerate(customers) if REFUSES in customer.traits]
+    refused = [line.code for line in demand.lines].index(STORIES.anomaly("A-13").parameters["line"])
+    expected = listed[demand.point_group[demand.customer_start[a13]]].copy()
+    expected[refused] = False
+    assert (demand.carried[a13] == expected).all() and expected.sum() == 8
     for c in small[:500]:
         p = demand.customer_start[c]
         leader = int(np.argmax(np.where(listed[demand.point_group[p]], demand.units[p], -1.0)))

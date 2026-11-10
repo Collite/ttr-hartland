@@ -219,7 +219,10 @@ policies:
       priority: 2
       mandatory: false
       adaptable: true
-      parameters: { lookback_days: 365, rejection_memory_days: 90, stop_after_rejections: 3, max_items: 3 } # R-7
+      # R-7: a rejected product waits `rejection_memory_days`; the line's `stop_after_rejections`-th rejection stops it
+      # for the customer (A-13); `max_products` products a visit, each with up to `max_items` of its SKUs.
+      parameters:
+        { lookback_days: 365, rejection_memory_days: 90, stop_after_rejections: 3, max_products: 3, max_items: 3 }
     - code: PO-STOJAN
       kind: pos_placement
       priority: 3
@@ -237,7 +240,15 @@ policies:
       priority: 4
       mandatory: false
       adaptable: true
-      parameters: { importance: 5 }
+      parameters: { importance: 5, peer_share: 0.3 } # a SKU of this importance a share of the store's cluster bought
+  # How a rep classifies the prompts it discussed (R-11, G2 S2.2): one whose SKU is on the visit's order is successful;
+  # of the others the rep rejects `rejected` (a mandatory one is unsuccessful instead) and logs `unsuccessful` ones,
+  # each with a reason of `prompt_reasons`; the rest stay open. A visit shorter than `short_visit_minutes` discusses
+  # only the prompts of priority `short_visit_priority` or more urgent (a lower number); the others are not discussed.
+  prompt_outcomes: { rejected: 0.05, unsuccessful: 0.2, short_visit_minutes: 20, short_visit_priority: 1 }
+  prompt_reasons:
+    unsuccessful: [zákazník nemá zájem, vysoká cena, má plný sklad, prodává konkurenční výrobek, zákazníci to nežádají]
+    rejected: [podnět se pro prodejnu nehodí, sortiment neodpovídá prodejně, majitel o výrobku už rozhodl]
   seasonal_exclusion: # months in which a line's listing prompts are suppressed (R-7)
     POLEVKY: [5, 6, 7, 8]
     KELIMKY: [5, 6, 7, 8, 9]

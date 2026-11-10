@@ -589,7 +589,7 @@ def s6_targets(build: Build, stories: StoriesConfig) -> float:
     return float(on_target[disciplined].mean() - on_target[~disciplined].mean())
 
 
-# ── the probes (G2 S2.1) ──────────────────────────────────────────────────────
+# ── the probes (G2 S2.1, S2.2) ────────────────────────────────────────────────
 
 A7_YEAR = 2025  # a7.sql: the reps' adherence over 2025
 A7_SKIPPING = 0.65  # a7.sql: a rep who made this share of its planned visits or fewer skips them
@@ -629,7 +629,20 @@ def a8(build: Build, stories: StoriesConfig) -> float:
     return float((unrecorded >= A8_SILENT).sum())
 
 
-PROBES: Mapping[str, Twin] = {"probes/a6.sql": a6, "probes/a7.sql": a7, "probes/a8.sql": a8}
+def a13(build: Build, stories: StoriesConfig) -> float:
+    """a13.sql (G2 S2.2): the customers whose `rejections_until_stop`-th listing prompt of A-13's line rejected with
+    A-13's reason is their last listing prompt of the line."""
+    held = stories.anomaly("A-13").parameters
+    prompts = build["rep_prompt"]
+    line = prompts["kind"].eq("unsupplied_items") & prompts["payload"].str.contains(f'"{held["line"]}"', regex=False)
+    found = prompts[line].sort_values(["customer_id", "generated_on", "rep_prompt_id"])
+    refused = found["outcome"].eq("rejected") & found["outcome_reason"].eq(held["reason_cs"])
+    so_far = refused.astype(int).groupby(found["customer_id"]).cumsum()
+    after = (so_far >= int(held["rejections_until_stop"])).groupby(found["customer_id"]).sum()
+    return float((after == 1).sum())
+
+
+PROBES: Mapping[str, Twin] = {"probes/a6.sql": a6, "probes/a7.sql": a7, "probes/a8.sql": a8, "probes/a13.sql": a13}
 
 
 def expected(expect: str) -> tuple[str, float]:
