@@ -33,6 +33,9 @@ written.
   next tourplan from M+1's first day — its class's cycle, or none once lost — as does a store whose area changes
   rep that day.
 
+- **The point of sale** (G2 S2.3, `pos_loans`, last): the displays that come back, the asset ledger, the areas'
+  conversion medians, the stores' display uplifts and the next month's placements (`loop.pos.close`).
+
 `World.bought` keeps the months the next month-end and the next month's conditions read; the older ones are dropped.
 """
 
@@ -46,6 +49,7 @@ import numpy as np
 from hartland_sim.dates import add_months, month_end, quarter_end, quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
+from hartland_sim.loop import pos
 from hartland_sim.loop.demand import CHANNELS
 from hartland_sim.loop.field import recut
 from hartland_sim.loop.pricing import TIERED, channel_list, channel_rows, condition, condition_row, standard_list
@@ -75,6 +79,7 @@ def close(world: World, closing: Closing, day: date, output: Output) -> None:
     lookback = closing.config.policies.lifecycle.lookback_months
     keep = add_months(first, min(1 - lookback, -1))  # the next month-end reads from here, tomorrow's conditions M
     world.bought = {month: bought for month, bought in world.bought.items() if month >= keep}
+    pos_loans(world, closing, day, output)
     # S4.3: the promotion results, the campaign costs, the allocations onto the lines, the GL.
 
 
@@ -84,6 +89,11 @@ def _tiered(world: World, first: date) -> list[Customer]:
 
 def _lines(closing: Closing, held: Bought) -> list[str]:
     return [code for code, i in closing.rules.lines.items() if held.lines >> i & 1]
+
+
+def pos_loans(world: World, closing: Closing, day: date, output: Output) -> None:
+    """The point of sale's month-end (module docstring): `loop.pos.close`."""
+    pos.close(world, closing.pos, day, output)
 
 
 def conditions(world: World, closing: Closing, first: date, output: Output) -> list[Row]:

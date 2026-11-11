@@ -20,6 +20,8 @@ from hartland_sim.checks.stories import (
     _ntile,
     _sales_pl,
     a6,
+    a6_arc,
+    a6_bars,
     a7,
     a8,
     adjusted_rand,
@@ -521,13 +523,13 @@ def test_a8_counts_the_reps_whose_visits_go_unrecorded_60_pc_or_more(tmp_path: P
     assert a8(Build(tmp_path), STORIES) == 2
 
 
-def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path: Path) -> None:
+def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path: Path, a6_rows: Any) -> None:
+    a6_case, write_rows = a6_rows
     held = STORIES.anomaly("A-6").parameters
     first, last = date.fromisoformat(str(held["sightings_from"])), date.fromisoformat(str(held["until"]))
-    _write(tmp_path, "region", [{"region_id": 1, "code": held["region"]}, {"region_id": 2, "code": "JMV"}])
-    _write(tmp_path, "area", [{"area_id": 1, "region_id": 1}, {"area_id": 2, "region_id": 2}])
-    _write(tmp_path, "store", [{"store_id": 1, "area_id": 1}, {"store_id": 2, "area_id": 2}])
+    rows = a6_case(seen=0)
     kavalir, other = row_id("competitor", code=held["competitor"]), row_id("competitor", code="NORDCAFE")
+    rows["competitor"] = [{"competitor_id": kavalir, "code": held["competitor"]}]
     cases = [  # (store, day, competitor, kind): only the first two count
         (1, first, kavalir, "promotion"),
         (1, last, kavalir, "promotion"),
@@ -537,13 +539,25 @@ def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path:
         (1, first, kavalir, "price_cut"),
         (1, first, other, "promotion"),
     ]
-    _write(tmp_path, "visit", [{"visit_id": k, "store_id": s, "day": d} for k, (s, d, _, _) in enumerate(cases)])
-    _write(
-        tmp_path,
-        "competitor_sighting",
-        [{"visit_id": k, "competitor_id": c, "activity_kind": kind} for k, (_, _, c, kind) in enumerate(cases)],
-    )
+    rows["visit"] += [{"visit_id": k, "store_id": s, "customer_id": s, "day": d} for k, (s, d, *_) in enumerate(cases)]
+    rows["competitor_sighting"] = [
+        {"competitor_sighting_id": k, "visit_id": k, "competitor_id": c, "activity_kind": kind}
+        for k, (_, _, c, kind) in enumerate(cases)
+    ]
+    write_rows(tmp_path, rows)
     assert a6(Build(tmp_path), STORIES) == 2
+
+
+def test_a6_s_arc_needs_the_facings_up_and_the_dip(tmp_path: Path, a6_rows: Any) -> None:
+    """G2 S2.3 T7: the sightings count only with the other two legs — the facings beside Gold at least 1 + half the
+    planted lift over the 8 weeks before, Gold's season-corrected dip at most 1 − half the planted cut."""
+    a6_case, write_rows = a6_rows
+    assert a6_bars(STORIES) == (1.25, 0.94)
+    for k, (lift, dip, found) in enumerate(((1.5, 0.88, 5), (1.2, 0.88, 0), (1.5, 0.96, 0))):
+        write_rows(tmp_path / str(k), a6_case(5, lift, dip))
+        seen, rose, fell = a6_arc(Build(tmp_path / str(k)), STORIES)
+        assert seen == 5 and rose == pytest.approx(lift, abs=0.05) and fell == pytest.approx(dip, abs=1e-9)
+        assert a6(Build(tmp_path / str(k)), STORIES) == found
 
 
 def test_a_probe_s_expectation_and_the_null_world_s_opposite(tmp_path: Path) -> None:

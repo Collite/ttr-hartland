@@ -5,7 +5,7 @@ day loop from the warm-up to the last day, the state at the end.
   the warm-up, a stock the warm-up moves, and the stock days are G3's from the first written day.
 - **Day by day**, the loop's rows through the warm-up switch (`loop.day`), under the build's master seed.
 - **At the end**:
-  - the five state tables rendered from the `World` (`opening.state_rows`, ⚑R201-A), `discount_budget` from the first
+  - the state tables rendered from the `World` (`opening.state_rows`, ⚑R201-A), `discount_budget` from the first
     written quarter on (the warm-up's quarters stay in the `World`);
   - the calendar's promotions with their `status` on the last day (setup writes them as of `history.until`);
   - the checkpoint of the last day, beside the warm-up's last day's (and a prolong's first day's, below);

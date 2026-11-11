@@ -1555,7 +1555,13 @@
         "competitor_facings",
         "shelf_cycles",
         "promo_compliance",
-        "sightings"
+        "sightings",
+        "pos_budget",
+        "pos_displays",
+        "pos_loans",
+        "pos_asset_life_months",
+        "pos_acquisitions",
+        "pos_handouts"
       ],
       "properties": {
         "cycle_weeks": {
@@ -1787,6 +1793,142 @@
                 "type": "string"
               },
               "uniqueItems": true
+            }
+          }
+        },
+        "pos_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "PHA",
+            "SJC",
+            "ZSC",
+            "VCH",
+            "JMV",
+            "SMS"
+          ],
+          "properties": {
+            "PHA": {
+              "type": "number",
+              "minimum": 0
+            },
+            "SJC": {
+              "type": "number",
+              "minimum": 0
+            },
+            "ZSC": {
+              "type": "number",
+              "minimum": 0
+            },
+            "VCH": {
+              "type": "number",
+              "minimum": 0
+            },
+            "JMV": {
+              "type": "number",
+              "minimum": 0
+            },
+            "SMS": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "pos_displays": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "HARCAFE",
+              "HARSOUP"
+            ]
+          }
+        },
+        "pos_loans": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "months",
+            "condition_on_return"
+          ],
+          "properties": {
+            "months": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "condition_on_return": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "good",
+                "worn",
+                "damaged"
+              ],
+              "properties": {
+                "good": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "worn": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "damaged": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
+        },
+        "pos_asset_life_months": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pos_acquisitions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "month"
+          ],
+          "properties": {
+            "month": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12
+            }
+          }
+        },
+        "pos_handouts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "share",
+            "qty"
+          ],
+          "properties": {
+            "share": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "qty": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "minItems": 2,
+              "maxItems": 2
             }
           }
         }

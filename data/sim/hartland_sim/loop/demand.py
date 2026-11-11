@@ -852,9 +852,11 @@ class Terms:
         for promotion in world.promotions.values():
             if promotion.valid_from <= day <= promotion.valid_to + last:
                 skus += self._promotion(promotion, day, factor, index, world)
-        for loan in world.loans.values():
-            if loan.lent_on <= day and (loan.returned_on is None or day < loan.returned_on):
-                factor[self.point(loan.delivery_point_id), index[loan.line]] *= 1 + loan.uplift
+        for loan_id in world.lent.values():  # the running loans (G2 S2.3, `loop.pos`): lent from the 1st
+            loan = world.loans[loan_id]
+            if loan.lent_on <= day:
+                for line in loan.lines:
+                    factor[self.point(loan.delivery_point_id), index[line]] *= 1 + loan.uplift
         for agreement in world.agreements.values():
             if agreement.valid_from <= day <= agreement.valid_to:
                 c, i = self.customer(agreement.customer_id), index[agreement.line]

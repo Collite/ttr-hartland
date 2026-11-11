@@ -202,6 +202,8 @@ def test_setup_makes_no_state_rows_the_world_renders_them(opening: Setup) -> Non
         sum(len(c.episodes) for c in world.customers.values() if c.channel == "small_retail"),
         len(world.budgets),
         len(world.tourplans),
+        len(world.assets),
+        0,  # no display is lent before the warm-up's first month-end (G2 S2.3)
     ]
 
 

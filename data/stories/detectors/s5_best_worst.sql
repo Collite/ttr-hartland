@@ -1,9 +1,9 @@
 -- S5, the spread (design 04 §S5): gain ÷ cost of the displays in the region of the most skilled manager (PHA, 1.4)
 -- over that in the region of the least skilled one who is not the generous one (VCH, 0.5). Gain ÷ cost is 1 + s5.sql's
 -- return: positive unless a region's displays destroy margin. When VCH's do, the metric is NULL; when PHA's do, it is
--- ≤ 0: either fails. The threshold, 3, is provisional: 04 set it for the return, and gain ÷ cost reads the same spread
--- smaller. G2 S2.3 derives it from the mechanics (s5.yaml) once T2's placements and T4's give-aways exist, at T6,
--- before the first build. The block below is s5.sql's, byte for byte (a test keeps it so).
+-- ≤ 0: either fails. The threshold, 1.35, is derived from the mechanics (G2 S2.3 T6, before the first build;
+-- s5.yaml): between the null world's expected 1.21 and the story's 1.54. The block below is s5.sql's, byte for byte
+-- (a test keeps it so).
 WITH
 -- region return: begin
 -- Per region, up to the world's last order day: the gain of its displays and their cost. A loan's gain is the customer

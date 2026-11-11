@@ -13,6 +13,7 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read
 from hartland_sim.loop.demand import KEY_ACCOUNTS, Seasons
+from hartland_sim.loop.pos import Terms as PosTerms
 from hartland_sim.loop.pricing import KAM_CHANNELS, TIERED, Rules
 from hartland_sim.setup.portfolio import Sku
 from hartland_sim.world import World
@@ -23,9 +24,10 @@ Array = np.ndarray[Any, Any]
 @dataclass(frozen=True)
 class Closing:
     """The period ends' run terms: `world.yaml`, the catalogue's SKUs, S1's seasons, the pricing rules, each product
-    line's business, and each delivery point's targets — its `sales_plan` row's (`targets`: (channel, key account's
+    line's business, each delivery point's targets — its `sales_plan` row's (`targets`: (channel, key account's
     code, rep area's code)) and its budget holder's (`holders`: a rep area's code, a KAM account's; `None` for a point
-    no budget plans). The points and their customers' channels and areas never change in a run."""
+    no budget plans) — and the point of sale's terms. The points and their customers' channels and areas never change
+    in a run."""
 
     config: WorldConfig
     skus: tuple[Sku, ...]
@@ -36,6 +38,7 @@ class Closing:
     point_target: Array  # (P,) index into `targets`
     holders: tuple[str, ...]
     point_holder: Array  # (P,) index into `holders`, -1 for none
+    pos: PosTerms  # G2 S2.3's point of sale (`loop.pos`)
 
     @classmethod
     def of(
@@ -73,4 +76,5 @@ class Closing:
             np.array(point_target, dtype=np.int64),
             tuple(holders),
             np.array(point_holder, dtype=np.int64),
+            PosTerms.of(config, stories, demand.lines),
         )

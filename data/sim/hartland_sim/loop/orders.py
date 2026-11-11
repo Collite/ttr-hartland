@@ -31,7 +31,8 @@ before its orders, so an order of that day carries what was agreed; the demand l
 before `history.first_day`, though the warm-up's orders are priced and their agreements kept as on any day; what only
 the rows need — the order ids, the source draws, the agreement rows — is made on a written day only). A
 tiered customer's order is booked on its month (`book`, `World.bought`): its net revenue, its product lines — what
-the month-end reads the next month's tiers and the phases from — and by SKU into `World.purchases` (G2 S2.2's prompts).
+the month-end reads the next month's tiers and the phases from — by SKU into `World.purchases` (G2 S2.2's prompts),
+and its point's cases by line into `World.measure` (G2 S2.3's displays).
 """
 
 from __future__ import annotations
@@ -246,9 +247,10 @@ def order(
     return Order(head, lines, discounts, priced, value, status, reason)
 
 
-def book(world: World, desk: Desk, customer: Customer, day: date, made: Order) -> None:
+def book(world: World, desk: Desk, customer: Customer, day: date, made: Order, delivery_point_id: int) -> None:
     """`made` on its customer's month (module docstring): only a tiered customer's, the one with monthly
-    conditions and phase rows; and into its purchase history by SKU, which the rep prompts read (`prompts.bought`)."""
+    conditions and phase rows; into its purchase history by SKU, which the rep prompts read (`prompts.bought`); and
+    its point's paid cases by line, which a skilled area manager measures a display by (`pos.Measure`, G2 S2.3)."""
     if customer.channel not in TIERED:
         return
     rules = desk.rules
@@ -256,9 +258,13 @@ def book(world: World, desk: Desk, customer: Customer, day: date, made: Order) -
     held = world.bought.setdefault(day.replace(day=1), {}).setdefault(customer.customer_id, Bought())
     held.net_revenue = round(held.net_revenue + made.value, 2)
     held.orders += 1
+    measure = world.measure
     for line in made.priced:
         if not line.is_free_goods:
-            held.lines |= 1 << rules.lines[rules.sku_line[line.sku_id]]
+            index = rules.lines[rules.sku_line[line.sku_id]]
+            held.lines |= 1 << index
+            if measure is not None:
+                measure.book(delivery_point_id, day, index, line.cases)
 
 
 def asks(world: World, desk: Desk, day: date) -> list[Agreement | Refusal]:
@@ -322,7 +328,7 @@ def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], out
     heads, lines, discounts = [], [], []
     for event, n, draw in zip(events, counts, draws, strict=True):
         made = order(world, desk, event, n, draw, write, today)
-        book(world, desk, world.customers[event.customer_id], day, made)
+        book(world, desk, world.customers[event.customer_id], day, made, event.delivery_point_id)
         done.lines += len(made.priced)
         if made.head is not None:
             heads.append(made.head)

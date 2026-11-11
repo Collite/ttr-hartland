@@ -170,10 +170,26 @@ def test_pos_materials_and_each_region_s_asset_pool(setup: Setup) -> None:
         row_id("region", code=region): per_region for region in ("PHA", "SJC", "ZSC", "VCH", "JMV", "SMS")
     }
     assert 2500 <= len(assets) <= 3500
-    assert all(date(2019, 1, 1) <= asset["acquired_on"] < WORLD.history.warm_up_from for asset in assets)
-    conditions = Counter(asset["condition"] for asset in assets)
-    assert set(conditions) == {"new", "good", "worn"}
+    # bought in the three yearly purchases up to the warm-up's first day (field.pos_acquisitions: each 1 January), new
+    # in the last one; each region's purchases on its field-sales cost centre in asset_register
+    purchases = Counter(asset["acquired_on"] for asset in assets)
+    assert sorted(purchases) == [date(2021, 1, 1), date(2022, 1, 1), date(2023, 1, 1)]
+    assert min(purchases.values()) > 0.25 * len(assets)
+    conditions = Counter((asset["acquired_on"] == date(2023, 1, 1), asset["condition"]) for asset in assets)
+    assert set(conditions) == {(True, "new"), (False, "good"), (False, "worn")}
     assert len({asset["asset_no"] for asset in assets}) == len(assets)
+    register = _rows(setup, "asset_register")
+    assert len(register) == 18 and {r["useful_life_months"] for r in register} == {36}
+    spent: dict[tuple[int, date], float] = {}
+    for asset in assets:
+        key = (asset["region_id"], asset["acquired_on"])
+        spent[key] = spent.get(key, 0.0) + float(asset["cost"])
+    assert {(r["code"], r["acquired_on"]): float(r["cost"]) for r in register} == {
+        (f"MAJ-POS-{region}-{day.year}", day): pytest.approx(spent[(row_id("region", code=region), day)])
+        for region in ("PHA", "SJC", "ZSC", "VCH", "JMV", "SMS")
+        for day in purchases
+    }
+    assert setup.world.counters["STO-HARCAFE-PHA"] == 150
 
 
 def test_carriers_and_their_fleets(setup: Setup) -> None:

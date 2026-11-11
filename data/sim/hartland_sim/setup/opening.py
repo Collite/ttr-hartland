@@ -13,8 +13,9 @@ The warm-up year's reorder runs (G3) bring the stock to the plan's own rate, the
 day. The opening `stock_day` rows are dated the day before the warm-up.
 
 **The state tables** (`STATE_TABLES`, ⚑R201-A): `employee`, `assignment`, `customer`, `lifecycle_phase`,
-`discount_budget` and `tourplan` (G2 S2.1) hold state the loop changes — a churned customer's `until`, a closed phase
-episode or duty, a budget's `used_amount`, a re-cut tourplan's `valid_to`. They are rendered from the `World` when a
+`discount_budget`, `tourplan` (G2 S2.1), `pos_asset` and `pos_loan` (G2 S2.3) hold state the loop changes — a churned
+customer's `until`, a closed phase episode or duty, a budget's `used_amount`, a re-cut tourplan's `valid_to`, an asset
+written off, a display returned. They are rendered from the `World` when a
 build ends (`state_rows`), never appended, and a prolong renders them from the checkpoint alone. The opening is a build
 of zero days: setup makes no rows for them.
 
@@ -47,6 +48,7 @@ from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import REFERENCE_DIR
 from hartland_sim.loop.field import tourplan_row
+from hartland_sim.loop.pos import asset_row, loan_row
 from hartland_sim.setup.customers import Customers, customer_row, phases
 from hartland_sim.setup.org import assignment, employee_row
 from hartland_sim.setup.policies import budget_row
@@ -56,7 +58,16 @@ from hartland_sim.setup.rows import Tables, row, tables
 from hartland_sim.world import CHECKPOINT_FILE, META_FILE, Checkpoint, Meta, Stock, World, digest
 
 REPO_DIR = DATA_DIR.parent
-STATE_TABLES = ("employee", "assignment", "customer", "lifecycle_phase", "discount_budget", "tourplan")
+STATE_TABLES = (
+    "employee",
+    "assignment",
+    "customer",
+    "lifecycle_phase",
+    "discount_budget",
+    "tourplan",
+    "pos_asset",
+    "pos_loan",
+)
 RENDERED = ("promotion", *STATE_TABLES)  # rendered at a build's end, never appended to (module docstring)
 OWN = (CHECKPOINT_FILE, META_FILE)  # the run's own files
 
@@ -178,6 +189,8 @@ def state_rows(world_state: World, world: WorldConfig) -> Tables:
     out["lifecycle_phase"] = phases(world_state.customers.values())
     out["discount_budget"] = [budget_row(*key, budget) for key, budget in world_state.budgets.items()]
     out["tourplan"] = [tourplan_row(tourplan_id, held) for tourplan_id, held in world_state.tourplans.items()]
+    out["pos_asset"] = [asset_row(asset_id, asset) for asset_id, asset in world_state.assets.items()]
+    out["pos_loan"] = [loan_row(loan_id, loan) for loan_id, loan in world_state.loans.items()]
     return out
 
 

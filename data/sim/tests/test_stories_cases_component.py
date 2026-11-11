@@ -4,6 +4,7 @@ rest is never missed. G5 S5.2 tunes the stories' parameters on the build; these 
 
 from __future__ import annotations
 
+import csv
 import itertools
 import math
 import re
@@ -15,7 +16,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from hartland_sim.checks.stories import Build, s6
+from hartland_sim.checks.stories import Build, a6, s5, s5_best_worst, s6
 from hartland_sim.config import STORIES_DIR, StoriesConfig
 
 pytestmark = pytest.mark.component
@@ -416,6 +417,99 @@ def test_s5_counts_the_giveaways_from_the_loans_first_day(db: psycopg.Connection
     assert float(giveaway["PHA"]["cost"]) == pytest.approx(200)
 
 
+def _s5_case(lifts: dict[str, float], giveaways: dict[str, float]) -> dict[str, list[dict[str, Any]]]:
+    """Six regions, one store, customer and display each, lent 2025-03-03 to 2025-06-01: an order of 1 000 CZK a week in
+    the 8 weeks before, × 1 + the region's lift during the loan, and one give-away of the region's cost."""
+    rows: dict[str, list[dict[str, Any]]] = {
+        "okres": [{"okres_id": 1}],
+        "product_line": [{"product_line_id": 1, "code": "L1"}],
+        "product": [{"product_id": 1, "product_line_id": 1}],
+        "sku": [{"sku_id": 1, "product_id": 1}],
+        "sales_order_line_discount": [],
+    }
+    for name in ("region", "area", "store", "customer", "delivery_point", "pos_asset", "pos_loan", "visit"):
+        rows[name] = []
+    for name in ("sales_order", "sales_order_line", "pos_handout"):
+        rows[name] = []
+    lent, back = date(2025, 3, 3), date(2025, 6, 1)
+    n = itertools.count(100)
+    for r, code in enumerate(lifts, start=1):
+        rows["region"].append({"region_id": r, "code": code})
+        rows["area"].append({"area_id": r, "region_id": r})
+        rows["store"].append({"store_id": r, "area_id": r})
+        rows["customer"].append({"customer_id": r, "store_id": r})
+        rows["delivery_point"].append({"delivery_point_id": r, "customer_id": r, "store_id": r, "okres_id": 1})
+        rows["pos_asset"].append({"pos_asset_id": r, "region_id": r, "cost": 36_000.0})
+        loan = {"pos_loan_id": r, "pos_asset_id": r, "customer_id": r, "store_id": r, "lent_on": lent}
+        rows["pos_loan"].append(loan | {"returned_on": back})
+        for week in range(-8, 13):
+            day = lent + timedelta(weeks=week)
+            k = next(n)
+            gross = 1000.0 * (1 + lifts[code] if day >= lent else 1)
+            rows["sales_order"].append(
+                {"sales_order_id": k, "customer_id": r, "delivery_point_id": r, "channel": "small_retail"}
+                | {"ordered_on": day}
+            )
+            rows["sales_order_line"].append(
+                {"sales_order_line_id": k, "sales_order_id": k, "sku_id": 1, "qty_cases": 1.0}
+                | {"list_price_case": round(gross, 2), "delivery_cost_case": None, "warehouse_cost_case": None}
+            )
+        k = next(n)
+        rows["visit"].append({"visit_id": k, "store_id": r, "day": date(2025, 4, 7)})
+        rows["pos_handout"].append({"pos_handout_id": k, "visit_id": k, "cost": giveaways[code]})
+    k = next(n)
+    rows["sales_order"].append({"sales_order_id": k, "customer_id": 1, "delivery_point_id": 1} | {"ordered_on": back})
+    rows["sales_order_line"].append(
+        {"sales_order_line_id": k, "sales_order_id": k, "sku_id": 1, "qty_cases": 1.0}
+        | {"list_price_case": 1000.0, "delivery_cost_case": None, "warehouse_cost_case": None}
+    )
+    return rows
+
+
+def _csv_cell(value: Any) -> str:
+    return "" if value is None else value.isoformat() if isinstance(value, date) else str(value)
+
+
+def _s5_in_sql(
+    db: psycopg.Connection, put: Put, rows: dict[str, list[dict[str, Any]]], run: Path
+) -> tuple[Any, Any, float, float]:
+    """s5.sql's and s5_best_worst.sql's metrics on `rows`, and the pandas twins' on their CSV build."""
+    run.mkdir(parents=True, exist_ok=True)
+    headers = {"sales_order_line_discount": ["sales_order_line_id", "seq", "kind", "amount_line"]}
+    for table, found in rows.items():
+        with (run / f"{table}.csv").open("w", encoding="utf-8", newline="") as out:
+            writer = csv.DictWriter(out, fieldnames=list(found[0]) if found else headers[table], lineterminator="\n")
+            writer.writeheader()
+            for row in found:
+                writer.writerow({k: _csv_cell(v) for k, v in row.items()})
+    build, stories = Build(run), StoriesConfig.load()
+    twins = s5(build, stories), s5_best_worst(build, stories)
+    with db.transaction(force_rollback=True):
+        for table, found in rows.items():
+            for row in found:
+                put(db, table, **row)
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+        metrics = _one(db, "detectors/s5.sql"), _one(db, "detectors/s5_best_worst.sql")
+    return (*metrics, *twins)
+
+
+def test_s5_the_twins_are_the_sql_s_values(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """The returns fall with the managers' skill: rho is the SQL's on average ranks (VCH and SMS share theirs), and the
+    spread PHA's gain ÷ cost over VCH's, in SQL as in the twins."""
+    lifts = {"PHA": 0.8, "JMV": 0.6, "SJC": 0.4, "ZSC": 0.2, "VCH": 0.15, "SMS": 0.1}
+    giveaways = dict.fromkeys(lifts, 500.0)
+    rho, spread, rho_twin, spread_twin = _s5_in_sql(db, put, _s5_case(lifts, giveaways), tmp_path)
+    assert float(rho) == pytest.approx(rho_twin, rel=1e-9) and rho_twin > 0.98
+    assert float(spread) == pytest.approx(spread_twin, rel=1e-9) and spread_twin > 3
+
+
+def test_s5_a_worst_region_destroying_margin_is_null_in_both(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """VCH's displays lose margin: its gain ÷ cost is ≤ 0, so the spread is NULL — NaN in the twin."""
+    lifts = {"PHA": 0.8, "JMV": 0.6, "SJC": 0.4, "ZSC": 0.2, "VCH": -0.3, "SMS": 0.1}
+    _, spread, _, spread_twin = _s5_in_sql(db, put, _s5_case(lifts, dict.fromkeys(lifts, 500.0)), tmp_path)
+    assert spread is None and math.isnan(spread_twin)
+
+
 # ── S6: the twin's measure in SQL (G1 S1.5 T1(d)) ─────────────────────────────
 
 
@@ -508,30 +602,24 @@ def test_a14_finds_the_planted_signature_not_any_hold(db: psycopg.Connection, pu
         assert _one(db, "probes/a14.sql") == 1
 
 
-def test_a6_counts_promotion_sightings_only(db: psycopg.Connection, put: Put) -> None:
-    with db.transaction(force_rollback=True):
-        put(db, "competitor", competitor_id=1, code="KAVALIR")
-        put(db, "region", region_id=1, code="VCH")
-        put(db, "area", area_id=1, region_id=1)
-        put(db, "store", store_id=1, area_id=1)
-
-        def sightings(count: int, kind: str) -> None:
-            for k in range(count):
-                visit = next(_ids)
-                put(db, "visit", visit_id=visit, store_id=1, day=date(2025, 11, 3) + timedelta(days=3 * k))
-                put(
-                    db,
-                    "competitor_sighting",
-                    competitor_sighting_id=visit,
-                    visit_id=visit,
-                    competitor_id=1,
-                    activity_kind=kind,
-                )
-
-        sightings(12, "price_cut")
-        assert _one(db, "probes/a6.sql") == 0
-        sightings(10, "promotion")
-        assert _one(db, "probes/a6.sql") == 10
+def test_a6_is_the_twin_s_count_on_the_hand_built_arc(
+    db: psycopg.Connection, put: Put, tmp_path: Path, a6_rows: Any
+) -> None:
+    """G2 S2.3 T7: a6.sql on conftest's `a6_case` gives the twin's count — the sightings with the arc whole, none with a
+    leg missing (the facings too flat, the dip too shallow, no sighting)."""
+    a6_case, write_rows = a6_rows
+    arcs = ((5, 1.5, 0.88, 5), (5, 1.2, 0.88, 0), (5, 1.5, 0.96, 0), (0, 1.5, 0.88, 0))
+    for k, (seen, lift, dip, found) in enumerate(arcs):
+        rows = a6_case(seen, lift, dip)
+        write_rows(tmp_path / str(k), rows)
+        twin = a6(Build(tmp_path / str(k)), StoriesConfig.load())
+        with db.transaction(force_rollback=True):
+            for table, held in rows.items():
+                for row in held:
+                    put(db, table, **row)
+            db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
+            metric = _one(db, "probes/a6.sql")
+        assert (metric, twin) == (found, found)
 
 
 def test_a12_sees_more_buyers_not_only_bigger_baskets(db: psycopg.Connection, put: Put) -> None:

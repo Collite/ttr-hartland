@@ -13,4 +13,4 @@ __version__ = "0.11.0"
 # The generator's revision (⚑R221-C): what a build writes — its rows, its ids, its draws. Bump it in the PR that changes
 # any of them, so a run is extended only by a generator that writes as the one that built it (`build_id` hashes it).
 # The package version above is the release's, not this.
-REVISION = 4  # 4: G2 S2.2, the rep prompts; 3: G2 S2.1, the field (tourplans, visit plans, visits); 2: G1 S1.5
+REVISION = 5  # 5: G2 S2.3, the point of sale; 4: G2 S2.2, the rep prompts; 3: G2 S2.1, the field; 2: G1 S1.5

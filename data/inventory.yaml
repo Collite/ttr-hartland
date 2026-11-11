@@ -1292,7 +1292,7 @@ tables:
     id_key: [code]
     unique: [[code]]
     load_order: 530
-    writer: setup
+    writer: [setup, month_end]
     rows_expected: 60
     serves: []
 
@@ -1414,7 +1414,7 @@ tables:
     id_key: [pos_asset, lent_on]
     indexes: [[customer_id], [pos_asset_id]]
     load_order: 640
-    writer: [daily, month_end]
+    writer: month_end
     rows_expected: 6000
     serves: [S5, H-C]
 

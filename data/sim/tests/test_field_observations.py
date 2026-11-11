@@ -21,7 +21,7 @@ from hartland_sim.loop.field import Crew, Visit
 from hartland_sim.loop.pricing import admits
 from hartland_sim.setup.rows import Row, columns
 from hartland_sim.setup.run import Setup
-from hartland_sim.world import Checkpoint, Loan, World
+from hartland_sim.world import OPEN, Checkpoint, Loan, World
 
 WORLD = WorldConfig.load()
 STORIES = StoriesConfig.load()
@@ -155,10 +155,19 @@ def test_a_lent_display_is_a_secondary_placement(opening: Setup, crew: Crew) -> 
     demand = world.demand
     assert demand is not None
     line = demand.lines[_line(world, rows[0])].code
-    world.loans[1] = Loan(v.tourplan.delivery_point_id, line, 0.2, day)
+    t = v.tourplan
+
+    def lend(lent_on: date) -> None:
+        held = (t.customer_id, t.delivery_point_id, t.store_id)
+        world.loans[1] = Loan(1, *held, "PHA", (line,), 0.2, lent_on, OPEN, placed_by=2, approved_by=3)
+        world.lent[t.delivery_point_id] = 1
+
+    lend(day)
     again = field.observe(world, crew, day, [v])
     assert [r["secondary_placement"] for r in again] == [k == 0 for k in range(len(rows))]
-    world.loans[1] = Loan(v.tourplan.delivery_point_id, line, 0.2, DAYS[1])  # lent after the visit
+    lend(DAYS[1])  # lent after the visit
+    assert not any(r["secondary_placement"] for r in field.observe(world, crew, day, [v]))
+    del world.lent[t.delivery_point_id]  # returned
     assert not any(r["secondary_placement"] for r in field.observe(world, crew, day, [v]))
 
 

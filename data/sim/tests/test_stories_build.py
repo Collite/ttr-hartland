@@ -29,11 +29,12 @@ import pandas as pd
 import pytest
 
 from hartland_sim.checks.czech import assert_czech_all
-from hartland_sim.checks.stories import S6_FROM, Build, Verdict, check, gains, s6_reps
+from hartland_sim.checks.stories import S6_FROM, Build, Verdict, a6_arc, a6_bars, check, gains, s6_reps
 from hartland_sim.cli import main
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read as read_reference
 from hartland_sim.loop.build import Built
+from hartland_sim.loop.field import PLANTED_SIGHTINGS
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import Checkpoint
 
@@ -93,7 +94,11 @@ def test_the_null_world_fails_them(null_world: Built) -> None:
     found = _judged(check(null_world.run, StoriesConfig.load()))
     assert set(found) == set(JUDGED)
     assert not any(v.passed for v in found.values()), [(v.check, v.value) for v in found.values()]
-    assert main(["stories-check", "--csv", str(null_world.run), "--null"]) == 0  # each gives the null world's side
+    # each gives the null world's side, but S5's spread (G2 S2.3 T6 stopped: its strict xfail below)
+    verdicts = check(null_world.run, StoriesConfig.load(), null=True)
+    assert all(v.passed is not False for v in verdicts if v.check != "detectors/s5_best_worst.sql"), [
+        (v.check, v.value) for v in verdicts if v.passed is False
+    ]
 
 
 # ── S6 (G1 S1.4 T6, S1.5 T5) ──────────────────────────────────────────────────
@@ -242,10 +247,11 @@ def test_small_retail_s_own_orders_keep_the_trade_week(story_world: Built) -> No
 
 def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) -> None:
     """On 2025: ~4 prompts a planned call on a small-retail store, each with its rule, its JSON payload and a Czech
-    explanation; R-7's listing prompts the most, then the tips, then the mandatory promotions (no display before
-    S2.3); every outcome class met, the classified ones with a reason where R-11 gives one; on no visit more prompts
-    discussed than its customer's phase allows (`policies.prompt_caps`); and over 2024–2025 no prompt `not_discussed`
-    whose item went on its visit's order (review-233 R1)."""
+    explanation; R-7's listing prompts the most, then the tips, then the mandatory promotions, and the display prompts
+    since G2 S2.3 fills `World.display_uplift` and the budgets; every outcome class met, the classified ones with a
+    reason where R-11 gives one; on no visit more prompts discussed than its customer's phase allows
+    (`policies.prompt_caps`); and over 2024–2025 no prompt `not_discussed` whose item went on its visit's order
+    (review-233 R1)."""
     build = Build(story_world.run)
     prompts = build["rep_prompt"]
     prompts = prompts[prompts["generated_on"].dt.year == 2025]
@@ -255,7 +261,7 @@ def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) ->
     assert prompts["prompt_rule_id"].notna().all() and (prompts["generated_by"] == "rules").all()
     assert all(isinstance(json.loads(payload), dict) for payload in prompts["payload"])
     shares = prompts["kind"].value_counts(normalize=True)
-    assert set(shares.index) == {"unsupplied_items", "ai_tip", "mandatory_promotion"}, shares
+    assert set(shares.index) == {"unsupplied_items", "ai_tip", "mandatory_promotion", "pos_placement"}, shares
     assert shares["unsupplied_items"] > shares["ai_tip"] > shares["mandatory_promotion"], shares
     names = [r["name_cs"] for r in read_reference("product")] + [r["name_cs"] for r in read_reference("catalogue")]
     sample = prompts["explanation"].sample(1_000, random_state=0).tolist()
@@ -291,3 +297,101 @@ def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) ->
     lines = build["sales_order_line"][["sales_order_id", "sku_id"]].merge(visited, on="sales_order_id")
     lines = lines.astype({"visit_id": "int64", "sku_id": "int64"})
     assert len(offered) > 10_000 and offered.merge(lines, on=["visit_id", "sku_id"]).empty
+
+
+# ── the point of sale (G2 S2.3) ───────────────────────────────────────────────
+
+
+def _s5(world: Built, null: bool = False) -> dict[str, Verdict]:
+    return {v.check: v for v in check(world.run, StoriesConfig.load(), null=null) if v.story == "S5"}
+
+
+def test_s5_s_rank_passes_on_the_story_world_and_not_on_the_null(story_world: Built, null_world: Built) -> None:
+    """T6: s5.sql's Spearman of the regions' returns against their managers' skill, ≥ 0.8 on the story world (0.90 on
+    2024–2025), below it on the null world (0.78)."""
+    found, null = _s5(story_world)["detectors/s5.sql"], _s5(null_world, null=True)["detectors/s5.sql"]
+    assert found.passed and null.passed, (found.value, null.value)
+
+
+S5_SPREAD = (
+    "G2 S2.3 T6, stopped for the planner: s5_best_worst.sql's PHA ÷ VCH gain ÷ cost reads 1.27 on the story world"
+    " and 1.53 on the null one against the 1.35 derived on paper (1.54 and 1.21) — the display's lift is 11–14 % of"
+    " the lent stores' margin and moves little with skill, while s5.sql's before/during gain carries each store's own"
+    " drift (4–10 % of it by region); the PR's Found line"
+)
+
+
+@pytest.mark.xfail(strict=True, reason=S5_SPREAD)
+def test_s5_s_spread_passes_on_the_story_world(story_world: Built) -> None:
+    found = _s5(story_world)["detectors/s5_best_worst.sql"]
+    assert found.passed, found.value
+
+
+@pytest.mark.xfail(strict=True, reason=S5_SPREAD)
+def test_s5_s_spread_fails_on_the_null_world(null_world: Built) -> None:
+    found = _s5(null_world, null=True)["detectors/s5_best_worst.sql"]
+    assert found.passed, found.value
+
+
+def test_the_loans_are_consistent_with_their_assets(story_world: Built) -> None:
+    """S2.3's DONE: an asset is out on one loan at a time, lent after it was bought and before it was written off; one
+    written off on a return came back damaged or past its life; each region lends and holds its pools; a loan is
+    placed by the store's rep and approved by its region's manager."""
+    build = Build(story_world.run)
+    assets, loans = build["pos_asset"], build["pos_loan"]
+    joined = loans.merge(assets, on="pos_asset_id").sort_values(["pos_asset_id", "lent_on"])
+    assert len(loans) > 2000 and joined["region_id"].nunique() == 6
+    returned = joined["returned_on"].fillna(pd.Timestamp("2099-12-31"))
+    after = joined.groupby("pos_asset_id")["lent_on"].shift(-1)
+    assert (after.isna() | (after >= returned)).all()
+    assert (joined["lent_on"] >= joined["acquired_on"]).all()
+    assert (joined["written_off_on"].isna() | (joined["written_off_on"] >= returned)).all()
+    off = joined[joined["written_off_on"].notna() & (joined["written_off_on"] == joined["returned_on"])]
+    life = off["acquired_on"] + pd.DateOffset(months=WorldConfig.load().field.pos_asset_life_months)
+    assert ((off["condition_on_return"] == "damaged") | (life <= off["written_off_on"])).all()
+    held = assets[assets["written_off_on"].isna()].groupby("region_id").size()
+    pools = sum(m["assets_per_region"] for m in read_reference("pos_material"))
+    assert (held <= pools).all() and (held > 0.8 * pools).all()
+    managers = build["region"].set_index("region_id")["area_manager_employee_id"]
+    assert (joined["approved_by_employee_id"] == joined["region_id"].map(managers)).all()
+    reps = set(build["assignment"].query("kind == 'rep_area'")["employee_id"])
+    assert joined["placed_by_employee_id"].isin(reps).all()
+    register = build["asset_register"]
+    # the purchases of 2021–2026: setup's three, then each January's, 2026's at 2025-12-31's month-end, dated its day
+    assert set(register["code"].str[:8]) == {"MAJ-POS-"} and len(register) == 6 * 6
+
+
+def test_the_give_aways_follow_the_managers(story_world: Built) -> None:
+    """T4: at 35 % of the recorded visits that dealt with someone (SMS's generous manager × 1.5), 30 % fewer in PHA and
+    JMV (skilled); one item each, its cost `unit_cost × qty`."""
+    build = Build(story_world.run)
+    visits = build["visit"]
+    visits = visits[visits["recorded"].astype(bool) & visits["outcome"].isin(["order", "no_order"])]
+    regions = (
+        build["store"][["store_id", "area_id"]]
+        .merge(build["area"][["area_id", "region_id"]], on="area_id")
+        .merge(build["region"][["region_id", "code"]], on="region_id")
+    )
+    visits = visits.merge(regions, on="store_id")
+    given = build["pos_handout"].merge(build["pos_material"][["pos_material_id", "unit_cost"]], on="pos_material_id")
+    assert (given["cost"] == (given["unit_cost"] * given["qty"]).round(2)).all() and given["qty"].between(1, 5).all()
+    assert given["visit_id"].is_unique and given["visit_id"].isin(visits["visit_id"]).all()
+    share = visits["visit_id"].isin(given["visit_id"]).groupby(visits["code"]).mean()
+    base = WorldConfig.load().field.pos_handouts.share
+    assert share[["SJC", "ZSC", "VCH"]].between(base - 0.03, base + 0.03).all(), share
+    assert abs(share["SMS"] - 1.5 * base) < 0.04 and share[["PHA", "JMV"]].between(0.6 * base, 0.8 * base).all(), share
+
+
+def test_a6_s_arc_end_to_end(story_world: Built) -> None:
+    """T7: in East Bohemia Kavalír's promotion seen from week 45, the competitors' facings beside Gold up over weeks
+    45–50, Gold's cases down in weeks 46–50 against the same customers' 8 weeks before, the season corrected — each
+    past a6.sql's bar — and the planted hand-written notes in the visits' notes verbatim."""
+    stories = StoriesConfig.load()
+    build = Build(story_world.run)
+    seen, lift, dip = a6_arc(build, stories)
+    rose, fell = a6_bars(stories)
+    assert seen >= 10 and lift >= rose and dip <= fell, (seen, lift, dip)
+    sightings = build["competitor_sighting"]
+    planted = sightings[sightings["description"].isin(PLANTED_SIGHTINGS)]
+    notes = planted.merge(build["visit"][["visit_id", "note"]], on="visit_id").dropna(subset=["note"])
+    assert len(notes) >= 10 and all(d in n for d, n in zip(notes["description"], notes["note"], strict=True))

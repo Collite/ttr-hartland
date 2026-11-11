@@ -431,6 +431,23 @@ class Sightings:
 
 
 @dataclass(frozen=True)
+class PosLoans:
+    months: tuple[int, int]  # a loan's whole months, between
+    condition_on_return: Mapping[str, float]  # good · worn · damaged → its share
+
+
+@dataclass(frozen=True)
+class PosAcquisitions:
+    month: int  # on its first day the regions buy their pools back
+
+
+@dataclass(frozen=True)
+class PosHandouts:
+    share: float  # of the recorded visits that dealt with someone
+    qty: tuple[int, int]  # pieces, between
+
+
+@dataclass(frozen=True)
 class Field:
     cycle_weeks: Mapping[str, int]  # store class (or "potential") → weeks
     adherence: float
@@ -447,6 +464,12 @@ class Field:
     shelf_cycles: float
     promo_compliance: float
     sightings: Sightings
+    pos_budget: Mapping[str, float]  # region → CZK of displays its manager lends a month (G2 S2.3)
+    pos_displays: Mapping[str, str]  # an asset material lent to stores → the brand whose lines it carries, in order
+    pos_loans: PosLoans
+    pos_asset_life_months: int
+    pos_acquisitions: PosAcquisitions
+    pos_handouts: PosHandouts
 
 
 @dataclass(frozen=True)
