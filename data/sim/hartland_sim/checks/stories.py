@@ -697,9 +697,10 @@ def a6_arc(build: Build, stories: StoriesConfig) -> tuple[float, float, float]:
     line = build["product_line"].loc[build["product_line"]["code"] == held["line"], "product_line_id"]
     observed = observed[observed["product_line_id"].isin(line)][["visit_id", "competitor_facings"]]
     observed = observed.merge(visits[visits["code"] == held["region"]], on="visit_id")
-    during = observed.loc[observed["day"].between(first, last), "competitor_facings"].mean()
-    before = observed.loc[observed["day"].between(first - week8, first - pd.Timedelta(days=1)), "competitor_facings"]
-    lift = float(during / before.mean()) if before.mean() else math.nan
+    facings = observed["competitor_facings"].astype("float64")  # an empty window's mean is NaN, not NA
+    during = facings[observed["day"].between(first, last)].mean()
+    before = facings[observed["day"].between(first - week8, first - pd.Timedelta(days=1))].mean()
+    lift = float(during / before) if before > 0 else math.nan
     lines = _lines(build)
     lines = lines[(lines["line"] == held["line"]) & lines["ordered_on"].between(start - week8, last)]
     orders = build["sales_order"][["sales_order_id", "customer_id"]]

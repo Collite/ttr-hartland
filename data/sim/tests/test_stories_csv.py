@@ -560,6 +560,17 @@ def test_a6_s_arc_needs_the_facings_up_and_the_dip(tmp_path: Path, a6_rows: Any)
         assert a6(Build(tmp_path / str(k)), STORIES) == found
 
 
+def test_a6_on_a_build_before_its_weeks_finds_nothing(tmp_path: Path, a6_rows: Any) -> None:
+    """A build that ends before A-6's weeks (CI's one quarter) has no observation or sighting in them: the probe is
+    0, not an error."""
+    a6_case, write_rows = a6_rows
+    rows = a6_case()
+    rows["visit_observation"], rows["competitor_sighting"] = [], []
+    write_rows(tmp_path, rows)
+    seen, lift, _ = a6_arc(Build(tmp_path), STORIES)
+    assert seen == 0 and math.isnan(lift) and a6(Build(tmp_path), STORIES) == 0
+
+
 def test_a_probe_s_expectation_and_the_null_world_s_opposite(tmp_path: Path) -> None:
     assert (expected(">= 3"), expected("= 0"), expected("rows")) == ((">=", 3.0), ("between", 0.0), (">", 0.0))
     _plans(tmp_path, {1: 5, 2: 6, 3: 6, 4: 10})  # three reps skip
