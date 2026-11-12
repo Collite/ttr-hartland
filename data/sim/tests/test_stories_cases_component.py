@@ -9,14 +9,16 @@ import itertools
 import math
 import re
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import psycopg
 import pytest
 
-from hartland_sim.checks.stories import Build, a6, s5, s5_best_worst, s6
+from hartland_sim.checks.stories import Build, a6, s5, s5_best_worst, s5_loans, s5_regions, s6
 from hartland_sim.config import STORIES_DIR, StoriesConfig
 
 pytestmark = pytest.mark.component
@@ -339,7 +341,7 @@ def test_s3_conversion_counts_the_market_only(db: psycopg.Connection, put: Put) 
     assert float(rates[1]["conversion"]) == pytest.approx(0.5)
 
 
-# ── S5: the gain of a display ────────────────────────────────────────────────
+# ── S5: the gain of a display (NH-D17: against the untreated stores of its cell) ──
 
 
 def _pos(db: psycopg.Connection, put: Put) -> None:
@@ -349,34 +351,9 @@ def _pos(db: psycopg.Connection, put: Put) -> None:
     put(db, "pos_asset", pos_asset_id=1, region_id=1, cost=36_000)
 
 
-def test_s5_a_display_that_wins_a_new_store_gains(db: psycopg.Connection, put: Put) -> None:
-    """No orders in the 8 weeks before and ten during: the gain is all ten. A loan without any order keeps its cost."""
-    with db.transaction(force_rollback=True):
-        _pos(db, put)
-        for customer in (1, 2):
-            put(db, "store", store_id=customer)
-            put(db, "customer", customer_id=customer, store_id=customer)
-            put(
-                db,
-                "pos_loan",
-                pos_loan_id=customer,
-                pos_asset_id=1,
-                customer_id=customer,
-                store_id=customer,
-                lent_on=date(2025, 3, 3),
-                returned_on=date(2025, 6, 1),
-            )
-        for week in range(10):
-            _sale(db, put, customer=1, store=1, day=date(2025, 3, 10) + timedelta(weeks=week), gross=1000)
-        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
-        margin = _cte(db, "detectors/s5.sql", "margin")
-    assert float(margin[1]["gain"]) == pytest.approx(10_000)
-    assert margin[1]["cost"] > 0
-    assert (margin[2]["gain"], margin[2]["cost"] > 0) == (0, True)
-
-
 def test_s5_a_display_at_a_chain_store_reads_that_store(db: psycopg.Connection, put: Put) -> None:
-    """A loan at one store of a chain customer reads that store's sales, not the chain's."""
+    """A loan at one store of a chain customer reads that store's sales, not the chain's; with no store of its cell to
+    compare, its gain is not known — S2.3's raw gain still reads the store."""
     with db.transaction(force_rollback=True):
         _pos(db, put)
         put(db, "customer", customer_id=1, channel="big_retail")
@@ -387,7 +364,7 @@ def test_s5_a_display_at_a_chain_store_reads_that_store(db: psycopg.Connection, 
         _sale(db, put, customer=1, store=2, day=date(2025, 4, 1), gross=5000, channel="big_retail")
         db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
         margin = _cte(db, "detectors/s5.sql", "margin")
-    assert float(margin[1]["gain"]) == pytest.approx(1000)
+    assert float(margin[1]["raw_gain"]) == pytest.approx(1000) and margin[1]["gain"] is None
 
 
 def test_s5_a_loan_outside_the_history_is_ignored(db: psycopg.Connection, put: Put) -> None:
@@ -413,101 +390,269 @@ def test_s5_counts_the_giveaways_from_the_loans_first_day(db: psycopg.Connection
             put(db, "visit", visit_id=k, store_id=1, day=day)
             put(db, "pos_handout", pos_handout_id=k, visit_id=k, cost=100 * (k + 1))
         _last_order_day(db, put, date(2025, 5, 31))
+        db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")  # the block's plan reads it, whichever CTE is asked
         giveaway = _cte(db, "detectors/s5.sql", "giveaway")
     assert float(giveaway["PHA"]["cost"]) == pytest.approx(200)
 
 
-def _s5_case(lifts: dict[str, float], giveaways: dict[str, float]) -> dict[str, list[dict[str, Any]]]:
-    """Six regions, one store, customer and display each, lent 2025-03-03 to 2025-06-01: an order of 1 000 CZK a week in
-    the 8 weeks before, × 1 + the region's lift during the loan, and one give-away of the region's cost."""
-    rows: dict[str, list[dict[str, Any]]] = {
-        "okres": [{"okres_id": 1}],
-        "product_line": [{"product_line_id": 1, "code": "L1"}],
-        "product": [{"product_id": 1, "product_line_id": 1}],
-        "sku": [{"sku_id": 1, "product_id": 1}],
-        "sales_order_line_discount": [],
-    }
-    for name in ("region", "area", "store", "customer", "delivery_point", "pos_asset", "pos_loan", "visit"):
-        rows[name] = []
-    for name in ("sales_order", "sales_order_line", "pos_handout"):
-        rows[name] = []
-    lent, back = date(2025, 3, 3), date(2025, 6, 1)
-    n = itertools.count(100)
-    for r, code in enumerate(lifts, start=1):
-        rows["region"].append({"region_id": r, "code": code})
-        rows["area"].append({"area_id": r, "region_id": r})
-        rows["store"].append({"store_id": r, "area_id": r})
-        rows["customer"].append({"customer_id": r, "store_id": r})
-        rows["delivery_point"].append({"delivery_point_id": r, "customer_id": r, "store_id": r, "okres_id": 1})
-        rows["pos_asset"].append({"pos_asset_id": r, "region_id": r, "cost": 36_000.0})
-        loan = {"pos_loan_id": r, "pos_asset_id": r, "customer_id": r, "store_id": r, "lent_on": lent}
-        rows["pos_loan"].append(loan | {"returned_on": back})
+CELL = {"store_class": "convenience", "street_type": "high_street", "size_class": "S"}
+LENT, BACK = date(2025, 3, 3), date(2025, 6, 1)  # 91 days; an order a week from 8 weeks before: 8 before, 13 during
+
+
+@dataclass
+class Case:
+    """Six regions (or those of `lifts`), each with one display lent `LENT` to `BACK` at its store and `controls` stores
+    of the same cell: every store orders once a week from 8 weeks before, 1 000 CZK before; during the loan the
+    controls' orders × `drift`, the display's store's × `drift` × 1 + the region's lift; and one give-away of the
+    region's cost. `rows` are the tables; `loan`, `store` add to them."""
+
+    lifts: dict[str, float]
+    giveaways: dict[str, float]
+    drift: float = 1.0
+    controls: int = 5
+    before: float = 1000.0  # the controls' order before
+    rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.rows = {name: [] for name in TABLES}
+        self.rows |= {
+            "okres": [{"okres_id": 1}],
+            "product_line": [{"product_line_id": 1, "code": "L1"}],
+            "product": [{"product_id": 1, "product_line_id": 1}],
+            "sku": [{"sku_id": 1, "product_id": 1}],
+        }
+        for r, code in enumerate(self.lifts, start=1):
+            self.rows["region"].append({"region_id": r, "code": code})
+            self.rows["area"].append({"area_id": r, "region_id": r})
+            self.rows["pos_asset"].append({"pos_asset_id": r, "region_id": r, "cost": 36_000.0})
+            self.store(100 * r, r, 1000.0, 1000.0 * self.drift * (1 + self.lifts[code]))
+            for c in range(1, self.controls + 1):
+                self.store(100 * r + c, r, self.before, self.before * self.drift)
+            self.loan(r, r, 100 * r)
+            k = next(_ids)
+            self.rows["visit"].append({"visit_id": k, "store_id": 100 * r, "day": date(2025, 4, 7)})
+            self.rows["pos_handout"].append({"pos_handout_id": k, "visit_id": k, "cost": self.giveaways[code]})
+        self.rows["delivery_point"].append({"delivery_point_id": 999, "customer_id": 999, "okres_id": 1})
+        self.order(999, BACK, 1000.0)  # the world's last order day, at no store
+
+    def store(self, store: int, area: int, before: float, during: float, **cell: str) -> None:
+        """A store of `area`, its customer and delivery point (all of id `store`), ordering weekly `before`, then
+        `during` from `LENT`."""
+        self.rows["store"].append({"store_id": store, "area_id": area} | CELL | cell)
+        self.rows["customer"].append({"customer_id": store, "store_id": store, "channel": "small_retail"})
+        self.rows["delivery_point"].append(
+            {"delivery_point_id": store, "customer_id": store, "store_id": store, "okres_id": 1}
+        )
         for week in range(-8, 13):
-            day = lent + timedelta(weeks=week)
-            k = next(n)
-            gross = 1000.0 * (1 + lifts[code] if day >= lent else 1)
-            rows["sales_order"].append(
-                {"sales_order_id": k, "customer_id": r, "delivery_point_id": r, "channel": "small_retail"}
-                | {"ordered_on": day}
-            )
-            rows["sales_order_line"].append(
-                {"sales_order_line_id": k, "sales_order_id": k, "sku_id": 1, "qty_cases": 1.0}
-                | {"list_price_case": round(gross, 2), "delivery_cost_case": None, "warehouse_cost_case": None}
-            )
-        k = next(n)
-        rows["visit"].append({"visit_id": k, "store_id": r, "day": date(2025, 4, 7)})
-        rows["pos_handout"].append({"pos_handout_id": k, "visit_id": k, "cost": giveaways[code]})
-    k = next(n)
-    rows["sales_order"].append({"sales_order_id": k, "customer_id": 1, "delivery_point_id": 1} | {"ordered_on": back})
-    rows["sales_order_line"].append(
-        {"sales_order_line_id": k, "sales_order_id": k, "sku_id": 1, "qty_cases": 1.0}
-        | {"list_price_case": 1000.0, "delivery_cost_case": None, "warehouse_cost_case": None}
-    )
-    return rows
+            day = LENT + timedelta(weeks=week)
+            self.order(store, day, during if day >= LENT else before)
+
+    def order(self, point: int, day: date, gross: float) -> None:
+        """One order of one case at the delivery point `point` (its customer's id is the point's)."""
+        k = next(_ids)
+        self.rows["sales_order"].append(
+            {"sales_order_id": k, "customer_id": point, "delivery_point_id": point, "channel": "small_retail"}
+            | {"ordered_on": day}
+        )
+        self.rows["sales_order_line"].append(
+            {"sales_order_line_id": k, "sales_order_id": k, "sku_id": 1, "qty_cases": 1.0}
+            | {"list_price_case": round(gross, 2), "delivery_cost_case": None, "warehouse_cost_case": None}
+        )
+
+    def loan(self, loan: int, asset: int, store: int, lent: date = LENT, back: date | None = BACK) -> None:
+        self.rows["pos_loan"].append(
+            {"pos_loan_id": loan, "pos_asset_id": asset, "customer_id": store, "store_id": store}
+            | {"lent_on": lent, "returned_on": back}
+        )
+
+
+TABLES = (
+    "region",
+    "area",
+    "store",
+    "customer",
+    "delivery_point",
+    "pos_asset",
+    "pos_loan",
+    "visit",
+    "pos_handout",
+    "sales_order",
+    "sales_order_line",
+    "sales_order_line_discount",
+)
+
+
+@dataclass(frozen=True)
+class Both:
+    """S5 on a `Case`, in SQL and in the twins: the loans (`margin`, by loan), the regions (`region_return`, by region)
+    and the two metrics."""
+
+    margin: dict[Any, dict[str, Any]]
+    regions: dict[Any, dict[str, Any]]
+    rho: Any
+    spread: Any
+    loans: pd.DataFrame
+    found: pd.DataFrame
+    rho_twin: float
+    spread_twin: float
 
 
 def _csv_cell(value: Any) -> str:
     return "" if value is None else value.isoformat() if isinstance(value, date) else str(value)
 
 
-def _s5_in_sql(
-    db: psycopg.Connection, put: Put, rows: dict[str, list[dict[str, Any]]], run: Path
-) -> tuple[Any, Any, float, float]:
-    """s5.sql's and s5_best_worst.sql's metrics on `rows`, and the pandas twins' on their CSV build."""
+def _s5_both(db: psycopg.Connection, put: Put, case: Case, run: Path) -> Both:
     run.mkdir(parents=True, exist_ok=True)
     headers = {"sales_order_line_discount": ["sales_order_line_id", "seq", "kind", "amount_line"]}
-    for table, found in rows.items():
+    for table, found in case.rows.items():
         with (run / f"{table}.csv").open("w", encoding="utf-8", newline="") as out:
-            writer = csv.DictWriter(out, fieldnames=list(found[0]) if found else headers[table], lineterminator="\n")
+            columns = list(dict.fromkeys(k for row in found for k in row)) if found else headers[table]
+            writer = csv.DictWriter(out, fieldnames=columns, lineterminator="\n")
             writer.writeheader()
             for row in found:
-                writer.writerow({k: _csv_cell(v) for k, v in row.items()})
+                writer.writerow({k: _csv_cell(row.get(k)) for k in columns})
     build, stories = Build(run), StoriesConfig.load()
-    twins = s5(build, stories), s5_best_worst(build, stories)
+    twins = s5_loans(build), s5_regions(build).set_index("region"), s5(build, stories), s5_best_worst(build, stories)
     with db.transaction(force_rollback=True):
-        for table, found in rows.items():
+        for table, found in case.rows.items():
             for row in found:
                 put(db, table, **row)
         db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
-        metrics = _one(db, "detectors/s5.sql"), _one(db, "detectors/s5_best_worst.sql")
-    return (*metrics, *twins)
+        margin = _cte(db, "detectors/s5.sql", "margin")
+        regions = _cte(db, "detectors/s5.sql", "region_return")
+        rho, spread = _one(db, "detectors/s5.sql"), _one(db, "detectors/s5_best_worst.sql")
+    return Both(margin, regions, rho, spread, *twins)
+
+
+def _gains(both: Both) -> tuple[dict[int, float | None], dict[int, float | None]]:
+    """Each loan's gain in SQL and in the twin, None where it is not known."""
+    sql_gains = {k: None if v["gain"] is None else float(v["gain"]) for k, v in both.margin.items()}
+    twin = {int(str(k)): None if math.isnan(v) else float(v) for k, v in both.loans["gain"].items()}
+    return sql_gains, twin
+
+
+SIX = {"PHA": 0.8, "JMV": 0.6, "SJC": 0.4, "ZSC": 0.2, "VCH": 0.15, "SMS": 0.1}
+
+
+def test_s5_a_common_drift_alone_gains_nothing(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """T1(a): every store sells 20 % more during the loan and no display lifts it: S2.3's raw gain is the drift,
+    13 000 × 0.2 at each display; the controls' q is 1.2, so the gain is 0 — in SQL and in the twin."""
+    both = _s5_both(db, put, Case(dict.fromkeys(SIX, 0.0), dict.fromkeys(SIX, 500.0), drift=1.2), tmp_path)
+    sql_gains, twin = _gains(both)
+    assert sql_gains == pytest.approx(dict.fromkeys(range(1, 7), 0.0), abs=1e-6)
+    assert twin == pytest.approx(sql_gains, abs=1e-6)
+    assert [float(both.margin[k]["raw_gain"]) for k in range(1, 7)] == pytest.approx([2600.0] * 6)
+
+
+def test_s5_a_known_lift_survives_a_common_drift(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """T1(b): with the same drift, each display's store sells × 1 + its lift on top: the gain is the lift on the drifted
+    sales, 13 000 × 1.2 × lift."""
+    both = _s5_both(db, put, Case(SIX, dict.fromkeys(SIX, 500.0), drift=1.2), tmp_path)
+    sql_gains, twin = _gains(both)
+    assert sql_gains == pytest.approx({r: 13_000 * 1.2 * lift for r, lift in enumerate(SIX.values(), 1)})
+    assert twin == pytest.approx(sql_gains, rel=1e-9)
+    assert {float(r["coverage"]) for r in both.regions.values()} == {1.0}
+
+
+def test_s5_a_loan_without_five_controls_is_not_known(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """T1(c): four stores of its cell are not enough: no loan's gain is known, every region's coverage is 0 and both
+    metrics are NULL (NaN in the twins), the costs still counted."""
+    both = _s5_both(db, put, Case(SIX, dict.fromkeys(SIX, 500.0), controls=4), tmp_path)
+    sql_gains, twin = _gains(both)
+    assert set(sql_gains.values()) == {None} and set(twin.values()) == {None}
+    assert {float(r["coverage"]) for r in both.regions.values()} == {0.0}
+    assert all(float(r["cost"]) > 500 for r in both.regions.values())
+    assert (both.rho, both.spread) == (None, None)
+    assert math.isnan(both.rho_twin) and math.isnan(both.spread_twin)
+
+
+def test_s5_controls_that_sold_nothing_before_are_no_base(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """T1(c): five controls whose margin before is 0 give no q: the gain is not known."""
+    both = _s5_both(db, put, Case(SIX, dict.fromkeys(SIX, 500.0), before=0.0), tmp_path)
+    sql_gains, twin = _gains(both)
+    assert set(sql_gains.values()) == {None} and set(twin.values()) == {None}
+
+
+def test_s5_a_store_with_a_display_out_is_no_control(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """A control with a display of its own out in the 56 days before PHA's loan is left out (four remain: not known);
+    one whose display came back the day before those 56 days stays a control (JMV keeps five)."""
+    case = Case(SIX, dict.fromkeys(SIX, 500.0))
+    case.rows["pos_asset"].append({"pos_asset_id": 7, "region_id": 1, "cost": 36_000.0})
+    case.loan(7, 7, 101, lent=LENT - timedelta(days=120), back=LENT - timedelta(days=56))
+    case.loan(8, 7, 201, lent=LENT - timedelta(days=120), back=LENT - timedelta(days=57))
+    both = _s5_both(db, put, case, tmp_path)
+    sql_gains, twin = _gains(both)
+    assert (sql_gains[1], twin[1]) == (None, None)
+    assert sql_gains[2] == pytest.approx(13_000 * 0.6) and twin[2] == pytest.approx(13_000 * 0.6)
+
+
+def test_s5_a_new_store_gains_all_it_buys_and_is_reported_apart(
+    db: psycopg.Connection, put: Put, tmp_path: Path
+) -> None:
+    """A display at a store that bought nothing in the 56 days before: its gain is all it buys during (13 000), kept in
+    the region's gain and reported apart (`new_store_gain`)."""
+    case = Case(SIX, dict.fromkeys(SIX, 500.0))
+    case.rows["pos_asset"].append({"pos_asset_id": 7, "region_id": 1, "cost": 36_000.0})
+    case.store(150, 1, 0.0, 1000.0)
+    case.loan(7, 7, 150)
+    both = _s5_both(db, put, case, tmp_path)
+    sql_gains, twin = _gains(both)
+    assert sql_gains[7] == pytest.approx(13_000) and twin[7] == pytest.approx(13_000)
+    assert float(both.regions["PHA"]["new_store_gain"]) == pytest.approx(13_000)
+    assert both.found.loc["PHA", "new_store_gain"] == pytest.approx(13_000)
+    assert float(both.regions["PHA"]["gain"]) == pytest.approx(13_000 * 1.8)
+
+
+@pytest.mark.parametrize(("other_cost", "known"), [(3_000.0, True), (4_800.0, False)])
+def test_s5_under_nine_tenths_of_a_region_s_loan_cost_known_both_metrics_are_null(
+    db: psycopg.Connection, put: Put, tmp_path: Path, other_cost: float, known: bool
+) -> None:
+    """A second display in PHA, at a store of another cell (no controls): at 3 000 of PHA's 39 000 of asset cost,
+    0.92 is known and the metrics stand; at 4 800 of 40 800 (0.88) both are NULL, in SQL and in the twins."""
+    case = Case(SIX, dict.fromkeys(SIX, 500.0))
+    case.rows["pos_asset"].append({"pos_asset_id": 7, "region_id": 1, "cost": other_cost})
+    case.store(150, 1, 1000.0, 1000.0, size_class="L")
+    case.loan(7, 7, 150)
+    both = _s5_both(db, put, case, tmp_path)
+    coverage = float(both.regions["PHA"]["coverage"])
+    assert coverage == pytest.approx(both.found.loc["PHA", "coverage"]) and (coverage >= 0.9) == known
+    assert (both.rho is not None, both.spread is not None) == (known, known)
+    assert (math.isnan(both.rho_twin), math.isnan(both.spread_twin)) == (not known, not known)
 
 
 def test_s5_the_twins_are_the_sql_s_values(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
-    """The returns fall with the managers' skill: rho is the SQL's on average ranks (VCH and SMS share theirs), and the
-    spread PHA's gain ÷ cost over VCH's, in SQL as in the twins."""
-    lifts = {"PHA": 0.8, "JMV": 0.6, "SJC": 0.4, "ZSC": 0.2, "VCH": 0.15, "SMS": 0.1}
-    giveaways = dict.fromkeys(lifts, 500.0)
-    rho, spread, rho_twin, spread_twin = _s5_in_sql(db, put, _s5_case(lifts, giveaways), tmp_path)
-    assert float(rho) == pytest.approx(rho_twin, rel=1e-9) and rho_twin > 0.98
-    assert float(spread) == pytest.approx(spread_twin, rel=1e-9) and spread_twin > 3
+    """T1(d): the returns fall with the managers' skill: rho is the SQL's on average ranks (VCH and SMS share theirs),
+    and the spread PHA's gain ÷ cost over VCH's, in SQL as in the twins; the regions' columns agree."""
+    both = _s5_both(db, put, Case(SIX, dict.fromkeys(SIX, 500.0), drift=1.1), tmp_path)
+    assert float(both.rho) == pytest.approx(both.rho_twin, rel=1e-9) and both.rho_twin > 0.98
+    assert float(both.spread) == pytest.approx(both.spread_twin, rel=1e-9) and both.spread_twin > 3
+    for region, row in both.regions.items():
+        for column in ("gain", "cost", "raw_gain", "new_store_gain", "coverage", "loans", "unknown", "new_stores"):
+            assert float(row[column]) == pytest.approx(both.found.loc[region, column], rel=1e-9), (region, column)
+
+
+def test_s5_tied_returns_share_their_rank_in_both(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """T1(d): ZSC and SJC lift alike and pay alike, so their returns tie and share a rank, as VCH's and SMS's skills do:
+    the SQL's rho and the twin's are one number."""
+    lifts = SIX | {"ZSC": 0.4}
+    both = _s5_both(db, put, Case(lifts, dict.fromkeys(lifts, 500.0)), tmp_path)
+    assert float(both.rho) == pytest.approx(both.rho_twin, rel=1e-9) and 0.8 < both.rho_twin < 1
 
 
 def test_s5_a_worst_region_destroying_margin_is_null_in_both(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
-    """VCH's displays lose margin: its gain ÷ cost is ≤ 0, so the spread is NULL — NaN in the twin."""
-    lifts = {"PHA": 0.8, "JMV": 0.6, "SJC": 0.4, "ZSC": 0.2, "VCH": -0.3, "SMS": 0.1}
-    _, spread, _, spread_twin = _s5_in_sql(db, put, _s5_case(lifts, dict.fromkeys(lifts, 500.0)), tmp_path)
-    assert spread is None and math.isnan(spread_twin)
+    """T1(e): VCH's displays lose margin: its gain ÷ cost is ≤ 0, so the spread is NULL — NaN in the twin."""
+    lifts = SIX | {"VCH": -0.3}
+    both = _s5_both(db, put, Case(lifts, dict.fromkeys(lifts, 500.0)), tmp_path)
+    assert both.spread is None and math.isnan(both.spread_twin)
+
+
+def test_s5_a_region_without_cost_has_no_spread(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
+    """T1(e): VCH's display cost nothing and it handed out nothing: gain ÷ cost has no denominator — NULL, NaN."""
+    case = Case(SIX, dict.fromkeys(SIX, 500.0) | {"VCH": 0.0})
+    (vch,) = [a for a in case.rows["pos_asset"] if a["region_id"] == 5]
+    vch["cost"] = 0.0
+    both = _s5_both(db, put, case, tmp_path)
+    assert both.spread is None and math.isnan(both.spread_twin)
 
 
 # ── S6: the twin's measure in SQL (G1 S1.5 T1(d)) ─────────────────────────────

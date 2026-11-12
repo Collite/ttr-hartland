@@ -15,7 +15,7 @@ import yaml
 
 from hartland_sim.checks import s5_expected
 from hartland_sim.checks.czech import assert_czech_all
-from hartland_sim.checks.stories import a6_bars
+from hartland_sim.checks.stories import S5_CELL, S5_CONTROLS, S5_COVERAGE, a6_bars
 from hartland_sim.cli import main
 from hartland_sim.config import OPPOSITE, STORIES_DIR, ConfigError, InventoryConfig, StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read
@@ -148,7 +148,7 @@ def test_s5_names_the_managers_skills(stories: StoriesConfig) -> None:
     best = max(skill, key=skill.__getitem__)
     worst = min((region for region in skill if region not in generous), key=skill.__getitem__)
     assert re.search(
-        rf"FILTER \(WHERE region = '{best}'\)\n    / NULLIF\(GREATEST\(MAX\(gain / NULLIF\(cost, 0\)\)"
+        rf"FILTER \(WHERE region = '{best}'\)\n\s+/ NULLIF\(GREATEST\(MAX\(gain / NULLIF\(cost, 0\)\)"
         rf" FILTER \(WHERE region = '{worst}'\)",
         _sql("detectors/s5_best_worst.sql"),
     )
@@ -190,6 +190,17 @@ def test_s5s_two_files_judge_one_return() -> None:
 
     assert block(_sql("detectors/s5.sql")) == block(_sql("detectors/s5_best_worst.sql"))
     assert "giveaway AS (" in block(_sql("detectors/s5.sql"))
+
+
+def test_s5s_controls_are_the_twin_s() -> None:
+    """NH-D17's cohort in the SQL is the twin's: the cell's columns (`S5_CELL`), `S5_CONTROLS` controls at least, and
+    `S5_COVERAGE` of a region's loan cost for either metric to stand."""
+    rank, spread = _sql("detectors/s5.sql"), _sql("detectors/s5_best_worst.sql")
+    pairs = re.findall(r"o\.(\w+) = t\.(\w+)", rank)
+    assert [a for a, b in pairs] == [b for a, b in pairs] == S5_CELL
+    assert f"WHEN c.controls >= {S5_CONTROLS} AND c.before > 0 THEN" in rank
+    assert f"(SELECT MIN(coverage) FROM region_return) >= {S5_COVERAGE} THEN corr(rr, rs)" in rank
+    assert f"SELECT CASE WHEN MIN(coverage) >= {S5_COVERAGE} THEN" in spread
 
 
 def test_a6_s_probe_reads_the_case_s_parameters(stories: StoriesConfig) -> None:

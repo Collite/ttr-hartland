@@ -14,7 +14,8 @@ S2-affluence counts an order only where the promotion names its channel (ttr-har
 until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists), its
 measure re-cut in S1.5 (`measured`). **G2 S2.1:** the field's probes, A-6 (`a6`), A-7 (`a7`), A-8 (`a8`). **G2 S2.3:**
 S5 (`s5`, `s5_best_worst`, their shared region block `s5_regions`) and A-6's whole arc (`a6_arc`: the sightings, the
-facings, the dip). The others (S3, the other probes) arrive with their stages.
+facings, the dip). **G2 S2.4:** S5's gain against the untreated stores of the loan's cell, NH-D17 (`s5_loans`). The
+others (S3, the other probes) arrive with their stages.
 
 **The probes** (`anomalies.yaml`): a probe returns one count, judged by its `expect` (`>= n`, `= n`, or `rows` for
 any row at all); with `--null` it must not hold — with the anomaly off the probe finds nothing. A disabled anomaly's
@@ -602,57 +603,135 @@ def s6_targets(build: Build, stories: StoriesConfig) -> float:
 S5_FROM = date(2024, 2, 26)  # s5.sql: loans whose 8 weeks before lie inside the history
 S5_LIFE_DAYS = 36 * 30.4  # s5.sql: a display's cost spread over 36 months
 S5_BEST, S5_WORST = "PHA", "VCH"  # s5_best_worst.sql: the most skilled manager's region, the least (not the generous)
+S5_CONTROLS = 5  # s5.sql: a loan's gain is known with this many controls or more (NH-D17)
+S5_COVERAGE = 0.9  # s5.sql: under this supported share of a region's loan cost, both metrics are NULL
+S5_CELL = ["region_id", "channel", "store_class", "street_type", "size_class"]  # s5.sql: what a control shares
+
+
+def s5_loans(build: Build) -> Frame:
+    """s5.sql's `margin`, by `pos_loan_id`: each loan lent from `S5_FROM` to the last order day — its region (its
+    asset's), its cost over `S5_LIFE_DAYS` for its days, its store's Customer Margin a day `before` (the 56 days) and
+    `during`, its `controls` and theirs (`control_before`, `control_during`: the cell's stores, `S5_CELL`, but its own
+    and those with a display out in either window), `raw_gain` (S2.3's, q = 1) and `gain` — NaN where it is not known:
+    fewer than `S5_CONTROLS` controls, their margin before not positive, or no store — and `new_store`, its store bought
+    nothing before (NH-D17)."""
+    return build.joined("s5_loans", _join_s5_loans)
+
+
+def _join_s5_loans(build: Build) -> Frame:
+    day = build["sales_order"]["ordered_on"].max()
+    week, one = pd.Timedelta(days=WEEK_DAYS), pd.Timedelta(days=1)
+    regions = build["region"][["region_id", "code"]].rename(columns={"code": "region"})
+    every = build["pos_loan"].merge(build["pos_asset"][["pos_asset_id", "cost", "region_id"]], on="pos_asset_id")
+    every["until"] = every["returned_on"].fillna(day).clip(upper=day)
+    loans = every[every["lent_on"].between(pd.Timestamp(S5_FROM), day)].merge(regions, on="region_id")
+    loans = loans.drop(columns="region_id").reset_index(drop=True)
+    loans["days"] = (loans["until"] - loans["lent_on"]).dt.days + 1
+    loans["before_from"], loans["before_to"] = loans["lent_on"] - week, loans["lent_on"] - one
+    sales = _sales_pl(build)
+    keys = ["customer_id", "store_id", "ordered_on"]
+    daily = sales.groupby(keys, dropna=False)["customer_margin"].sum().reset_index()
+    stores = daily[daily["store_id"].notna()]  # `_sums` keys no NULL
+    at_store, anywhere = loans["store_id"].notna(), loans["store_id"].isna()
+    for column, first, last, days in (
+        ("before", "before_from", "before_to", WEEK_DAYS),
+        ("during", "lent_on", "until", None),
+    ):
+        found = pd.Series(0.0, index=loans.index)
+        mine = loans[at_store]
+        found[at_store] = _sums(stores, ["customer_id", "store_id"], ["customer_margin"], mine, first, last).iloc[:, 0]
+        theirs = loans[anywhere]
+        if len(theirs):
+            whole = daily.groupby(["customer_id", "ordered_on"])["customer_margin"].sum().reset_index()
+            found[anywhere] = _sums(whole, ["customer_id"], ["customer_margin"], theirs, first, last).iloc[:, 0]
+        loans[column] = found / (days if days else loans["days"])
+    outlets = (
+        build["delivery_point"][["customer_id", "store_id"]]
+        .dropna()
+        .drop_duplicates()
+        .merge(build["customer"][["customer_id", "channel"]], on="customer_id")
+        .merge(build["store"][["store_id", "area_id", "store_class", "street_type", "size_class"]], on="store_id")
+        .merge(build["area"][["area_id", "region_id"]], on="area_id")
+        .drop(columns="area_id")
+    )
+    treated = loans[["pos_loan_id", "customer_id", "store_id", "lent_on", "until", "before_from", "before_to"]]
+    pairs = treated.merge(outlets, on=["customer_id", "store_id"]).drop(columns="customer_id")
+    pairs = pairs.merge(outlets, on=S5_CELL, suffixes=("_treated", ""))
+    pairs = pairs[pairs["store_id"] != pairs["store_id_treated"]].reset_index(drop=True)
+    held = every.loc[every["store_id"].notna(), ["store_id", "lent_on", "until"]]
+    spans = pairs[["store_id", "before_from", "until"]].reset_index().merge(held, on="store_id", suffixes=("", "_held"))
+    busy = spans[(spans["lent_on"] <= spans["until"]) & (spans["until_held"] >= spans["before_from"])]["index"]
+    controls = pairs[~pairs.index.isin(busy)]
+    margins = {
+        column: _sums(stores, ["customer_id", "store_id"], ["customer_margin"], controls, first, last).iloc[:, 0]
+        for column, first, last in (("before", "before_from", "before_to"), ("during", "lent_on", "until"))
+    }
+    cohort = (
+        controls[["pos_loan_id"]]
+        .assign(**margins)
+        .groupby("pos_loan_id")
+        .agg(controls=("before", "size"), control_before=("before", "sum"), control_during=("during", "sum"))
+    )
+    loans = loans.join(cohort, on="pos_loan_id")
+    loans["controls"] = loans["controls"].fillna(0).astype(int)
+    loans["control_before"] = loans["control_before"].fillna(0.0) / WEEK_DAYS
+    loans["control_during"] = loans["control_during"].fillna(0.0) / loans["days"]
+    known = (loans["controls"] >= S5_CONTROLS) & (loans["control_before"] > 0)
+    q = loans["control_during"] / loans["control_before"].where(known)
+    loans["raw_gain"] = (loans["during"] - loans["before"]) * loans["days"]
+    loans["gain"] = (loans["during"] - loans["before"] * q) * loans["days"]
+    loans["new_store"] = loans["before"] == 0
+    loans["cost"] = loans["cost"] * loans["days"] / S5_LIFE_DAYS
+    columns = ["region", "cost", "before", "during", "controls", "control_before", "control_during", "raw_gain"]
+    return loans.set_index("pos_loan_id")[[*columns, "gain", "new_store"]]
 
 
 def s5_regions(build: Build) -> Frame:
-    """s5.sql's and s5_best_worst.sql's shared block (`region return`): per region with a loan lent from `S5_FROM` to
-    the last order day, its displays' gain — each loan's Customer Margin at its store (at its customer, without a
-    store) a day during the loan less that of the 56 days before, × the loan's days — and their cost: each display's
-    over `S5_LIFE_DAYS` for the loan's days, plus the region's give-aways from `S5_FROM` on."""
+    """s5.sql's and s5_best_worst.sql's shared block (`region return`): per region with a loan, its displays' `gain`
+    (`s5_loans`; a loan whose gain is not known counts 0) and `cost` — the loans', plus the region's give-aways from
+    `S5_FROM` on — and the diagnostics: `raw_gain`, `new_store_gain`, `coverage` (the supported share of the loans'
+    cost) and the counts of `loans`, those `unknown` and those at `new_stores`."""
     return build.joined("s5_regions", _join_s5_regions)
 
 
 def _join_s5_regions(build: Build) -> Frame:
     day = build["sales_order"]["ordered_on"].max()
-    first = pd.Timestamp(S5_FROM)
+    loans = s5_loans(build).assign(supported=lambda frame: frame["cost"].where(frame["gain"].notna(), 0.0))
+    loans["new_store_gain"] = loans["gain"].where(loans["new_store"], 0.0)
+    loans["loans"], loans["unknown"], loans["new_stores"] = 1, loans["gain"].isna().astype(int), loans["new_store"]
     regions = build["region"][["region_id", "code"]].rename(columns={"code": "region"})
-    assets = build["pos_asset"][["pos_asset_id", "cost", "region_id"]]
-    loans = build["pos_loan"].merge(assets, on="pos_asset_id").merge(regions, on="region_id")
-    loans = loans[loans["lent_on"].between(first, day)].copy()
-    loans["until"] = loans["returned_on"].fillna(day).clip(upper=day)
-    loans["days"] = (loans["until"] - loans["lent_on"]).dt.days + 1
-    sales = _sales_pl(build).groupby(["customer_id", "store_id", "ordered_on"], dropna=False, as_index=False)
-    margin = sales["customer_margin"].sum()
-    at = loans[["pos_loan_id", "customer_id", "store_id", "lent_on", "until"]].merge(
-        margin, on="customer_id", suffixes=("", "_sold")
-    )
-    at = at[
-        (at["store_id"].isna() | (at["store_id"] == at["store_id_sold"]))
-        & (at["ordered_on"] >= at["lent_on"] - pd.Timedelta(days=WEEK_DAYS))
-        & (at["ordered_on"] <= at["until"])
-    ]
-    during = at[at["ordered_on"] >= at["lent_on"]].groupby("pos_loan_id")["customer_margin"].sum()
-    before = at[at["ordered_on"] < at["lent_on"]].groupby("pos_loan_id")["customer_margin"].sum()
-    loans["gain"] = (
-        loans["pos_loan_id"].map(during).fillna(0.0).astype(float) / loans["days"]
-        - loans["pos_loan_id"].map(before).fillna(0.0).astype(float) / WEEK_DAYS
-    ) * loans["days"]
-    loans["cost"] = loans["cost"] * loans["days"] / S5_LIFE_DAYS
     visits = build["visit"][["visit_id", "store_id", "day"]]
-    visits = visits[visits["day"].between(first, day)]
+    visits = visits[visits["day"].between(pd.Timestamp(S5_FROM), day)]
     places = build["store"][["store_id", "area_id"]].merge(build["area"][["area_id", "region_id"]], on="area_id")
     handed = build["pos_handout"][["visit_id", "cost"]].merge(visits, on="visit_id").merge(places, on="store_id")
     giveaways = handed.merge(regions, on="region_id").groupby("region")["cost"].sum()
-    out = loans.groupby("region", as_index=False)[["gain", "cost"]].sum()
+    sums = ["gain", "cost", "raw_gain", "new_store_gain", "supported", "loans", "unknown", "new_stores"]
+    out = loans.fillna({"gain": 0.0, "new_store_gain": 0.0}).groupby("region", as_index=False)[sums].sum()
+    out["coverage"] = out["supported"] / out["cost"].where(out["cost"] != 0)
     out["cost"] = out["cost"] + out["region"].map(giveaways).fillna(0.0)
-    return out
+    return out.drop(columns="supported")
+
+
+def s5_note(build: Build, stories: StoriesConfig) -> str:
+    """Per region its gain ÷ cost, S2.3's raw one in brackets, and its coverage: what the controls moved, and how much
+    of the region's loan cost they support."""
+    found = s5_regions(build).set_index("region")
+    ratio, raw = found["gain"] / found["cost"], found["raw_gain"] / found["cost"]
+    return " · ".join(f"{r} {ratio[r]:.2f} ({raw[r]:.2f}) {found['coverage'][r]:.0%}" for r in found.index)
+
+
+def _covered(found: Frame) -> bool:
+    """s5.sql's guard: every region's `coverage` at `S5_COVERAGE` or more (a region without loan cost is not judged)."""
+    return bool((found["coverage"].dropna() >= S5_COVERAGE).all())
 
 
 def s5(build: Build, stories: StoriesConfig) -> float:
     """s5.sql: Spearman's rho between the regions' returns, (gain − cost) ÷ cost, and their managers' `pos_skill`, on
-    average ranks; NaN for fewer than two regions or no spread."""
+    average ranks; NaN for fewer than two regions, no spread, or a region's coverage under `S5_COVERAGE`."""
     skill = stories.story("S5").parameters["pos_skill"]
     found = s5_regions(build)
+    if not _covered(found):
+        return math.nan
     found = found[found["region"].isin(list(skill)) & (found["cost"] != 0)]
     if len(found) < 2:
         return math.nan
@@ -664,8 +743,10 @@ def s5(build: Build, stories: StoriesConfig) -> float:
 
 def s5_best_worst(build: Build, stories: StoriesConfig) -> float:
     """s5_best_worst.sql: the best region's gain ÷ cost over the worst's (`S5_BEST`, `S5_WORST`); NaN where the
-    worst's is ≤ 0 or either is missing, as the SQL's NULL."""
+    worst's is ≤ 0, either is missing or a region's coverage is under `S5_COVERAGE`, as the SQL's NULL."""
     found = s5_regions(build).set_index("region")
+    if not _covered(found):
+        return math.nan
     ratio = (found["gain"] / found["cost"].where(found["cost"] != 0)).to_dict()
     best, worst = ratio.get(S5_BEST, math.nan), ratio.get(S5_WORST, math.nan)
     if not worst > 0 or math.isnan(best):
@@ -789,7 +870,11 @@ TWINS: Mapping[str, Twin] = {
     "detectors/s6.sql": s6,
     "detectors/s6_targets.sql": s6_targets,
 }
-NOTES: Mapping[str, Callable[[Build, StoriesConfig], str]] = {"detectors/s1.sql": s1_note, "detectors/s6.sql": s6_note}
+NOTES: Mapping[str, Callable[[Build, StoriesConfig], str]] = {
+    "detectors/s1.sql": s1_note,
+    "detectors/s5.sql": s5_note,
+    "detectors/s6.sql": s6_note,
+}
 
 
 @dataclass(frozen=True)
