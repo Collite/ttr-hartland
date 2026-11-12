@@ -94,7 +94,7 @@ def test_the_null_world_fails_them(null_world: Built) -> None:
     found = _judged(check(null_world.run, StoriesConfig.load()))
     assert set(found) == set(JUDGED)
     assert not any(v.passed for v in found.values()), [(v.check, v.value) for v in found.values()]
-    # each gives the null world's side, but S5's spread (G2 S2.3 T6 stopped: its strict xfail below)
+    # each gives the null world's side, but S5's spread (its strict xfail below, transferred to G2 S2.4)
     verdicts = check(null_world.run, StoriesConfig.load(), null=True)
     assert all(v.passed is not False for v in verdicts if v.check != "detectors/s5_best_worst.sql"), [
         (v.check, v.value) for v in verdicts if v.passed is False
@@ -314,10 +314,11 @@ def test_s5_s_rank_passes_on_the_story_world_and_not_on_the_null(story_world: Bu
 
 
 S5_SPREAD = (
-    "G2 S2.3 T6, stopped for the planner: s5_best_worst.sql's PHA ÷ VCH gain ÷ cost reads 1.27 on the story world"
-    " and 1.53 on the null one against the 1.35 derived on paper (1.54 and 1.21) — the display's lift is 11–14 % of"
-    " the lent stores' margin and moves little with skill, while s5.sql's before/during gain carries each store's own"
-    " drift (4–10 % of it by region); the PR's Found line"
+    "G2 S2.3 T6's acceptance, transferred to G2 S2.4 (NH-D17): s5_best_worst.sql's PHA ÷ VCH gain ÷ cost reads 1.27"
+    " on the story world and 1.53 on the null one against the 1.35 derived on paper (1.54 and 1.21) — the display's"
+    " lift is 11–14 % of the lent stores' margin and moves little with skill, while s5.sql's before/during gain"
+    " carries each store's own drift (4–10 % of it by region); S2.4 corrects the gain by the untreated stores of the"
+    " same windows and derives its threshold anew"
 )
 
 
