@@ -4,8 +4,12 @@
 -- observations up from week 45, and the region's Gold down in weeks 46–50. The count is the sightings, and none unless
 -- the other two show: the facings of weeks 45–50 over those of the 8 weeks before at least 1.25 (half the planted
 -- +50 %), and the dip — the region's customers' Gold cases a day in weeks 46–50 over the same customers' in the 8 weeks
--- before, ÷ that ratio of the other regions' customers (the season's) — at most 0.94 (half the planted −12 %).
-WITH sighting AS (
+-- before, ÷ that ratio of the other regions' customers (the season's) — at most 0.94 (half the planted −12 %). The
+-- "during" days stop at the build's last order day, as s5.sql's `as_of` (none when it ends before them).
+WITH as_of AS (
+    SELECT LEAST(MAX(ordered_on), DATE '2025-12-14') - DATE '2025-11-10' + 1 AS days FROM sales_order
+),
+sighting AS (
     SELECT COUNT(*) AS n
     FROM competitor_sighting cs
     JOIN competitor k ON k.competitor_id = cs.competitor_id
@@ -33,14 +37,16 @@ gold AS (
     SELECT
         r.code = 'VCH' AS east,
         s.customer_id,
-        COALESCE(SUM(s.cases) FILTER (WHERE s.ordered_on >= DATE '2025-11-10'), 0) / 35.0 AS during,
+        COALESCE(SUM(s.cases) FILTER (WHERE s.ordered_on >= DATE '2025-11-10'), 0)
+            / NULLIF(GREATEST(as_of.days, 0), 0)::numeric AS during,
         SUM(s.cases) FILTER (WHERE s.ordered_on < DATE '2025-11-10') / 56.0 AS before
     FROM sales_pl s
     JOIN product_line pl ON pl.product_line_id = s.product_line_id
     JOIN area a ON a.area_id = s.area_id
     JOIN region r ON r.region_id = a.region_id
+    CROSS JOIN as_of
     WHERE pl.code = 'GOLD' AND s.ordered_on BETWEEN DATE '2025-09-15' AND DATE '2025-12-14'
-    GROUP BY r.code = 'VCH', s.customer_id
+    GROUP BY r.code = 'VCH', s.customer_id, as_of.days
 ),
 dip AS (
     SELECT

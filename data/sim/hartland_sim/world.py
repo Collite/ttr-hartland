@@ -322,8 +322,8 @@ class Tourplan:
     week: int  # 0–7: the store's week in an 8-week cycle, taken mod `cycle_weeks`
     valid_from: date
     valid_to: date = OPEN
-    calls: int = 0  # G2 S2.3: its sales visits that dealt with someone, and of them those that converted (the
-    converted: int = 0  # rep's conversion at the store, which a skilled area manager's give-aways follow)
+    calls: int = 0  # G2 S2.3: its sales visits that dealt with someone, and of them those that converted — the
+    converted: int = 0  # store's under its tourplans, across reps (a re-cut carries them on); the give-aways follow
 
 
 @dataclass

@@ -1,5 +1,5 @@
-# S5 — the area managers place PoS material with different efficiency (design 04 §S5). A skilled manager places
-# displays where `display_uplift` is high (choice ∝ uplift ^ (skill × 3)), an unskilled one at random.
+# S5 — the area managers place PoS material with different efficiency (design 04 §S5). Every manager chooses the
+# stores ∝ uplift ^ (pos_skill × choice_exponent): the skilled sharply, the weak nearly at random (review-248 ⚑R248-A).
 story: S5
 title_cs: Oblastní manažeři využívají stojany s různou efektivitou
 enabled: true
@@ -18,7 +18,7 @@ parameters:
   choice_exponent: 3 # a manager chooses a store ∝ its uplift ^ (pos_skill × this)
   # A manager of pos_skill above `skilled_above` is skilled: withdraws a display whose measured uplift is below
   # `withdraw_below` after its first `withdraw_after_months`, and hands out `skilled_giveaway_cut` fewer give-aways,
-  # all at the stores where the rep's conversion beats the area's median.
+  # all at the stores whose conversion beats the area's median (their sales calls under their tourplans, across reps).
   skilled_above: 1.0
   withdraw_after_months: 3
   withdraw_below: 0.05
@@ -36,6 +36,7 @@ also:
     # over the opening market the story's expected gain ÷ cost is PHA 7.10 ÷ VCH 4.61 = 1.54, the null world's 3.82 ÷
     # 3.15 = 1.21 — not 1.0: Prague's stores sell more, so its displays gain more whoever places them. The threshold is
     # their geometric mean, to the 0.05 below: 1.35. G5 S5.2 does not retune it (stories README).
+    # It is provisional — S2.4 corrects the gain and re-derives this threshold (NH-D17); it is not certified.
     threshold: 1.35
     direction: ">="
     null_world: "<"

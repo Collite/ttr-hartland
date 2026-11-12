@@ -571,6 +571,27 @@ def test_a6_on_a_build_before_its_weeks_finds_nothing(tmp_path: Path, a6_rows: A
     assert seen == 0 and math.isnan(lift) and a6(Build(tmp_path), STORIES) == 0
 
 
+def test_a6_on_a_build_that_ends_inside_its_weeks_reads_the_dip_from_its_days(tmp_path: Path, a6_rows: Any) -> None:
+    """review-248 R9: a build that ends on 2025-11-30, inside A-6's weeks, reads Gold's "during" a day over the days it
+    holds (to its last order day, as s5.sql's `as_of`): the planted dip, and none where none is planted. The ratio is
+    the other regions' too, so their days cancel in it — the clip makes the rates true, the verdict stays."""
+    a6_case, write_rows = a6_rows
+    for k, (dip, found) in enumerate(((0.88, 3), (1.0, 0))):
+        write_rows(tmp_path / str(k), a6_case(3, 1.5, dip, cut=date(2025, 11, 30)))
+        seen, rose, fell = a6_arc(Build(tmp_path / str(k)), STORIES)
+        assert seen == 3 and rose == pytest.approx(1.5, abs=0.05) and fell == pytest.approx(dip, abs=1e-9)
+        assert a6(Build(tmp_path / str(k)), STORIES) == found
+
+
+def test_a6_on_a_build_that_ends_before_its_from_has_no_dip(tmp_path: Path, a6_rows: Any) -> None:
+    """The sightings start a week before the dip's `from` (2025-11-10): a build that ends on 11-07 has no "during" day,
+    so no dip, not a ratio of nothing."""
+    a6_case, write_rows = a6_rows
+    write_rows(tmp_path, a6_case(1, 1.5, 0.88, cut=date(2025, 11, 7)))
+    seen, _, dip = a6_arc(Build(tmp_path), STORIES)
+    assert seen == 1 and math.isnan(dip) and a6(Build(tmp_path), STORIES) == 0
+
+
 def test_a_probe_s_expectation_and_the_null_world_s_opposite(tmp_path: Path) -> None:
     assert (expected(">= 3"), expected("= 0"), expected("rows")) == ((">=", 3.0), ("between", 0.0), (">", 0.0))
     _plans(tmp_path, {1: 5, 2: 6, 3: 6, 4: 10})  # three reps skip

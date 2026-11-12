@@ -62,7 +62,7 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
         products = portfolio.build(out, world, stories)
         covers = policies.stock_policies(out, world, products)
         policies.rules(out, world, owner=org.actors[SALES].employee_id)
-        assets, counters = policies.pos(out, world, geography)
+        assets, counters, pos_terms = policies.pos(out, world, stories, geography)
         policies.fleet(out, world)
         made = customers.build(out, world, stories, geography, org, market)
         state = World(world.history.warm_up_from - timedelta(days=1))
@@ -83,7 +83,7 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
         state.purchases = prompts.Purchases.of(state)
         state.assets, state.counters = assets, {**state.counters, **counters}
         state.measure = pos.Measure.of(state.demand)
-        state.display_uplift = pos.uplifts(state, pos.Terms.of(world, stories, state.demand.lines))
+        state.display_uplift = pos.uplifts(state, pos_terms)
         promotions.write(out, templates, state, world)
     return Setup(state, out, geography, org, products, covers, made, world)
 

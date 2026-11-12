@@ -15,8 +15,9 @@ vehicles, the price lists.
 - **`pos_material`** (`pos_material.csv`) and the regions' pools (`World.assets`, G2 S2.3's `loop.pos`): each region
   holds `assets_per_region` of each asset type, bought in one of the three yearly purchases (`world.yaml
   field.pos_acquisitions`) up to the warm-up's first day, drawn by the asset (stream `pos`) — new in the last one,
-  then good or worn as it ages — and each purchase's `asset_register` row (`loop.pos.register_row`). `pos_asset` is
-  rendered from the `World` (`setup.opening.state_rows`): the loop writes assets off and buys more.
+  then good or worn as it ages — and each purchase's `asset_register` row (`loop.pos.register_row`), its region's
+  name and cost centre from the run's PoS terms (`loop.pos.Terms`, made here once). `pos_asset` is rendered from the
+  `World` (`setup.opening.state_rows`): the loop writes assets off and buys more.
 - **`carrier`** (`carrier.csv`) and **`vehicle`**: each carrier's fleet by class, the capacities of `delivery.capacity`,
   a Czech plate drawn per vehicle (stream `route`) in the region of its DC.
 - **The price lists** (`loop.pricing`): the `World` gets the versions in force on the warm-up's first day — the
@@ -32,12 +33,12 @@ from collections.abc import Iterable, Mapping
 from datetime import date
 from pathlib import Path
 
-from hartland_sim.config import WorldConfig
+from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
-from hartland_sim.loop.demand import CHANNELS
-from hartland_sim.loop.pos import register_row
+from hartland_sim.loop.demand import CHANNELS, lines
+from hartland_sim.loop.pos import Terms, register_row
 from hartland_sim.loop.pricing import channel_list, standard_list
 from hartland_sim.rng import rng
 from hartland_sim.setup.portfolio import Portfolio
@@ -178,17 +179,16 @@ def budget_row(employee: int, quarter: date, budget: Budget) -> Row:
 
 
 def pos(
-    out: Tables, world: WorldConfig, geography: Geography, root: Path = REFERENCE_DIR
-) -> tuple[dict[int, Asset], dict[str, int]]:
-    """`pos_material` and the purchases' `asset_register` rows into `out`; the regions' pools (by pos_asset_id) and
-    each pool's last asset number (`World.counters`, by its prefix)."""
+    out: Tables, world: WorldConfig, stories: StoriesConfig, geography: Geography, root: Path = REFERENCE_DIR
+) -> tuple[dict[int, Asset], dict[str, int], Terms]:
+    """`pos_material` and the purchases' `asset_register` rows into `out`; the regions' pools (by pos_asset_id), each
+    pool's last asset number (`World.counters`, by its prefix) and the PoS terms they were made with."""
     first = world.history.warm_up_from
     month = world.field.pos_acquisitions.month
     last = date(first.year if (first.month, first.day) >= (month, 1) else first.year - 1, month, 1)
     purchases = [date(last.year - k, month, 1) for k in range(PURCHASES - 1, -1, -1)]
     regions = list(dict.fromkeys(geography.region_of.values()))
-    names = {region["code"]: region["name"] for region in read("region", root)}
-    centres = {unit["code"].removeprefix("OU-TP-"): unit["cost_centre"] for unit in read("org_unit", root)}
+    terms = Terms.of(world, stories, lines(root), root)
     materials = read("pos_material", root)
     for material in materials:
         line = material["product_line"]
@@ -225,10 +225,15 @@ def pos(
             if cost:
                 out["asset_register"].append(
                     register_row(
-                        region, names[region], centres[region], acquired, cost, world.field.pos_asset_life_months
+                        region,
+                        terms.region_names[region],
+                        terms.cost_centres[region],
+                        acquired,
+                        cost,
+                        world.field.pos_asset_life_months,
                     )
                 )
-    return assets, counters
+    return assets, counters, terms
 
 
 def fleet(out: Tables, world: WorldConfig, root: Path = REFERENCE_DIR) -> None:

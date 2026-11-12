@@ -682,7 +682,8 @@ def a6_arc(build: Build, stories: StoriesConfig) -> tuple[float, float, float]:
     """a6.sql's three legs (G2 S2.3 T7): the sightings of the competitor's promotion at visits in the region from its
     sightings to its end; the competitors' facings beside its line in the region's observations over those days ÷
     those of the 8 weeks before; and the dip — the region's customers' cases of the line a day from its `from` to its
-    end over the same customers' in the 8 weeks before, ÷ that ratio of the other regions' customers."""
+    end or the build's last order day, over the same customers' in the 8 weeks before, ÷ that ratio of the other
+    regions' customers (NaN when the build ends before its `from`)."""
     held = stories.anomaly("A-6").parameters
     first, start, last = (pd.Timestamp(held[key]) for key in ("sightings_from", "from", "until"))
     week8 = pd.Timedelta(days=WEEK_DAYS)
@@ -711,7 +712,10 @@ def a6_arc(build: Build, stories: StoriesConfig) -> tuple[float, float, float]:
     points = points.merge(regions, on="area_id")
     sold = lines.merge(orders, on="sales_order_id").merge(points[["delivery_point_id", "code"]], on="delivery_point_id")
     sold["east"] = sold["code"] == held["region"]
-    days = (last - start).days + 1
+    as_of = build["sales_order"]["ordered_on"].max()  # a6.sql's `as_of`: the build's last order day
+    days = (min(last, as_of) - start).days + 1 if pd.notna(as_of) else 0
+    if days <= 0:
+        return seen, lift, math.nan
     sold["during"] = sold["qty_cases"].where(sold["ordered_on"] >= start, 0.0) / days
     sold["before"] = sold["qty_cases"].where(sold["ordered_on"] < start, 0.0) / WEEK_DAYS
     each = sold.groupby(["east", "customer_id"])[["during", "before"]].sum().reset_index()

@@ -81,12 +81,13 @@ any visit of A-8's rep, who records nothing.
 **The give-aways** (`pos_handout`, G2 S2.3 T4; `handouts`, after the visits' orders), every draw from stream `pos` by
 the visit: a recorded visit that dealt with someone hands out one give-away at `world.yaml field.pos_handouts.share`
 of the visits — × the region's manager's `budget_factor` (S5's generous one) — or, in a skilled manager's region (S5,
-`pos_skill` above `skilled_above`), `skilled_giveaway_cut` fewer, all at the stores where the rep's conversion beats the
-area's median (`World.conversion`, the month-end's): there at the share less the cut ÷ the share of the area's calls
-made at those stores, and none elsewhere. The item is one of the give-aways that brand a line of the visit's
-order, else of those that brand none, the cheaper ones likelier (∝ 1 ÷ `unit_cost`); `qty` pieces in
-`pos_handouts.qty`, its cost `unit_cost × qty`. Each sales visit that dealt with someone counts on its tourplan's calls,
-a converting one on its conversions (`tally`, every day; the rep's conversion at the store).
+`pos_skill` above `skilled_above`), `skilled_giveaway_cut` fewer, all at the stores whose conversion beats the area's
+median (`World.conversion`, the month-end's): there at the share less the cut ÷ the share of the area's calls made at
+those stores, and none elsewhere. The item is one of the give-aways that brand a line of the visit's order, else of
+those that brand no line (brand-wide items of either brand), the cheaper ones likelier (∝ 1 ÷ `unit_cost`); `qty`
+pieces in `pos_handouts.qty`, its cost `unit_cost × qty`. Each sales visit that dealt with someone counts on its
+tourplan's calls, a converting one on its conversions (`tally`, every day): the store's sales calls and conversions
+under its tourplans, across reps — a re-cut tourplan carries them on.
 """
 
 from __future__ import annotations
@@ -854,7 +855,8 @@ def _slots(crew: Crew, lines: Sequence[int], day: date, draw: Generator) -> dict
 
 def tally(visits: Sequence[Visit]) -> None:
     """Each sales visit that dealt with someone on its tourplan's calls, a converting one on its conversions too: the
-    rep's conversion at the store, which a skilled area manager's give-aways follow (`handouts`)."""
+    store's sales calls and conversions under its tourplans, across reps, which a skilled area manager's give-aways
+    follow (`handouts`)."""
     for v in visits:
         if v.kind == "sales" and v.outcome not in UNREACHED:
             v.tourplan.calls += 1

@@ -41,6 +41,7 @@ mechanics give over the real affluence quarters and the null world's 1.0. S5's s
 that way at G2 S2.3 T6, before the first build (`hartland_sim/checks/s5_expected.py`): over the opening market the
 mechanics give PHA's gain ÷ cost over VCH's 1.54 in the story and 1.21 in the null world — Prague's stores sell more,
 so its displays gain more whoever places them — and the threshold, 1.35, lies between them. G5 S5.2 does not retune it.
+It is provisional — S2.4 corrects the gain and re-derives it (NH-D17); it is not certified.
 
 ## The pins
 

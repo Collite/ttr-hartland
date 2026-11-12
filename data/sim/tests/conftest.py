@@ -175,12 +175,12 @@ def _cell(value: Any) -> str:
     return value.isoformat() if isinstance(value, date) else str(value)
 
 
-def a6_case(seen: int = 5, lift: float = 1.5, dip: float = 0.88) -> Rows:
+def a6_case(seen: int = 5, lift: float = 1.5, dip: float = 0.88, cut: date | None = None) -> Rows:
     """G2 S2.3 T7's A-6 arc, hand-built (no build run): the rows `a6.sql` and its twin read. Two regions — A-6's
     (store 1, customer 1) and JMV (store 2, customer 2), a visit at each every Monday — `seen` (at most 6) Kavalír
     promotions at visits in A-6's from its sightings on; Gold's competitor facings beside it 10 in the 8 weeks
     before, 10 × `lift` from the sightings on; each customer 6 cases of Gold a week, A-6's × `dip` from its `from`
-    (the season the same in both)."""
+    (the season the same in both). `cut`: a build that ends that day — no visit or order after it."""
     held = StoriesConfig.load().anomaly("A-6").parameters
     first, start, last = (date.fromisoformat(str(held[key])) for key in ("sightings_from", "from", "until"))
     gold, kavalir = 1, row_id("competitor", code=held["competitor"])  # the twin reads the reference's id
@@ -234,6 +234,17 @@ def a6_case(seen: int = 5, lift: float = 1.5, dip: float = 0.88) -> Rows:
                 | {"is_free_goods": False, "list_price_case": 1000.0}
             )
         day += timedelta(days=7)
+    if cut is not None:
+        visits = {v["visit_id"] for v in rows["visit"] if v["day"] <= cut}
+        orders = {o["sales_order_id"] for o in rows["sales_order"] if o["ordered_on"] <= cut}
+        for table, key, kept in (
+            ("visit", "visit_id", visits),
+            ("visit_observation", "visit_id", visits),
+            ("competitor_sighting", "visit_id", visits),
+            ("sales_order", "sales_order_id", orders),
+            ("sales_order_line", "sales_order_id", orders),
+        ):
+            rows[table] = [r for r in rows[table] if r[key] in kept]
     return rows
 
 

@@ -2,8 +2,8 @@
 -- over that in the region of the least skilled one who is not the generous one (VCH, 0.5). Gain ÷ cost is 1 + s5.sql's
 -- return: positive unless a region's displays destroy margin. When VCH's do, the metric is NULL; when PHA's do, it is
 -- ≤ 0: either fails. The threshold, 1.35, is derived from the mechanics (G2 S2.3 T6, before the first build;
--- s5.yaml): between the null world's expected 1.21 and the story's 1.54. The block below is s5.sql's, byte for byte
--- (a test keeps it so).
+-- s5.yaml): between the null world's expected 1.21 and the story's 1.54. It is provisional — S2.4 corrects the gain
+-- and re-derives it (NH-D17); it is not certified. The block below is s5.sql's, byte for byte (a test keeps it so).
 WITH
 -- region return: begin
 -- Per region, up to the world's last order day: the gain of its displays and their cost. A loan's gain is the customer

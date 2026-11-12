@@ -1,7 +1,8 @@
 """S5 on paper (G2 S2.3 T6; review-199 R199-B/C): what `s5.sql` and `s5_best_worst.sql` should give each region, from
 the mechanics of T1–T4 (`loop.pos`, `loop.field.handouts`), `s5.yaml`, `world.yaml` and the opening market — no build.
 `s5_best_worst`'s threshold lies between the null world's spread and the story's, both from here (`test_s5_expected`),
-never from a build; G5 S5.2 does not retune it.
+never from a build; G5 S5.2 does not retune it. It is provisional — S2.4 corrects the gain and re-derives it (NH-D17);
+it is not certified.
 
 Per region, a day of the steady state:
 - **the candidates**: the small-retail stores on its open tourplans whose customer is active on the warm-up's first

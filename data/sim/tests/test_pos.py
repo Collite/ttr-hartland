@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pytest
@@ -18,7 +20,7 @@ from hartland_sim.dates import add_months
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import field, pos
-from hartland_sim.loop.demand import BasketReady, Store
+from hartland_sim.loop.demand import BasketReady, Store, lines
 from hartland_sim.loop.field import Crew
 from hartland_sim.loop.pos import Grid, Terms
 from hartland_sim.loop.warmup import Output
@@ -146,14 +148,13 @@ def test_a_manager_takes_the_stores_by_uplift_to_the_power_of_skill_times_three(
         assert set(order[: len(lent)]) == lent, region
 
 
-def _measured(world: World, loan_id: int, after: float) -> None:
-    """The loan's lines' cases at its point: 10 a month in the two months before it, `after` in its first three."""
+def _measured(world: World, loan_id: int, *after: float) -> None:
+    """The loan's lines' cases at its point: 10 a month in the two months before it, then `after`'s, a month each."""
     measure, demand, loan = world.measure, world.demand, world.loans[loan_id]
     assert measure is not None and demand is not None
     line = next(i for i, held in enumerate(demand.lines) if held.code in loan.lines)
-    for month in range(-2, 3):
-        day = add_months(loan.lent_on, month)
-        measure.book(loan.delivery_point_id, day, line, 10.0 if month < 0 else after)
+    for month, cases in enumerate((10.0, 10.0, *after), start=-2):
+        measure.book(loan.delivery_point_id, add_months(loan.lent_on, month), line, cases)
 
 
 @pytest.mark.parametrize(("after", "withdrawn"), [(10.2, True), (11.0, False)])
@@ -166,7 +167,7 @@ def test_a_skilled_manager_withdraws_a_display_measured_below_5_percent_after_th
     for region in ("PHA", "VCH"):
         loan_id = next(i for i, loan in world.loans.items() if loan.region == region)
         world.loans[loan_id].until = date(2024, 1, 31)
-        _measured(world, loan_id, after)
+        _measured(world, loan_id, after, after, after)
         for day in (date(2023, 2, 28), date(2023, 3, 31)):
             pos.returns(world, terms, day, day + timedelta(days=1))
         assert world.loans[loan_id].returned_on is None
@@ -176,6 +177,34 @@ def test_a_skilled_manager_withdraws_a_display_measured_below_5_percent_after_th
             loan = world.loans[loan_id]
             assert loan.returned_on == date(2023, 5, 1) and loan.condition_on_return in pos.CONDITIONS
             assert loan.delivery_point_id not in world.lent and world.assets[loan.pos_asset_id].loan is None
+
+
+@pytest.mark.parametrize(("fourth", "withdrawn"), [(10.2, True), (20.0, False)])
+def test_at_four_months_the_measure_reads_the_loan_s_first_four(
+    world: World, terms: Terms, tmp_path: Path, fourth: float, withdrawn: bool
+) -> None:
+    """review-248 R5: a skilled manager judges a loan at its `withdraw_after_months`-th month-end over that many months
+    — at 4, its first four: 2 % up in the first three and a fourth that lifts it (20 cases) keeps it."""
+    four = replace(terms, withdraw_after_months=4)
+    _close(world, terms, END, tmp_path)
+    loan_id = next(i for i, loan in world.loans.items() if loan.region == "PHA")
+    world.loans[loan_id].until = date(2024, 1, 31)
+    _measured(world, loan_id, 10.2, 10.2, 10.2, fourth)
+    for day in (date(2023, 2, 28), date(2023, 3, 31), date(2023, 4, 30)):
+        assert loan_id not in pos.returns(world, four, day, day + timedelta(days=1))
+    measured = pos.uplift_measured(world, world.loans[loan_id], 4)
+    assert measured == pytest.approx((30.6 + fourth) / 4 / 10 - 1)
+    assert (loan_id in pos.returns(world, four, date(2023, 5, 31), date(2023, 6, 1))) == withdrawn
+
+
+@pytest.mark.parametrize("months", [0, 5])
+def test_the_measure_holds_four_months_after_a_loan_at_most(months: int) -> None:
+    """review-248 R5: the measure keeps `MONTHS` (6): a loan's two before and at most four after — `Terms.of` refuses
+    a `withdraw_after_months` it cannot hold, at load, rather than withdraw nothing."""
+    s5 = replace(STORIES.story("S5"), parameters=MappingProxyType({**S5, "withdraw_after_months": months}))
+    stories = replace(STORIES, stories=tuple(s5 if s.story == "S5" else s for s in STORIES.stories))
+    with pytest.raises(ValueError, match=rf"^s5\.yaml withdraw_after_months: {months} — the measure keeps 6 months"):
+        Terms.of(WORLD, stories, lines())
 
 
 def test_a_loan_comes_back_at_its_term_or_its_customer_s_loss(world: World, terms: Terms, tmp_path: Path) -> None:
@@ -196,12 +225,53 @@ def test_a_return_s_condition_and_a_damaged_one_written_off(world: World, terms:
     back = pos.returns(world, terms, date(2023, 2, 28), date(2023, 3, 1))
     conditions = Counter(world.loans[i].condition_on_return for i in back)
     assert len(back) == len(world.loans) and not world.lent
-    assert set(conditions) <= set(pos.CONDITIONS) and conditions.most_common(1)[0][0] == "good"
+    draws = Counter(pos.drawn(terms, i) for i in back)  # the condition a return is not worse than (R8)
+    assert set(conditions) <= set(pos.CONDITIONS) and draws.most_common(1)[0][0] == "good"
     for i in back:
         asset = world.assets[world.loans[i].pos_asset_id]
         damaged = world.loans[i].condition_on_return == "damaged"
         assert asset.condition == world.loans[i].condition_on_return
         assert (asset.written_off_on == date(2023, 3, 1)) == damaged
+
+
+def test_a_loan_never_mends_its_asset(world: World, terms: Terms, tmp_path: Path) -> None:
+    """review-248 R8: a loan comes back in the worse of its draw and its asset's own condition (good < worn < damaged,
+    a `new` asset `good` once lent) — a worn asset drawn good comes back worn, a good one drawn worn worn — and the loan
+    and the asset take it; only a drawn damaged one is written off."""
+    _close(world, terms, END, tmp_path)
+    for k, loan in enumerate(world.loans.values()):
+        loan.until = END + timedelta(days=28)
+        world.assets[loan.pos_asset_id].condition = ("new", "good", "worn")[k % 3]
+    own = {i: world.assets[loan.pos_asset_id].condition for i, loan in world.loans.items()}
+    back = pos.returns(world, terms, date(2023, 2, 28), date(2023, 3, 1))
+    assert sorted(back) == sorted(own)
+    seen = Counter[tuple[str, str]]()
+    for i in back:
+        loan, draw = world.loans[i], pos.drawn(terms, i)
+        asset, held = world.assets[loan.pos_asset_id], "good" if own[i] == "new" else own[i]
+        assert loan.condition_on_return == asset.condition == max(draw, held, key=pos.CONDITIONS.index)
+        assert (asset.written_off_on == date(2023, 3, 1)) == (draw == "damaged")
+        seen[(held, draw)] += 1
+    assert seen[("worn", "good")] and seen[("good", "worn")] and sum(n for (_, d), n in seen.items() if d == "damaged")
+
+
+def test_the_placements_read_each_store_s_line_and_uplift_from_the_world(opening: Setup, terms: Terms) -> None:
+    """review-248 R10: `place` takes a store's line and uplift from `World.display_uplift` (the month-end makes it just
+    before): a loan carries the uplift held at its point and a display of its line; a point not held there is never
+    lent."""
+    first = Checkpoint.of(opening.world).restore()
+    dropped = {first.loans[i].delivery_point_id for i in pos.place(first, terms, FIRST)[:20]}
+    world = Checkpoint.of(opening.world).restore()
+    for point in dropped:
+        del world.display_uplift[point]
+    for held in world.display_uplift.values():
+        held.update(dict.fromkeys(held, 0.123))
+    loans = pos.place(world, terms, FIRST)
+    assert loans
+    for i in loans:
+        loan = world.loans[i]
+        ((line, uplift),) = world.display_uplift[loan.delivery_point_id].items()
+        assert loan.uplift == uplift == 0.123 and line in loan.lines and loan.delivery_point_id not in dropped
 
 
 # ── T5: the ledger ──────────────────────────────────────────────────────────

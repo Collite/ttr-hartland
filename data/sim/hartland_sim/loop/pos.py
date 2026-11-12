@@ -18,7 +18,9 @@ everything dated the next day, `first`:
   skilled manager's (`pos_skill` above `skilled_above`) after its first `withdraw_after_months` months too, when its
   measured uplift is below `withdraw_below` — the cases of its lines the store ordered in those months a month over
   those of the two months before it was lent (`Measure`), less one; an unmeasurable one (nothing ordered before)
-  stays. A loan comes back in a condition of `pos_loans.condition_on_return` (stream `pos`, by the loan);
+  stays. A loan comes back in a condition drawn from `pos_loans.condition_on_return` (stream `pos`, by the loan), or
+  in the asset's own when that is worse (good < worn < damaged; a `new` asset is `good` once lent): a loan never
+  mends its asset. The loan and the asset take it;
 - *the ledger* (`ledger`): an asset `pos_asset_life_months` old is written off when it is in stock, and one that
   comes back damaged or past its life on its return; a `new` one is `good` after a year. On the first day of
   `pos_acquisitions.month` each region buys every asset material's pool back to `assets_per_region`
@@ -31,13 +33,15 @@ everything dated the next day, `first`:
   region's `pos_budget` × its `budget_factor` in their cost. The candidates are the small-retail stores on an open
   tourplan of the region whose customer is active on `first` and that hold no display; the manager takes them in a
   random order weighted by `display_uplift ^ (pos_skill × choice_exponent)` (stream `pos`, by the region, the month
-  and the point: Efraimidis–Spirakis keys), lends each its display, and stops at the first whose display costs more
-  than the budget left. A loan runs a whole number of months in `pos_loans.months` (stream `pos`, by the loan), from
-  `first`; it is placed by the store's rep (its tourplan's) and approved by the manager. What is left of the budget is
-  `World.display_budget`, which S2.2's display prompt reads;
+  and the point: Efraimidis–Spirakis keys) — every manager, the skilled sharply, the weak nearly at random — each
+  store's line and uplift read from `World.display_uplift`, made just before; lends each its display, and stops at
+  the first whose display costs more than the budget left. A loan runs a whole number of months in
+  `pos_loans.months` (stream `pos`, by the loan), from `first`; it is placed by the store's rep (its tourplan's) and
+  approved by the manager. What is left of the budget is `World.display_budget`, which S2.2's display prompt reads;
 
 **The measure** (`Measure`): the orders step books each small-retail order's paid cases by line into its point's
-month, the last `MONTHS` months kept: the two months before a loan, its first three and the month in progress.
+month, the last `MONTHS` months kept: a loan's two months before and its first `withdraw_after_months`, the last of
+them the month in progress — so `Terms.of` refuses a `withdraw_after_months` over `MONTHS` − 2.
 
 **The rows**: `pos_asset` and `pos_loan` are state tables, rendered from the `World` when a build ends
 (`setup.opening.state_rows`): an asset's condition and write-off, a loan's return move after they are made. The
@@ -49,6 +53,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -56,15 +61,15 @@ import numpy as np
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import add_months
 from hartland_sim.ids import row_id
-from hartland_sim.io.reference import read
+from hartland_sim.io.reference import REFERENCE_DIR, read
 from hartland_sim.loop.demand import Demand, Line, Store, same
 from hartland_sim.loop.warmup import Output
 from hartland_sim.rng import rng, uniforms
 from hartland_sim.setup.rows import Row, row
 from hartland_sim.world import Asset, Loan, Tourplan, World
 
-MONTHS = 6  # the measure's months: the two before a loan, its first three, the month in progress
-CONDITIONS = ("good", "worn", "damaged")  # a return's, in draw order
+MONTHS = 6  # the measure's months: a loan's two before and its first `withdraw_after_months`, 4 at most
+CONDITIONS = ("good", "worn", "damaged")  # a return's, in draw order: each worse than the one before
 Array = np.ndarray[Any, Any]
 
 
@@ -107,7 +112,7 @@ class Material:
     assets_per_region: int
 
 
-def materials() -> tuple[Material, ...]:
+def materials(root: Path = REFERENCE_DIR) -> tuple[Material, ...]:
     """`pos_material.csv`, in its order."""
     return tuple(
         Material(
@@ -118,7 +123,7 @@ def materials() -> tuple[Material, ...]:
             m["product_line"] or None,
             int(m["assets_per_region"]),
         )
-        for m in read("pos_material")
+        for m in read("pos_material", root)
     )
 
 
@@ -144,10 +149,18 @@ class Terms:
     region_of: Mapping[str, str]  # area code → its region
 
     @classmethod
-    def of(cls, config: WorldConfig, stories: StoriesConfig, line_set: Sequence[Line]) -> Terms:
+    def of(
+        cls, config: WorldConfig, stories: StoriesConfig, line_set: Sequence[Line], root: Path = REFERENCE_DIR
+    ) -> Terms:
         s5 = stories.story("S5").parameters
-        found = {m.code: m for m in materials()}
-        brands = {line["code"]: line["brand"] for line in read("product_line") if not line["is_professional"]}
+        after = int(s5["withdraw_after_months"])
+        if not 1 <= after <= MONTHS - 2:
+            raise ValueError(
+                f"s5.yaml withdraw_after_months: {after} — the measure keeps {MONTHS} months, a loan's two before"
+                f" and at most {MONTHS - 2} after"
+            )
+        found = {m.code: m for m in materials(root)}
+        brands = {line["code"]: line["brand"] for line in read("product_line", root) if not line["is_professional"]}
         retail = [line.code for line in line_set if line.code in brands]
         displays = {}
         for code, brand in config.field.pos_displays.items():
@@ -155,13 +168,13 @@ class Terms:
             if held.kind != "asset":
                 raise ValueError(f"world.yaml field.pos_displays: {code} is not an asset")
             displays[code] = (held.line,) if held.line else tuple(line for line in retail if brands[line] == brand)
-        regions = read("region")
-        centres = {unit["code"].removeprefix("OU-TP-"): unit["cost_centre"] for unit in read("org_unit")}
+        regions = read("region", root)
+        centres = {unit["code"].removeprefix("OU-TP-"): unit["cost_centre"] for unit in read("org_unit", root)}
         return cls(
             Grid.of(stories),
             float(s5["choice_exponent"]),
             float(s5["skilled_above"]),
-            int(s5["withdraw_after_months"]),
+            after,
             float(s5["withdraw_below"]),
             float(s5["skilled_giveaway_cut"]),
             config,
@@ -171,7 +184,7 @@ class Terms:
             tuple(region["code"] for region in regions),
             {region["code"]: region["name"] for region in regions},
             {region["code"]: centres[region["code"]] for region in regions},
-            {area["code"]: area["region"] for area in read("area")},
+            {area["code"]: area["region"] for area in read("area", root)},
         )
 
     def manager(self, world: World, region: str, day: date) -> tuple[int, float, float] | None:
@@ -289,7 +302,7 @@ def returns(world: World, terms: Terms, day: date, first: date) -> list[int]:
             held = terms.manager(world, loan.region, day)
             run = month_index(day) - month_index(loan.lent_on) + 1
             if held is not None and terms.skilled(held[1]) and run == terms.withdraw_after_months:
-                measured = uplift_measured(world, loan)
+                measured = uplift_measured(world, loan, terms.withdraw_after_months)
                 done = measured is not None and measured < terms.withdraw_below
         if done:
             give_back(world, terms, loan_id, first)
@@ -297,35 +310,42 @@ def returns(world: World, terms: Terms, day: date, first: date) -> list[int]:
     return out
 
 
-def uplift_measured(world: World, loan: Loan) -> float | None:
-    """A skilled manager's measure of `loan` (module docstring); None when it cannot be measured."""
+def uplift_measured(world: World, loan: Loan, months: int) -> float | None:
+    """A skilled manager's measure of `loan` over its first `months` (module docstring); None when it cannot be
+    measured."""
     demand, measure = world.demand, world.measure
     if demand is None or measure is None:
         return None
     lines = [i for i, line in enumerate(demand.lines) if line.code in loan.lines]
     lent = month_index(loan.lent_on)
     before = measure.held(loan.delivery_point_id, lent - 2, 2, lines)
-    after = measure.held(loan.delivery_point_id, lent, 3, lines)
+    after = measure.held(loan.delivery_point_id, lent, months, lines)
     if before is None or after is None or before <= 0:
         return None
-    return (after / 3) / (before / 2) - 1
+    return (after / months) / (before / 2) - 1
 
 
-def give_back(world: World, terms: Terms, loan_id: int, first: date) -> None:
-    """`loan_id` back on `first`, in a condition drawn by the loan (stream `pos`); the asset written off when damaged
-    or past its life."""
-    loan = world.loans[loan_id]
+def drawn(terms: Terms, loan_id: int) -> str:
+    """The condition `loan_id` comes back in by its draw (stream `pos`, `pos_loans.condition_on_return`)."""
     shares = terms.config.field.pos_loans.condition_on_return
-    draw, low, condition = float(rng("pos", "return", loan_id).random()), 0.0, CONDITIONS[-1]
+    draw, low = float(rng("pos", "return", loan_id).random()), 0.0
     for name in CONDITIONS:
         low += shares[name]
         if draw < low:
-            condition = name
-            break
-    loan.returned_on, loan.condition_on_return = first, condition
+            return name
+    return CONDITIONS[-1]
+
+
+def give_back(world: World, terms: Terms, loan_id: int, first: date) -> None:
+    """`loan_id` back on `first`, in the worse of its draw and the asset's own condition (module docstring); the asset
+    written off when drawn damaged or past its life."""
+    loan = world.loans[loan_id]
     asset = world.assets[loan.pos_asset_id]
+    draw, own = drawn(terms, loan_id), "good" if asset.condition == "new" else asset.condition
+    condition = max(draw, own, key=CONDITIONS.index)
+    loan.returned_on, loan.condition_on_return = first, condition
     asset.loan, asset.condition = None, condition
-    if condition == "damaged" or add_months(asset.acquired_on, terms.config.field.pos_asset_life_months) <= first:
+    if draw == "damaged" or add_months(asset.acquired_on, terms.config.field.pos_asset_life_months) <= first:
         asset.written_off_on = first
     del world.lent[loan.delivery_point_id]
 
@@ -401,11 +421,8 @@ def medians(world: World) -> None:
 
 
 def place(world: World, terms: Terms, first: date) -> list[int]:
-    """Each region's placements of `first` (module docstring); the loans' ids."""
-    demand = world.demand
-    if demand is None:
-        raise ValueError("the World has no demand state (setup makes it)")
-    points = {int(point): p for p, point in enumerate(demand.point_ids)}
+    """Each region's placements of `first` (module docstring), the stores' lines and uplifts from
+    `World.display_uplift`; the loans' ids."""
     stock: dict[tuple[str, str], list[int]] = {}
     for asset_id, asset in world.assets.items():
         if asset.written_off_on is None and asset.loan is None and asset.material in terms.displays:
@@ -430,8 +447,8 @@ def place(world: World, terms: Terms, first: date) -> list[int]:
         employee_id, skill, factor = manager
         left = float(terms.config.field.pos_budget[region]) * factor
         if found:
-            stores = [demand.spots[points[t.delivery_point_id]].store for t in found]
-            uplift = np.array([terms.grid.uplift(store) if store else 0.0 for store in stores])
+            held_by = [world.display_uplift.get(t.delivery_point_id, {}) for t in found]  # {line: uplift}, or none
+            uplift = np.array([next(iter(held.values()), 0.0) for held in held_by])
             ids = np.array([t.delivery_point_id for t in found], dtype=np.int64)
             draw = uniforms("pos", "place", region, first, ids=ids)
             weight = uplift ** (skill * terms.choice_exponent)
@@ -439,8 +456,7 @@ def place(world: World, terms: Terms, first: date) -> list[int]:
             for k in np.argsort(-key, kind="stable").tolist():
                 if not np.isfinite(key[k]):
                     break
-                t = found[k]
-                line = demand.lines[best_line(demand, points[t.delivery_point_id], terms.brands)].code
+                t, line = found[k], next(iter(held_by[k]))
                 display = next((code for code in fits(terms, line) if stock.get((region, code))), None)
                 if display is None:
                     continue
@@ -449,13 +465,13 @@ def place(world: World, terms: Terms, first: date) -> list[int]:
                 if asset.cost > left:
                     break
                 stock[(region, display)].pop(0)
-                out.append(lend(world, terms, t, asset_id, line, float(uplift[k]), first, employee_id))
+                out.append(lend(world, terms, t, asset_id, float(uplift[k]), first, employee_id))
                 left -= asset.cost
         world.display_budget[region] = round(left, 2)
     return out
 
 
-def lend(world: World, terms: Terms, t: Tourplan, asset_id: int, line: str, uplift: float, first: date, by: int) -> int:
+def lend(world: World, terms: Terms, t: Tourplan, asset_id: int, uplift: float, first: date, by: int) -> int:
     """`asset_id` lent to `t`'s store from `first`, carrying its display's lines; the loan's id."""
     asset = world.assets[asset_id]
     loan_id = row_id("pos_loan", pos_asset=asset.asset_no, lent_on=first)

@@ -606,11 +606,21 @@ def test_a6_is_the_twin_s_count_on_the_hand_built_arc(
     db: psycopg.Connection, put: Put, tmp_path: Path, a6_rows: Any
 ) -> None:
     """G2 S2.3 T7: a6.sql on conftest's `a6_case` gives the twin's count — the sightings with the arc whole, none with a
-    leg missing (the facings too flat, the dip too shallow, no sighting)."""
+    leg missing (the facings too flat, the dip too shallow, no sighting); on a build that ends inside the weeks the
+    planted dip and no other, on one that ends before the dip's `from` none (review-248 R9)."""
     a6_case, write_rows = a6_rows
-    arcs = ((5, 1.5, 0.88, 5), (5, 1.2, 0.88, 0), (5, 1.5, 0.96, 0), (0, 1.5, 0.88, 0))
-    for k, (seen, lift, dip, found) in enumerate(arcs):
-        rows = a6_case(seen, lift, dip)
+    cut = date(2025, 11, 30)  # review-248 R9: a build that ends inside the weeks reads its days, as the twin
+    arcs: list[tuple[int, float, float, int, date | None]] = [
+        (5, 1.5, 0.88, 5, None),
+        (5, 1.2, 0.88, 0, None),
+        (5, 1.5, 0.96, 0, None),
+        (0, 1.5, 0.88, 0, None),
+        (3, 1.5, 0.88, 3, cut),
+        (3, 1.5, 1.0, 0, cut),
+        (1, 1.5, 0.88, 0, date(2025, 11, 7)),
+    ]
+    for k, (seen, lift, dip, found, ends) in enumerate(arcs):
+        rows = a6_case(seen, lift, dip, cut=ends)
         write_rows(tmp_path / str(k), rows)
         twin = a6(Build(tmp_path / str(k)), StoriesConfig.load())
         with db.transaction(force_rollback=True):
