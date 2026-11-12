@@ -15,7 +15,7 @@ from datetime import timedelta
 from functools import cached_property
 
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.loop import demand, prompts
+from hartland_sim.loop import demand, pos, prompts
 from hartland_sim.rng import using_master_seed
 from hartland_sim.setup import customers, opening, policies, portfolio, promotions, reference
 from hartland_sim.setup import org as org_setup
@@ -62,7 +62,7 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
         products = portfolio.build(out, world, stories)
         covers = policies.stock_policies(out, world, products)
         policies.rules(out, world, owner=org.actors[SALES].employee_id)
-        policies.pos(out, world, geography)
+        assets, counters, pos_terms = policies.pos(out, world, stories, geography)
         policies.fleet(out, world)
         made = customers.build(out, world, stories, geography, org, market)
         state = World(world.history.warm_up_from - timedelta(days=1))
@@ -81,6 +81,9 @@ def run(world: WorldConfig | None = None, stories: StoriesConfig | None = None, 
             list(state.customers.values()), made, geography, products, out["channel_listing"], world, stories
         )
         state.purchases = prompts.Purchases.of(state)
+        state.assets, state.counters = assets, {**state.counters, **counters}
+        state.measure = pos.Measure.of(state.demand)
+        state.display_uplift = pos.uplifts(state, pos_terms)
         promotions.write(out, templates, state, world)
     return Setup(state, out, geography, org, products, covers, made, world)
 

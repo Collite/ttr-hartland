@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hartland_sim.loop.demand import Demand
+    from hartland_sim.loop.pos import Measure
     from hartland_sim.loop.prompts import Purchases
 
 PROTOCOL = 5
@@ -267,16 +268,38 @@ class OpenInvoice:
     open_amount: float  # CZK without VAT, as the credit limits are
 
 
-@dataclass(frozen=True)
-class Loan:
-    """A display lent to a store (`pos_loan`, G2 S2.3): its line's demand there × (1 + `uplift`) from `lent_on` until
-    the day before `returned_on`."""
+@dataclass
+class Asset:
+    """A PoS asset of a region's pool (`pos_asset`, G2 S2.3, `loop.pos`): in stock, out on `loan`, or written off."""
 
+    material: str  # its pos_material code
+    asset_no: str
+    region: str  # the region whose pool holds it
+    acquired_on: date
+    cost: float
+    condition: str  # new · good · worn · damaged
+    written_off_on: date | None = None
+    loan: int | None = None  # the pos_loan_id it is out on
+
+
+@dataclass
+class Loan:
+    """A display lent to a store (`pos_loan`, G2 S2.3, `loop.pos`): its lines' demand at the store's delivery point
+    × (1 + `uplift`) from `lent_on` until the day before `returned_on`; it is due back after `until`."""
+
+    pos_asset_id: int
+    customer_id: int
     delivery_point_id: int
-    line: str
+    store_id: int
+    region: str
+    lines: tuple[str, ...]  # the product lines it carries
     uplift: float  # the store's display_uplift (S5)
     lent_on: date
+    until: date  # the last day of its term
+    placed_by: int  # the rep's employee_id
+    approved_by: int  # the area manager's
     returned_on: date | None = None
+    condition_on_return: str | None = None
 
 
 @dataclass
@@ -299,6 +322,8 @@ class Tourplan:
     week: int  # 0–7: the store's week in an 8-week cycle, taken mod `cycle_weeks`
     valid_from: date
     valid_to: date = OPEN
+    calls: int = 0  # G2 S2.3: its sales visits that dealt with someone, and of them those that converted — the
+    converted: int = 0  # store's under its tourplans, across reps (a re-cut carries them on); the give-aways follow
 
 
 @dataclass
@@ -317,7 +342,13 @@ class World:
     open_invoices: dict[int, OpenInvoice] = field(default_factory=dict)  # G4: by invoice_id
     tourplans: dict[int, Tourplan] = field(default_factory=dict)  # G2 S2.1: by tourplan_id, closed ones too
     tourplan_of: dict[str, int] = field(default_factory=dict)  # G2 S2.1: a store's (osm_id) open tourplan
-    loans: dict[int, Loan] = field(default_factory=dict)  # G2: by pos_asset_id
+    # G2 S2.3: the regions' PoS assets by pos_asset_id, every loan by pos_loan_id (returned ones too), each delivery
+    # point's running loan (`lent`: delivery_point_id → pos_loan_id), and each area's conversion of the month: its
+    # stores' median and the share of its calls at the stores above it (`loop.pos.medians`).
+    assets: dict[int, Asset] = field(default_factory=dict)
+    loans: dict[int, Loan] = field(default_factory=dict)
+    lent: dict[int, int] = field(default_factory=dict)
+    conversion: dict[str, tuple[float, float]] = field(default_factory=dict)
     promotions: dict[int, Promotion] = field(default_factory=dict)  # the calendar's, by promotion_id (setup; S1.3)
     agreements: dict[int, Agreement] = field(default_factory=dict)  # S1.3: by price_agreement_id (`add_agreement`)
     demand: Demand | None = None  # S1.2: the points, their base and baskets (`loop.demand`)
@@ -333,10 +364,12 @@ class World:
     planned_gross: dict[str, float] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)  # a numbered code's last number, by its prefix (AG-2024)
     purchases: Purchases | None = None  # G2 S2.2: what the reps' customers bought, by SKU, and the prompts' memory
-    # G2 S2.3 fills these two, which S2.2's display prompts read: a display's expected uplift of a line at a delivery
-    # point, by delivery_point_id then line code, and the display budget (CZK) a region's manager has left.
+    # G2 S2.3 (`loop.pos`) fills these two, which S2.2's display prompts read: a display's uplift at a small-retail
+    # store's delivery point, by delivery_point_id then the line it would carry, and the display budget (CZK) a
+    # region's manager has left of the month's; and `measure`, the small-retail points' cases by line and month.
     display_uplift: dict[int, dict[str, float]] = field(default_factory=dict)
     display_budget: dict[str, float] = field(default_factory=dict)
+    measure: Measure | None = None
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such

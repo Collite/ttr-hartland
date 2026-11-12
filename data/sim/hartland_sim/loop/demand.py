@@ -36,13 +36,14 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from hartland_sim.config import ChannelSettings, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
-from hartland_sim.io.reference import Row, read
+from hartland_sim.io.reference import REFERENCE_DIR, Row, read
 from hartland_sim.rng import pairs, uniforms
 from hartland_sim.setup.affluence import load as affluence_index
 from hartland_sim.setup.customers import Customers
@@ -66,9 +67,9 @@ class Line:
     is_professional: bool
 
 
-def lines() -> tuple[Line, ...]:
+def lines(root: Path = REFERENCE_DIR) -> tuple[Line, ...]:
     """The product lines, in `product_line.csv`'s order — the demand arrays' second axis."""
-    return tuple(Line(row["code"], row["is_premium"], row["is_professional"]) for row in read("product_line"))
+    return tuple(Line(row["code"], row["is_premium"], row["is_professional"]) for row in read("product_line", root))
 
 
 @dataclass(frozen=True)
@@ -852,9 +853,11 @@ class Terms:
         for promotion in world.promotions.values():
             if promotion.valid_from <= day <= promotion.valid_to + last:
                 skus += self._promotion(promotion, day, factor, index, world)
-        for loan in world.loans.values():
-            if loan.lent_on <= day and (loan.returned_on is None or day < loan.returned_on):
-                factor[self.point(loan.delivery_point_id), index[loan.line]] *= 1 + loan.uplift
+        for loan_id in world.lent.values():  # the running loans (G2 S2.3, `loop.pos`): lent from the 1st
+            loan = world.loans[loan_id]
+            if loan.lent_on <= day:
+                for line in loan.lines:
+                    factor[self.point(loan.delivery_point_id), index[line]] *= 1 + loan.uplift
         for agreement in world.agreements.values():
             if agreement.valid_from <= day <= agreement.valid_to:
                 c, i = self.customer(agreement.customer_id), index[agreement.line]

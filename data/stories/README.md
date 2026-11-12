@@ -37,11 +37,11 @@ component tests run every file on the empty schema, and G5 S5.2 tunes the parame
 first full build.
 
 A threshold comes from the mechanics, never from a build: S2-affluence's 1.35 lies between the ≈ 1.68 that `s2.yaml`'s
-mechanics give over the real affluence quarters and the null world's 1.0. One is still to be set that way: S5's
-spread (`s5_best_worst.sql`), whose 3 is `04`'s, set for the return rather than for gain ÷ cost. G2 S2.3 derives it
-once T2's placements and T4's give-aways exist (at T6, before the first build): the expected gain ÷ cost of PHA and
-of VCH from `s5.yaml`'s and `world.yaml`'s mechanics over the market. It sets the threshold between that spread and
-the null world's 1.0, never from a build.
+mechanics give over the real affluence quarters and the null world's 1.0. S5's spread (`s5_best_worst.sql`) was set
+that way at G2 S2.3 T6, before the first build (`hartland_sim/checks/s5_expected.py`): over the opening market the
+mechanics give PHA's gain ÷ cost over VCH's 1.54 in the story and 1.21 in the null world — Prague's stores sell more,
+so its displays gain more whoever places them — and the threshold, 1.35, lies between them. G5 S5.2 does not retune it.
+It is provisional — S2.4 corrects the gain and re-derives it (NH-D17); it is not certified.
 
 ## The pins
 

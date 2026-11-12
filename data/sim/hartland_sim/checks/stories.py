@@ -12,16 +12,18 @@ is a null world and each metric must give the opposite (`null_world`).
 and `s2_affluence`), S4 (`s4`, and 04's k-means check `s4_kmeans`, which has no SQL: s4.yaml `kmeans`).
 S2-affluence counts an order only where the promotion names its channel (ttr-hartland#8 item 1, the twin's default
 until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists), its
-measure re-cut in S1.5 (`measured`). **G2 S2.1:** the field's probes, A-6 (`a6`), A-7 (`a7`), A-8 (`a8`). The others
-(S3, S5, the other probes) arrive with their stages.
+measure re-cut in S1.5 (`measured`). **G2 S2.1:** the field's probes, A-6 (`a6`), A-7 (`a7`), A-8 (`a8`). **G2 S2.3:**
+S5 (`s5`, `s5_best_worst`, their shared region block `s5_regions`) and A-6's whole arc (`a6_arc`: the sightings, the
+facings, the dip). The others (S3, the other probes) arrive with their stages.
 
 **The probes** (`anomalies.yaml`): a probe returns one count, judged by its `expect` (`>= n`, `= n`, or `rows` for
 any row at all); with `--null` it must not hold — with the anomaly off the probe finds nothing. A disabled anomaly's
 probe is not run, nor one without a twin.
 
-**`sales_pl`** (S6): the view's columns the twin reads, as the view makes them — the cases, the Customer Margin (gross
-revenue less every discount, the delivery and the warehouse cost, a NULL cost as 0; no COGS, contracts §4) and the
-agreed discount. Before G3/G4 write the costs, the Customer Margin is the net revenue.
+**`sales_pl`** (S5, S6): the view's columns the twins read, as the view makes them — the store (the delivery point's),
+the cases, the Customer Margin (gross revenue less every discount, the delivery and the warehouse cost, a NULL cost as
+0; no COGS, contracts §4) and the agreed discount. Before G3/G4 write the costs, the Customer Margin is the net
+revenue.
 
 The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result, and a note where a twin
 has more to say (S1: each line's ratio, so the line that sets the margin shows).
@@ -61,10 +63,14 @@ WRITERS = {
     "visit": "G2 S2.1",
     "visit_plan": "G2 S2.1",
     "competitor_sighting": "G2 S2.1",
+    "visit_observation": "G2 S2.1",
     "sales_order": "G1 S1.4",
     "sales_order_line": "G1 S1.4",
     "sales_order_line_discount": "G1 S1.4",
     "price_agreement": "G1 S1.4",
+    "pos_loan": "G2 S2.3",
+    "pos_asset": "G2 S2.3",
+    "pos_handout": "G2 S2.3",
 }
 
 
@@ -386,14 +392,15 @@ Twin = Callable[[Build, StoriesConfig], float]
 
 
 def _sales_pl(build: Build) -> Frame:
-    """`sales_pl` (contracts §4): the columns S6 reads (module docstring)."""
+    """`sales_pl` (contracts §4): the columns S5 and S6 read (module docstring)."""
     return build.joined("sales_pl", _join_sales_pl)
 
 
 def _join_sales_pl(build: Build) -> Frame:
     columns = ["sales_order_line_id", "sales_order_id", "sku_id", "qty_cases", "list_price_case"]
     lines = build["sales_order_line"][[*columns, "delivery_cost_case", "warehouse_cost_case"]]
-    orders = build["sales_order"][["sales_order_id", "customer_id", "ordered_on"]]
+    orders = build["sales_order"][["sales_order_id", "customer_id", "delivery_point_id", "ordered_on"]]
+    orders = orders.merge(build["delivery_point"][["delivery_point_id", "store_id"]], on="delivery_point_id")
     sku = build["sku"][["sku_id", "product_id"]]
     product = build["product"][["product_id", "product_line_id"]]
     out = lines.merge(orders, on="sales_order_id").merge(sku, on="sku_id").merge(product, on="product_id")
@@ -412,7 +419,8 @@ def _join_sales_pl(build: Build) -> Frame:
     )
     out["discount_agreed"] = out["sales_order_line_id"].map(agreed).fillna(0.0)
     out = out.rename(columns={"qty_cases": "cases"})
-    return out[["customer_id", "product_line_id", "ordered_on", "cases", "customer_margin", "discount_agreed"]]
+    keep = ["customer_id", "store_id", "product_line_id", "ordered_on", "cases", "customer_margin", "discount_agreed"]
+    return out[keep]
 
 
 # Why `measured` leaves an agreement out (s6.sql's agreement and gain CTEs), each a label for the note, in the order
@@ -591,26 +599,143 @@ def s6_targets(build: Build, stories: StoriesConfig) -> float:
 
 # ── the probes (G2 S2.1, S2.2) ────────────────────────────────────────────────
 
+S5_FROM = date(2024, 2, 26)  # s5.sql: loans whose 8 weeks before lie inside the history
+S5_LIFE_DAYS = 36 * 30.4  # s5.sql: a display's cost spread over 36 months
+S5_BEST, S5_WORST = "PHA", "VCH"  # s5_best_worst.sql: the most skilled manager's region, the least (not the generous)
+
+
+def s5_regions(build: Build) -> Frame:
+    """s5.sql's and s5_best_worst.sql's shared block (`region return`): per region with a loan lent from `S5_FROM` to
+    the last order day, its displays' gain — each loan's Customer Margin at its store (at its customer, without a
+    store) a day during the loan less that of the 56 days before, × the loan's days — and their cost: each display's
+    over `S5_LIFE_DAYS` for the loan's days, plus the region's give-aways from `S5_FROM` on."""
+    return build.joined("s5_regions", _join_s5_regions)
+
+
+def _join_s5_regions(build: Build) -> Frame:
+    day = build["sales_order"]["ordered_on"].max()
+    first = pd.Timestamp(S5_FROM)
+    regions = build["region"][["region_id", "code"]].rename(columns={"code": "region"})
+    assets = build["pos_asset"][["pos_asset_id", "cost", "region_id"]]
+    loans = build["pos_loan"].merge(assets, on="pos_asset_id").merge(regions, on="region_id")
+    loans = loans[loans["lent_on"].between(first, day)].copy()
+    loans["until"] = loans["returned_on"].fillna(day).clip(upper=day)
+    loans["days"] = (loans["until"] - loans["lent_on"]).dt.days + 1
+    sales = _sales_pl(build).groupby(["customer_id", "store_id", "ordered_on"], dropna=False, as_index=False)
+    margin = sales["customer_margin"].sum()
+    at = loans[["pos_loan_id", "customer_id", "store_id", "lent_on", "until"]].merge(
+        margin, on="customer_id", suffixes=("", "_sold")
+    )
+    at = at[
+        (at["store_id"].isna() | (at["store_id"] == at["store_id_sold"]))
+        & (at["ordered_on"] >= at["lent_on"] - pd.Timedelta(days=WEEK_DAYS))
+        & (at["ordered_on"] <= at["until"])
+    ]
+    during = at[at["ordered_on"] >= at["lent_on"]].groupby("pos_loan_id")["customer_margin"].sum()
+    before = at[at["ordered_on"] < at["lent_on"]].groupby("pos_loan_id")["customer_margin"].sum()
+    loans["gain"] = (
+        loans["pos_loan_id"].map(during).fillna(0.0).astype(float) / loans["days"]
+        - loans["pos_loan_id"].map(before).fillna(0.0).astype(float) / WEEK_DAYS
+    ) * loans["days"]
+    loans["cost"] = loans["cost"] * loans["days"] / S5_LIFE_DAYS
+    visits = build["visit"][["visit_id", "store_id", "day"]]
+    visits = visits[visits["day"].between(first, day)]
+    places = build["store"][["store_id", "area_id"]].merge(build["area"][["area_id", "region_id"]], on="area_id")
+    handed = build["pos_handout"][["visit_id", "cost"]].merge(visits, on="visit_id").merge(places, on="store_id")
+    giveaways = handed.merge(regions, on="region_id").groupby("region")["cost"].sum()
+    out = loans.groupby("region", as_index=False)[["gain", "cost"]].sum()
+    out["cost"] = out["cost"] + out["region"].map(giveaways).fillna(0.0)
+    return out
+
+
+def s5(build: Build, stories: StoriesConfig) -> float:
+    """s5.sql: Spearman's rho between the regions' returns, (gain − cost) ÷ cost, and their managers' `pos_skill`, on
+    average ranks; NaN for fewer than two regions or no spread."""
+    skill = stories.story("S5").parameters["pos_skill"]
+    found = s5_regions(build)
+    found = found[found["region"].isin(list(skill)) & (found["cost"] != 0)]
+    if len(found) < 2:
+        return math.nan
+    returns = ((found["gain"] - found["cost"]) / found["cost"]).rank(method="average")
+    skills = found["region"].map(skill).astype(float).rank(method="average")
+    rho = float(np.corrcoef(returns, skills)[0, 1]) if returns.std() and skills.std() else math.nan
+    return rho
+
+
+def s5_best_worst(build: Build, stories: StoriesConfig) -> float:
+    """s5_best_worst.sql: the best region's gain ÷ cost over the worst's (`S5_BEST`, `S5_WORST`); NaN where the
+    worst's is ≤ 0 or either is missing, as the SQL's NULL."""
+    found = s5_regions(build).set_index("region")
+    ratio = (found["gain"] / found["cost"].where(found["cost"] != 0)).to_dict()
+    best, worst = ratio.get(S5_BEST, math.nan), ratio.get(S5_WORST, math.nan)
+    if not worst > 0 or math.isnan(best):
+        return math.nan
+    return float(best / worst)
+
+
 A7_YEAR = 2025  # a7.sql: the reps' adherence over 2025
 A7_SKIPPING = 0.65  # a7.sql: a rep who made this share of its planned visits or fewer skips them
 A8_SILENT = 0.6  # a8.sql: a rep whose visits go unrecorded this share of the time or more records nothing
 
 
-def a6(build: Build, stories: StoriesConfig) -> float:
-    """a6.sql: the sightings of the competitor's promotion at visits in the region from its sightings to its end."""
+def a6_arc(build: Build, stories: StoriesConfig) -> tuple[float, float, float]:
+    """a6.sql's three legs (G2 S2.3 T7): the sightings of the competitor's promotion at visits in the region from its
+    sightings to its end; the competitors' facings beside its line in the region's observations over those days ÷
+    those of the 8 weeks before; and the dip — the region's customers' cases of the line a day from its `from` to its
+    end or the build's last order day, over the same customers' in the 8 weeks before, ÷ that ratio of the other
+    regions' customers (NaN when the build ends before its `from`)."""
     held = stories.anomaly("A-6").parameters
-    sightings = build["competitor_sighting"]
+    first, start, last = (pd.Timestamp(held[key]) for key in ("sightings_from", "from", "until"))
+    week8 = pd.Timedelta(days=WEEK_DAYS)
+    sightings, observed = build["competitor_sighting"], build["visit_observation"]  # G2 S2.1's: not run before
+    regions = build["area"][["area_id", "region_id"]].merge(build["region"][["region_id", "code"]], on="region_id")
+    stores = build["store"][["store_id", "area_id"]].merge(regions, on="area_id")
+    visits = build["visit"][["visit_id", "store_id", "day"]].merge(stores, on="store_id")
     competitor = row_id("competitor", code=held["competitor"])  # a reference table, loaded from data/reference/
     found = sightings[(sightings["competitor_id"] == competitor) & (sightings["activity_kind"] == "promotion")]
-    visits = build["visit"][["visit_id", "store_id", "day"]].merge(found[["visit_id"]], on="visit_id")
-    regions = (
-        build["store"][["store_id", "area_id"]]
-        .merge(build["area"][["area_id", "region_id"]], on="area_id")
-        .merge(build["region"][["region_id", "code"]], on="region_id")
-    )
-    at = visits.merge(regions, on="store_id")
-    first, last = pd.Timestamp(held["sightings_from"]), pd.Timestamp(held["until"])
-    return float(((at["code"] == held["region"]) & at["day"].between(first, last)).sum())
+    at = visits.merge(found[["visit_id"]], on="visit_id")
+    seen = float(((at["code"] == held["region"]) & at["day"].between(first, last)).sum())
+    line = build["product_line"].loc[build["product_line"]["code"] == held["line"], "product_line_id"]
+    observed = observed[observed["product_line_id"].isin(line)][["visit_id", "competitor_facings"]]
+    observed = observed.merge(visits[visits["code"] == held["region"]], on="visit_id")
+    facings = observed["competitor_facings"].astype("float64")  # an empty window's mean is NaN, not NA
+    during = facings[observed["day"].between(first, last)].mean()
+    before = facings[observed["day"].between(first - week8, first - pd.Timedelta(days=1))].mean()
+    lift = float(during / before) if before > 0 else math.nan
+    lines = _lines(build)
+    lines = lines[(lines["line"] == held["line"]) & lines["ordered_on"].between(start - week8, last)]
+    orders = build["sales_order"][["sales_order_id", "customer_id"]]
+    points = build["delivery_point"][["delivery_point_id", "store_id", "okres_id"]]
+    points = points.merge(build["store"][["store_id", "area_id"]], on="store_id", how="left")
+    by_okres = build["area_okres"].set_index("okres_id")["area_id"]
+    points["area_id"] = points["area_id"].fillna(points["okres_id"].map(by_okres))
+    points = points.merge(regions, on="area_id")
+    sold = lines.merge(orders, on="sales_order_id").merge(points[["delivery_point_id", "code"]], on="delivery_point_id")
+    sold["east"] = sold["code"] == held["region"]
+    as_of = build["sales_order"]["ordered_on"].max()  # a6.sql's `as_of`: the build's last order day
+    days = (min(last, as_of) - start).days + 1 if pd.notna(as_of) else 0
+    if days <= 0:
+        return seen, lift, math.nan
+    sold["during"] = sold["qty_cases"].where(sold["ordered_on"] >= start, 0.0) / days
+    sold["before"] = sold["qty_cases"].where(sold["ordered_on"] < start, 0.0) / WEEK_DAYS
+    each = sold.groupby(["east", "customer_id"])[["during", "before"]].sum().reset_index()
+    each = each[each["before"] > 0]
+    ratio = {east: g["during"].sum() / g["before"].sum() for east, g in each.groupby("east")}
+    dip = float(ratio[True] / ratio[False]) if ratio.get(True) is not None and ratio.get(False) else math.nan
+    return seen, lift, dip
+
+
+def a6_bars(stories: StoriesConfig) -> tuple[float, float]:
+    """a6.sql's bars: the facings at least 1 + half the planted lift, the dip at most 1 − half the planted cut."""
+    held = stories.anomaly("A-6").parameters
+    return 1 + float(held["competitor_facings_lift"]) / 2, 1 - float(held["dip_pct"]) / 200
+
+
+def a6(build: Build, stories: StoriesConfig) -> float:
+    """a6.sql (G2 S2.3 T7): the sightings, none unless the facings rose and the dip shows (`a6_arc`, `a6_bars`)."""
+    seen, lift, dip = a6_arc(build, stories)
+    rose, fell = a6_bars(stories)
+    return seen if lift >= rose and dip <= fell else 0.0
 
 
 def a7(build: Build, stories: StoriesConfig) -> float:
@@ -659,6 +784,8 @@ TWINS: Mapping[str, Twin] = {
     "detectors/s2.sql": s2,
     "detectors/s2_affluence.sql": s2_affluence,
     "detectors/s4.sql": s4,
+    "detectors/s5.sql": s5,
+    "detectors/s5_best_worst.sql": s5_best_worst,
     "detectors/s6.sql": s6,
     "detectors/s6_targets.sql": s6_targets,
 }

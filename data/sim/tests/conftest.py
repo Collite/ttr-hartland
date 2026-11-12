@@ -23,7 +23,8 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 from psycopg.types.json import Jsonb
 
-from hartland_sim.config import DDL_DIR, Column, InventoryConfig
+from hartland_sim.config import DDL_DIR, Column, InventoryConfig, StoriesConfig
+from hartland_sim.ids import row_id
 from hartland_sim.io.ddl import DOCWH, OWNER, READONLY
 from hartland_sim.io.reference import read
 from hartland_sim.loop.build import Built, build
@@ -172,6 +173,102 @@ def _cell(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return value.isoformat() if isinstance(value, date) else str(value)
+
+
+def a6_case(seen: int = 5, lift: float = 1.5, dip: float = 0.88, cut: date | None = None) -> Rows:
+    """G2 S2.3 T7's A-6 arc, hand-built (no build run): the rows `a6.sql` and its twin read. Two regions — A-6's
+    (store 1, customer 1) and JMV (store 2, customer 2), a visit at each every Monday — `seen` (at most 6) Kavalír
+    promotions at visits in A-6's from its sightings on; Gold's competitor facings beside it 10 in the 8 weeks
+    before, 10 × `lift` from the sightings on; each customer 6 cases of Gold a week, A-6's × `dip` from its `from`
+    (the season the same in both). `cut`: a build that ends that day — no visit or order after it."""
+    held = StoriesConfig.load().anomaly("A-6").parameters
+    first, start, last = (date.fromisoformat(str(held[key])) for key in ("sightings_from", "from", "until"))
+    gold, kavalir = 1, row_id("competitor", code=held["competitor"])  # the twin reads the reference's id
+    rows: Rows = {
+        "region": [{"region_id": 1, "code": held["region"]}, {"region_id": 2, "code": "JMV"}],
+        "area": [{"area_id": 1, "region_id": 1}, {"area_id": 2, "region_id": 2}],
+        "okres": [{"okres_id": 1}],
+        "area_okres": [{"area_id": 1, "okres_id": 1}],
+        "store": [{"store_id": 1, "area_id": 1}, {"store_id": 2, "area_id": 2}],
+        "customer": [{"customer_id": 1, "store_id": 1}, {"customer_id": 2, "store_id": 2}],
+        "delivery_point": [{"delivery_point_id": n, "customer_id": n, "store_id": n, "okres_id": 1} for n in (1, 2)],
+        "product_line": [{"product_line_id": gold, "code": held["line"]}],
+        "product": [{"product_id": gold, "product_line_id": gold}],
+        "sku": [{"sku_id": gold, "product_id": gold}],
+        "competitor": [{"competitor_id": kavalir, "code": held["competitor"]}],
+        "visit": [],
+        "visit_observation": [],
+        "competitor_sighting": [],
+        "sales_order": [],
+        "sales_order_line": [],
+        "sales_order_line_discount": [],
+    }
+    ids = itertools.count(1000)
+    day = first - timedelta(days=56)
+    while day <= last:  # a visit at each store every Monday, observing Gold
+        for store in (1, 2):
+            visit = next(ids)
+            rows["visit"].append({"visit_id": visit, "store_id": store, "customer_id": store, "day": day})
+            facings = 10 * (lift if store == 1 and day >= first else 1)
+            rows["visit_observation"].append(
+                {"visit_id": visit, "product_line_id": gold, "competitor_facings": round(facings)}
+            )
+            if store == 1 and day >= first and seen > 0:
+                seen -= 1
+                rows["competitor_sighting"].append(
+                    {"competitor_sighting_id": visit, "visit_id": visit, "competitor_id": kavalir}
+                    | {"activity_kind": "promotion"}
+                )
+        day += timedelta(days=7)
+    day = start - timedelta(days=56)
+    while day <= last:  # each customer's Gold order every Wednesday
+        for customer in (1, 2):
+            order = next(ids)
+            cases = 6.0 * (dip if customer == 1 and day >= start else 1)
+            rows["sales_order"].append(
+                {"sales_order_id": order, "customer_id": customer, "delivery_point_id": customer}
+                | {"channel": "small_retail", "ordered_on": day + timedelta(days=2)}
+            )
+            rows["sales_order_line"].append(
+                {"sales_order_line_id": order, "sales_order_id": order, "sku_id": gold, "qty_cases": round(cases, 3)}
+                | {"is_free_goods": False, "list_price_case": 1000.0}
+            )
+        day += timedelta(days=7)
+    if cut is not None:
+        visits = {v["visit_id"] for v in rows["visit"] if v["day"] <= cut}
+        orders = {o["sales_order_id"] for o in rows["sales_order"] if o["ordered_on"] <= cut}
+        for table, key, kept in (
+            ("visit", "visit_id", visits),
+            ("visit_observation", "visit_id", visits),
+            ("competitor_sighting", "visit_id", visits),
+            ("sales_order", "sales_order_id", orders),
+            ("sales_order_line", "sales_order_id", orders),
+        ):
+            rows[table] = [r for r in rows[table] if r[key] in kept]
+    return rows
+
+
+def write_rows(run: Path, rows: Rows) -> None:
+    """`rows` as a CSV build's files (the CSV writer's format); an empty table under the inventory's header."""
+    run.mkdir(parents=True, exist_ok=True)
+    inventory = InventoryConfig.load()
+    for table, found in rows.items():
+        names = list(found[0]) if found else [column.name for column in inventory.table(table).columns]
+        with (run / f"{table}.csv").open("w", encoding="utf-8", newline="") as out:
+            writer = csv.DictWriter(out, fieldnames=names, lineterminator="\n")
+            writer.writeheader()
+            for row in found:
+                writer.writerow({k: _cell(v) for k, v in row.items()})
+
+
+A6Case = Callable[..., Rows]  # `a6_case`
+WriteRows = Callable[..., None]  # `write_rows`
+
+
+@pytest.fixture(scope="session")
+def a6_rows() -> tuple[A6Case, WriteRows]:
+    """`a6_case` and `write_rows`, for the CSV and the component tier alike (the tests are not a package)."""
+    return a6_case, write_rows
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

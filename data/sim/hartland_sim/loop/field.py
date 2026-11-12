@@ -1,4 +1,4 @@
-"""Step 2 of the day loop (`05` §3), the field (G2 S2.1): the reps' tourplans and the day's visit plan.
+"""Step 2 of the day loop (`05` §3), the field (G2 S2.1, S2.3): the reps' tourplans and the day's visit plan.
 
 **Tourplans** (`tourplan`, T1; `World.Tourplan`): a rep calls on every store of its area that is a small-retail
 customer or a potential one, and on every station of the gas key accounts — OMV's and Shell's stations are on the
@@ -52,7 +52,7 @@ before it takes any order, every draw from stream `observe` by the visit and the
 - `out_of_stock`: a line it buys whose basket — what the store sold since its last order, the order it placed
   today included (the visit sees the shelf before that delivery) — holds `field.shelf_cycles` of the store's order
   cycles of its demand: the shelf the last order filled has run dry;
-- `secondary_placement`: a display of the line lent at the point that day (`World.loans`, G2 S2.3's);
+- `secondary_placement`: a display carrying the line lent at the point that day (`World.lent`, G2 S2.3's);
 - `promo_compliant`: at a sales visit, where a mandatory promotion of the line runs and admits the store, executed
   with `field.promo_compliance`; else null.
 
@@ -77,6 +77,17 @@ closed or gone met none: two outcome sentences. The slots are the visit's: a pro
 launched and not delisted, `catalogue.csv`) of a line the customer buys (or of the situation's line) by its name or its
 nickname (`product.csv`), the competitor's name, the promotion's, an objection. An unrecorded visit has no note, nor has
 any visit of A-8's rep, who records nothing.
+
+**The give-aways** (`pos_handout`, G2 S2.3 T4; `handouts`, after the visits' orders), every draw from stream `pos` by
+the visit: a recorded visit that dealt with someone hands out one give-away at `world.yaml field.pos_handouts.share`
+of the visits — × the region's manager's `budget_factor` (S5's generous one) — or, in a skilled manager's region (S5,
+`pos_skill` above `skilled_above`), `skilled_giveaway_cut` fewer, all at the stores whose conversion beats the area's
+median (`World.conversion`, the month-end's): there at the share less the cut ÷ the share of the area's calls made at
+those stores, and none elsewhere. The item is one of the give-aways that brand a line of the visit's order, else of
+those that brand no line (brand-wide items of either brand), the cheaper ones likelier (∝ 1 ÷ `unit_cost`); `qty`
+pieces in `pos_handouts.qty`, its cost `unit_cost × qty`. Each sales visit that dealt with someone counts on its
+tourplan's calls, a converting one on its conversions (`tally`, every day): the store's sales calls and conversions
+under its tourplans, across reps — a re-cut tourplan carries them on.
 """
 
 from __future__ import annotations
@@ -97,6 +108,8 @@ from hartland_sim.dates import is_working_day
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, read
 from hartland_sim.loop.demand import BasketReady, Shares, take
+from hartland_sim.loop.pos import Material
+from hartland_sim.loop.pos import Terms as PosTerms
 from hartland_sim.loop.pricing import admits, running
 from hartland_sim.rng import Generator, pairs, rng, uniforms
 from hartland_sim.setup.rows import Row, row
@@ -322,7 +335,8 @@ class Rival:
 class Crew:
     """What the visits read beside the `World`, for a run (never pickled; built again from the configs): `field`,
     S3's conversion base, each rep's adherence and its unrecorded share (A-8), each delivery point's index in the
-    demand's points, the lines a store class observes (by index) and each line's id, A-6 while enabled."""
+    demand's points, the lines a store class observes (by index) and each line's id, A-6 while enabled, the point of
+    sale's terms and its give-aways."""
 
     field: Field
     conversion_base: float
@@ -337,6 +351,8 @@ class Crew:
     products: Mapping[int, tuple[Product, ...]]  # line index → its products
     competitors: Mapping[str, str]  # code → name
     sku_line: Mapping[int, int]  # sku_id → its line's index
+    pos: PosTerms  # G2 S2.3's point of sale (`loop.pos`), the give-aways' terms
+    giveaways: tuple[Material, ...]  # the give-away materials, in pos_material.csv's order
 
     @classmethod
     def of(cls, world: World, config: WorldConfig, stories: StoriesConfig) -> Crew:
@@ -384,6 +400,7 @@ class Crew:
         on_sale: dict[str, list[tuple[date, date | None]]] = defaultdict(list)
         for sku in read("catalogue"):
             on_sale[sku["product"]].append((sku["launched_on"], sku["delisted_on"]))
+        pos = PosTerms.of(config, stories, demand.lines)
         products: dict[int, list[Product]] = {i: [] for i in range(len(demand.lines))}
         for product in product_rows:
             nicknames = tuple(nick for nick in (product["nicknames_cs"] or "").split(";") if nick)
@@ -403,6 +420,8 @@ class Crew:
             {i: tuple(found) for i, found in products.items()},
             {competitor["code"]: competitor["name"] for competitor in read("competitor")},
             {int(sku): int(line) for sku, line in zip(demand.catalogue.sku_ids, demand.catalogue.line, strict=True)},
+            pos,
+            tuple(m for m in pos.materials.values() if m.kind == "giveaway"),
         )
 
 
@@ -569,11 +588,8 @@ def observe(
             for sku_id, cases, _ in event.lines:
                 held[crew.sku_line[sku_id]] += cases
     mandatory = [promotion for _, promotion in running(world, day) if promotion.mandatory]
-    lent = {
-        (loan.delivery_point_id, loan.line)
-        for loan in world.loans.values()
-        if loan.lent_on <= day and (loan.returned_on is None or day < loan.returned_on)
-    }
+    out_now = (world.loans[loan_id] for loan_id in world.lent.values())
+    lent = {(loan.delivery_point_id, line) for loan in out_now if loan.lent_on <= day for line in loan.lines}
     kavalir = crew.kavalir if crew.kavalir and crew.kavalir.first <= day <= crew.kavalir.last else None
     low, high = crew.field.competitor_facings
     rows = []
@@ -832,3 +848,64 @@ def _slots(crew: Crew, lines: Sequence[int], day: date, draw: Generator) -> dict
         "competitor": "",
         "promotion": "",
     }
+
+
+# ── the give-aways (G2 S2.3 T4) ────────────────────────────────────────────────
+
+
+def tally(visits: Sequence[Visit]) -> None:
+    """Each sales visit that dealt with someone on its tourplan's calls, a converting one on its conversions too: the
+    store's sales calls and conversions under its tourplans, across reps, which a skilled area manager's give-aways
+    follow (`handouts`)."""
+    for v in visits:
+        if v.kind == "sales" and v.outcome not in UNREACHED:
+            v.tourplan.calls += 1
+            v.tourplan.converted += int(v.converts)
+
+
+def handouts(world: World, crew: Crew, day: date, visits: Sequence[Visit], events: Sequence[BasketReady]) -> list[Row]:
+    """The day's `pos_handout` rows (module docstring), after the visits' orders (`events`, the day's baskets)."""
+    demand = world.demand
+    dealt = [v for v in visits if v.recorded and v.outcome not in UNREACHED]
+    if demand is None or not dealt:
+        return []
+    terms, spec = crew.pos, crew.field.pos_handouts
+    ordered: dict[int, set[str]] = {}
+    for event in events:
+        if event.visit is not None:
+            ordered[event.visit[0]] = {demand.lines[crew.sku_line[sku]].code for sku, _, _ in event.lines}
+    keys = np.array([v.visit_id for v in dealt], dtype=np.int64)
+    give, pick, pieces = (uniforms("pos", name, ids=keys).tolist() for name in ("handout", "material", "qty"))
+    managers: dict[str, tuple[int, float, float] | None] = {}
+    low, high = spec.qty
+    rows = []
+    for k, v in enumerate(dealt):
+        t = v.tourplan
+        region = crew.pos.region_of[t.area]
+        if region not in managers:
+            managers[region] = terms.manager(world, region, day)
+        _, skill, factor = managers[region] or (0, 1.0, 1.0)
+        if terms.skilled(skill):
+            median, above = world.conversion.get(t.area, (1.0, 0.0))
+            beats = above > 0 and t.calls > 0 and t.converted / t.calls > median
+            chance = min(1.0, spec.share * (1 - terms.giveaway_cut) / above) if beats else 0.0
+        else:
+            chance = spec.share * factor
+        if give[k] >= chance:
+            continue
+        lines = ordered.get(v.visit_id, set())
+        pool = [m for m in crew.giveaways if m.line in lines] or [m for m in crew.giveaways if m.line is None]
+        weights = np.cumsum([1 / m.unit_cost for m in pool])
+        chosen = pool[min(int(np.searchsorted(weights, pick[k] * weights[-1], side="right")), len(pool) - 1)]
+        qty = low + min(int(pieces[k] * (high - low + 1)), high - low)
+        rows.append(
+            row(
+                "pos_handout",
+                pos_handout_id=row_id("pos_handout", visit=v.visit_id, pos_material=chosen.code),
+                visit_id=v.visit_id,
+                pos_material_id=chosen.pos_material_id,
+                qty=qty,
+                cost=round(chosen.unit_cost * qty, 2),
+            )
+        )
+    return rows

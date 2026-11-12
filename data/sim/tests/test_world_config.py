@@ -233,6 +233,24 @@ def test_every_problem_is_listed_at_once(tmp_path: Path) -> None:
     assert any("'surprise' was unexpected" in line for line in lines)
 
 
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (
+            lambda data: data["field"]["pos_loans"]["condition_on_return"].update(damaged=0.0),
+            r"field\.pos_loans\.condition_on_return: the shares add up to 0\.95, not 1",
+        ),
+        (lambda data: data["field"]["pos_loans"].update(months=[9, 3]), r"field\.pos_loans\.months: 9 is over 3"),
+        (lambda data: data["field"]["pos_handouts"].update(qty=[5, 1]), r"field\.pos_handouts\.qty: 5 is over 1"),
+    ],
+)
+def test_the_pos_sections_hold_together(tmp_path: Path, change: Any, problem: str) -> None:
+    """review-248 R5: what the schema cannot say — the return shares add up to 1, a loan's months and a give-away's
+    pieces run low to high — fails at load, not mid-build."""
+    with pytest.raises(ConfigError, match=rf"^world\.yaml: {problem}$"):
+        WorldConfig.load(_broken(tmp_path, change))
+
+
 def test_a_bad_date_fails_with_its_path(tmp_path: Path) -> None:
     path = _broken(tmp_path, lambda data: data["history"].update(until="2026-02-30"))
     with pytest.raises(ConfigError, match=r"history\.until: '2026-02-30' is not a 'date'"):

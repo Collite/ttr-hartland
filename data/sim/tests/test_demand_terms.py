@@ -175,12 +175,22 @@ def test_a10_lifts_its_sku_45_and_its_named_sibling_loses_30(demand: Demand) -> 
     assert np.allclose(found[0, others], share[0, others])
 
 
-def test_a_display_adds_its_uplift_while_the_loan_runs(demand: Demand) -> None:
+def _loan(lines: tuple[str, ...], uplift: float = 0.35) -> Loan:
+    first = date(2025, 3, 1)
+    return Loan(7, 1, 101, 11, "PHA", lines, uplift, first, date(2025, 6, 30), placed_by=21, approved_by=22)
+
+
+def test_a_display_adds_its_uplift_to_its_lines_while_the_loan_runs(demand: Demand) -> None:
+    """S1.2 T4's term reads G2 S2.3's loans: a running one (`World.lent`) lifts each line its display carries at its
+    point, from the day it is lent; a returned one has left `lent`."""
     terms = Terms.of(demand, STORIES)
-    world = _world(loans={7: Loan(101, "GOLD", 0.35, date(2025, 3, 1), date(2025, 3, 20))})
+    world = _world(loans={9: _loan(("GOLD",))}, lent={101: 9})
     assert _lift(terms, world)[0, GOLD] == pytest.approx(1.35)
-    assert _lift(terms, world, date(2025, 3, 20))[0, GOLD] == 1.0
+    assert _lift(terms, world)[0, CLASSIC] == 1.0 and (_lift(terms, world)[1:] == 1.0).all()
     assert _lift(terms, world, date(2025, 2, 28))[0, GOLD] == 1.0
+    assert _lift(terms, _world(loans={9: _loan(("GOLD",))}))[0, GOLD] == 1.0  # returned: not in `lent`
+    brand = _world(loans={9: _loan(("CLASSIC", "GOLD"), 0.2)}, lent={101: 9})  # a brand's display: its lines
+    assert _lift(terms, brand)[0, [CLASSIC, GOLD]] == pytest.approx([1.2, 1.2])
 
 
 def test_an_agreed_discount_adds_elasticity_times_its_percent(demand: Demand) -> None:

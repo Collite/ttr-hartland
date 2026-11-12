@@ -431,6 +431,23 @@ class Sightings:
 
 
 @dataclass(frozen=True)
+class PosLoans:
+    months: tuple[int, int]  # a loan's whole months, between
+    condition_on_return: Mapping[str, float]  # good · worn · damaged → its share
+
+
+@dataclass(frozen=True)
+class PosAcquisitions:
+    month: int  # on its first day the regions buy their pools back
+
+
+@dataclass(frozen=True)
+class PosHandouts:
+    share: float  # of the recorded visits that dealt with someone
+    qty: tuple[int, int]  # pieces, between
+
+
+@dataclass(frozen=True)
 class Field:
     cycle_weeks: Mapping[str, int]  # store class (or "potential") → weeks
     adherence: float
@@ -447,6 +464,24 @@ class Field:
     shelf_cycles: float
     promo_compliance: float
     sightings: Sightings
+    pos_budget: Mapping[str, float]  # region → CZK of displays its manager lends a month (G2 S2.3)
+    pos_displays: Mapping[str, str]  # an asset material lent to stores → the brand whose lines it carries, in order
+    pos_loans: PosLoans
+    pos_asset_life_months: int
+    pos_acquisitions: PosAcquisitions
+    pos_handouts: PosHandouts
+
+    def problems(self) -> list[str]:
+        """What the schema cannot say of the PoS sections: the return shares add up to 1, the pairs run low to high."""
+        out = []
+        shares = sum(self.pos_loans.condition_on_return.values())
+        if abs(shares - 1) > 1e-9:
+            out.append(f"field.pos_loans.condition_on_return: the shares add up to {shares:g}, not 1")
+        pairs = {"pos_loans.months": self.pos_loans.months, "pos_handouts.qty": self.pos_handouts.qty}
+        for name, (low, high) in pairs.items():
+            if low > high:
+                out.append(f"field.{name}: {low} is over {high}")
+        return out
 
 
 @dataclass(frozen=True)
@@ -509,7 +544,11 @@ class WorldConfig:
     def load(cls, path: Path = WORLD_FILE) -> WorldConfig:
         data = read_yaml(path)
         validate(data, "world", path.name)
-        return build(cls, data)
+        world = build(cls, data)
+        problems = world.field.problems()
+        if problems:
+            raise ConfigError("\n".join(f"{path.name}: {problem}" for problem in problems))
+        return world
 
 
 # ── InventoryConfig (data/inventory.yaml) ────────────────────────────────────

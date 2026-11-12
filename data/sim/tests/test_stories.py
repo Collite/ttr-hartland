@@ -6,14 +6,16 @@ import re
 import shutil
 from collections import Counter
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
+from hartland_sim.checks import s5_expected
 from hartland_sim.checks.czech import assert_czech_all
+from hartland_sim.checks.stories import a6_bars
 from hartland_sim.cli import main
 from hartland_sim.config import OPPOSITE, STORIES_DIR, ConfigError, InventoryConfig, StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read
@@ -152,19 +154,30 @@ def test_s5_names_the_managers_skills(stories: StoriesConfig) -> None:
     )
 
 
-def test_s5s_spread_waits_for_its_threshold(stories: StoriesConfig) -> None:
-    """The spread is gain ÷ cost, not 04's return, so 04's 3 is provisional until G2 S2.3 derives it from the
-    mechanics, at T6: the YAML, the SQL's header and the stories README say so."""
+def test_s5s_spread_is_derived_from_the_mechanics(stories: StoriesConfig) -> None:
+    """The spread is gain ÷ cost, not 04's return; G2 S2.3 T6 derived its threshold from the mechanics before the
+    first build (`checks.s5_expected`, its test holds the threshold between the paper's null world and story): the
+    YAML, the SQL's header and the stories README say so — and, with `s5_expected`, that it is provisional until S2.4
+    corrects the gain and re-derives it (NH-D17, review-248 R11)."""
     (spread,) = stories.story("S5").also
     assert (spread.sql, spread.metric, spread.threshold, spread.direction) == (
         "detectors/s5_best_worst.sql",
         "best_over_worst_gain_per_cost",
-        3,
+        1.35,
         ">=",
     )
-    assert re.search(r"The threshold,\s+(-- )?3, is provisional", _sql(spread.sql))
-    assert "# Provisional." in _sql("s5.yaml")
-    assert "One is still to be set that way: S5's spread" in " ".join(_sql("README.md").split())
+    sql, yaml, readme = (
+        " ".join(_sql(name).replace("-- ", "").split()) for name in (spread.sql, "s5.yaml", "README.md")
+    )
+    paper = " ".join((s5_expected.__doc__ or "").split())
+    assert "The threshold, 1.35, is derived from the mechanics (G2 S2.3 T6, before the first build" in sql
+    assert "Derived at G2 S2.3 T6 from the mechanics, before the first build" in yaml
+    assert "S5's spread (`s5_best_worst.sql`) was set that way at G2 S2.3 T6, before the first build" in readme
+    provisional = (
+        r"provisional — S2\.4 corrects the gain and re-derives (it|this threshold) \(NH-D17\); it is not certified"
+    )
+    for text in (sql, yaml, readme, paper):
+        assert re.search(provisional, text), text[:80]
 
 
 def test_s5s_two_files_judge_one_return() -> None:
@@ -177,6 +190,22 @@ def test_s5s_two_files_judge_one_return() -> None:
 
     assert block(_sql("detectors/s5.sql")) == block(_sql("detectors/s5_best_worst.sql"))
     assert "giveaway AS (" in block(_sql("detectors/s5.sql"))
+
+
+def test_a6_s_probe_reads_the_case_s_parameters(stories: StoriesConfig) -> None:
+    """a6.sql's literals are A-6's (G2 S2.3 T7): the competitor, the region and the line; the sightings' weeks and the 8
+    before them, the dip's and the 8 before, its days (to the build's last order day, review-248 R9); the bars, half
+    the planted lift and cut (`a6_bars`)."""
+    held = stories.anomaly("A-6").parameters
+    sql = _sql("probes/a6.sql")
+    first, start, last = (date.fromisoformat(str(held[key])) for key in ("sightings_from", "from", "until"))
+    week8 = timedelta(days=56)
+    days = [first, last, first - week8, first - timedelta(days=1), start - week8, start]
+    assert all(f"DATE '{day.isoformat()}'" in sql for day in days)
+    assert f"LEAST(MAX(ordered_on), DATE '{last}') - DATE '{start}' + 1 AS days" in sql and "/ 56.0" in sql
+    assert all(f"'{held[key]}'" in sql for key in ("competitor", "region", "line"))
+    rose, fell = a6_bars(stories)
+    assert f"f.lift >= {rose} AND d.ratio <= {fell}" in sql
 
 
 def test_s6_names_the_pinned_reps_and_managers(stories: StoriesConfig) -> None:
@@ -352,4 +381,4 @@ def test_dry_lists_the_key(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "stories-check --dry: 6 stories, 10 detectors, 15 probes — nothing run" in out
     assert "      detectors/s1.sql             min_peak_over_trough >= 1.25 · null world <" in out
-    assert "      detectors/s5_best_worst.sql  best_over_worst_gain_per_cost >= 3.0 · null world <" in out
+    assert "      detectors/s5_best_worst.sql  best_over_worst_gain_per_cost >= 1.35 · null world <" in out

@@ -5,9 +5,10 @@ checkpoint: a restored `World` pickles equal, not byte-identical (⚑R201-B, `wo
 - `closed(run, day)`: the sha256 of each table's rows closed by `day` — what a prolong to `day` must give as a straight
   build to any later day does. Those are setup's tables whole, and of the loop's:
   - the orders of `ordered_on` ≤ `day`, with their lines and their discounts;
-  - the visit plans of `planned_day` ≤ `day`, the visits of `day` ≤ `day` with their observations and sightings, the
-    rep prompts of `generated_on` ≤ `day` (classified on that day);
-  - the agreements, conditions, price lists (with their prices) and weather from a day ≤ `day`;
+  - the visit plans of `planned_day` ≤ `day`, the visits of `day` ≤ `day` with their observations, sightings and
+    give-aways, the rep prompts of `generated_on` ≤ `day` (classified on that day);
+  - the agreements, conditions, price lists (with their prices), weather and asset purchases (`asset_register`) from a
+    day ≤ `day`;
   - the plan rows made by `day` (a row of month M, version v is made on the day before M − (E − v) months, E the
     months the roll plans).
   The tables a build's end renders (the state tables, the promotions' status) and its own files (`_sim_meta`,
@@ -74,6 +75,7 @@ def closed(run: Path, day: date, world: WorldConfig | None = None) -> dict[str, 
         "visit_plan": lambda row: row["planned_day"] <= last,
         "visit": lambda row: row["day"] <= last,
         "rep_prompt": lambda row: row["generated_on"] <= last,  # generated and classified on its day (G2 S2.2)
+        "asset_register": lambda row: row["acquired_on"] <= last,  # setup's, then a purchase's on its day (G2 S2.3)
         "sales_plan": made,
     }
     keys = {
@@ -95,6 +97,7 @@ def closed(run: Path, day: date, world: WorldConfig | None = None) -> dict[str, 
         "channel_price": ("channel_price_list", "channel_price_list_id", None),
         "visit_observation": ("visit", "visit_id", None),
         "competitor_sighting": ("visit", "visit_id", None),
+        "pos_handout": ("visit", "visit_id", None),
     }
     for name, (parent, column, key) in children.items():
         path = run / f"{name}.csv"

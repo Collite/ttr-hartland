@@ -12,9 +12,12 @@ vehicles, the price lists.
   quarter has no `sales_plan` yet (S1.4 rolls it at the warm-up's first month-end), so its planned gross is
   `opening_quarter_gross` per customer the rep's area or the KAM's accounts hold active on the quarter's first day.
   The `World` holds the budgets (the loop accrues `used_amount`); the rows are rendered from it (`budget_row`).
-- **`pos_material`** (`pos_material.csv`) and **`pos_asset`**: each region holds `assets_per_region` of each asset
-  type, acquired on a day drawn between 2019 and the warm-up (stream `pos`), new in its first year, then good or worn
-  as it ages; held by the region, lent by G2 S2.3.
+- **`pos_material`** (`pos_material.csv`) and the regions' pools (`World.assets`, G2 S2.3's `loop.pos`): each region
+  holds `assets_per_region` of each asset type, bought in one of the three yearly purchases (`world.yaml
+  field.pos_acquisitions`) up to the warm-up's first day, drawn by the asset (stream `pos`) — new in the last one,
+  then good or worn as it ages — and each purchase's `asset_register` row (`loop.pos.register_row`), its region's
+  name and cost centre from the run's PoS terms (`loop.pos.Terms`, made here once). `pos_asset` is rendered from the
+  `World` (`setup.opening.state_rows`): the loop writes assets off and buys more.
 - **`carrier`** (`carrier.csv`) and **`vehicle`**: each carrier's fleet by class, the capacities of `delivery.capacity`,
   a Czech plate drawn per vehicle (stream `route`) in the region of its DC.
 - **The price lists** (`loop.pricing`): the `World` gets the versions in force on the warm-up's first day — the
@@ -27,22 +30,23 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
-from hartland_sim.config import WorldConfig
+from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, Row, read
-from hartland_sim.loop.demand import CHANNELS
+from hartland_sim.loop.demand import CHANNELS, lines
+from hartland_sim.loop.pos import Terms, register_row
 from hartland_sim.loop.pricing import channel_list, standard_list
-from hartland_sim.rng import draw_day, rng
+from hartland_sim.rng import rng
 from hartland_sim.setup.portfolio import Portfolio
 from hartland_sim.setup.reference import Geography
 from hartland_sim.setup.rows import Tables, row
-from hartland_sim.world import OPEN, Budget, PriceList
+from hartland_sim.world import OPEN, Asset, Budget, PriceList
 
-ASSETS_FROM = date(2019, 1, 1)
+PURCHASES = 3  # the yearly purchases the opening pools were bought in
 PLATE_REGION = {"DC-JIRNY": "S", "DC-MODRICE": "B", None: "A"}  # Středočeský, Jihomoravský, Praha
 PLATE_LETTERS = "ABCDEFHJKLMNPRSTUVXYZ"  # Czech plates use no G, O, Q, W
 VEHICLE_CLASSES = {"vans": "van", "trucks_7_5t": "truck_7_5t", "trucks_12t": "truck_12t"}
@@ -174,10 +178,17 @@ def budget_row(employee: int, quarter: date, budget: Budget) -> Row:
     )
 
 
-def pos(out: Tables, world: WorldConfig, geography: Geography, root: Path = REFERENCE_DIR) -> None:
-    """`pos_material` and the regions' `pos_asset` pools into `out`."""
-    last = world.history.warm_up_from - timedelta(days=1)
+def pos(
+    out: Tables, world: WorldConfig, stories: StoriesConfig, geography: Geography, root: Path = REFERENCE_DIR
+) -> tuple[dict[int, Asset], dict[str, int], Terms]:
+    """`pos_material` and the purchases' `asset_register` rows into `out`; the regions' pools (by pos_asset_id), each
+    pool's last asset number (`World.counters`, by its prefix) and the PoS terms they were made with."""
+    first = world.history.warm_up_from
+    month = world.field.pos_acquisitions.month
+    last = date(first.year if (first.month, first.day) >= (month, 1) else first.year - 1, month, 1)
+    purchases = [date(last.year - k, month, 1) for k in range(PURCHASES - 1, -1, -1)]
     regions = list(dict.fromkeys(geography.region_of.values()))
+    terms = Terms.of(world, stories, lines(root), root)
     materials = read("pos_material", root)
     for material in materials:
         line = material["product_line"]
@@ -192,28 +203,37 @@ def pos(out: Tables, world: WorldConfig, geography: Geography, root: Path = REFE
                 product_line_id=row_id("product_line", code=line) if line else None,
             )
         )
+    assets: dict[int, Asset] = {}
+    counters: dict[str, int] = {}
     for region in regions:
+        spent = dict.fromkeys(purchases, 0.0)
         for material in materials:
+            prefix = f"{material['code']}-{region}"
             for n in range(1, material["assets_per_region"] + 1):
-                asset_no = f"{material['code']}-{region}-{n:04d}"
+                asset_no = f"{prefix}-{n:04d}"
                 draw = rng("pos", "asset", asset_no)
-                acquired = draw_day(draw, ASSETS_FROM, last)
-                age = (last - acquired).days / 365.25
-                worn = min(0.6, 0.12 * age)
-                condition = "new" if age < 1 else ("worn" if draw.random() < worn else "good")
-                out["pos_asset"].append(
-                    row(
-                        "pos_asset",
-                        pos_asset_id=row_id("pos_asset", asset_no=asset_no),
-                        pos_material_id=row_id("pos_material", code=material["code"]),
-                        asset_no=asset_no,
-                        acquired_on=acquired,
-                        cost=material["unit_cost"],
-                        region_id=row_id("region", code=region),
-                        condition=condition,
-                        written_off_on=None,
+                acquired = purchases[int(draw.integers(0, len(purchases)))]
+                age = (first - acquired).days / 365.25
+                condition = "new" if acquired == last else ("worn" if draw.random() < min(0.6, 0.12 * age) else "good")
+                cost = float(material["unit_cost"])
+                assets[row_id("pos_asset", asset_no=asset_no)] = Asset(
+                    material["code"], asset_no, region, acquired, cost, condition
+                )
+                spent[acquired] += cost
+                counters[prefix] = n
+        for acquired, cost in spent.items():
+            if cost:
+                out["asset_register"].append(
+                    register_row(
+                        region,
+                        terms.region_names[region],
+                        terms.cost_centres[region],
+                        acquired,
+                        cost,
+                        world.field.pos_asset_life_months,
                     )
                 )
+    return assets, counters, terms
 
 
 def fleet(out: Tables, world: WorldConfig, root: Path = REFERENCE_DIR) -> None:

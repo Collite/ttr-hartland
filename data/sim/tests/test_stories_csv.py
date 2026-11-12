@@ -20,6 +20,8 @@ from hartland_sim.checks.stories import (
     _ntile,
     _sales_pl,
     a6,
+    a6_arc,
+    a6_bars,
     a7,
     a8,
     adjusted_rand,
@@ -521,13 +523,13 @@ def test_a8_counts_the_reps_whose_visits_go_unrecorded_60_pc_or_more(tmp_path: P
     assert a8(Build(tmp_path), STORIES) == 2
 
 
-def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path: Path) -> None:
+def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path: Path, a6_rows: Any) -> None:
+    a6_case, write_rows = a6_rows
     held = STORIES.anomaly("A-6").parameters
     first, last = date.fromisoformat(str(held["sightings_from"])), date.fromisoformat(str(held["until"]))
-    _write(tmp_path, "region", [{"region_id": 1, "code": held["region"]}, {"region_id": 2, "code": "JMV"}])
-    _write(tmp_path, "area", [{"area_id": 1, "region_id": 1}, {"area_id": 2, "region_id": 2}])
-    _write(tmp_path, "store", [{"store_id": 1, "area_id": 1}, {"store_id": 2, "area_id": 2}])
+    rows = a6_case(seen=0)
     kavalir, other = row_id("competitor", code=held["competitor"]), row_id("competitor", code="NORDCAFE")
+    rows["competitor"] = [{"competitor_id": kavalir, "code": held["competitor"]}]
     cases = [  # (store, day, competitor, kind): only the first two count
         (1, first, kavalir, "promotion"),
         (1, last, kavalir, "promotion"),
@@ -537,13 +539,57 @@ def test_a6_counts_the_competitor_s_promotions_in_its_region_and_weeks(tmp_path:
         (1, first, kavalir, "price_cut"),
         (1, first, other, "promotion"),
     ]
-    _write(tmp_path, "visit", [{"visit_id": k, "store_id": s, "day": d} for k, (s, d, _, _) in enumerate(cases)])
-    _write(
-        tmp_path,
-        "competitor_sighting",
-        [{"visit_id": k, "competitor_id": c, "activity_kind": kind} for k, (_, _, c, kind) in enumerate(cases)],
-    )
+    rows["visit"] += [{"visit_id": k, "store_id": s, "customer_id": s, "day": d} for k, (s, d, *_) in enumerate(cases)]
+    rows["competitor_sighting"] = [
+        {"competitor_sighting_id": k, "visit_id": k, "competitor_id": c, "activity_kind": kind}
+        for k, (_, _, c, kind) in enumerate(cases)
+    ]
+    write_rows(tmp_path, rows)
     assert a6(Build(tmp_path), STORIES) == 2
+
+
+def test_a6_s_arc_needs_the_facings_up_and_the_dip(tmp_path: Path, a6_rows: Any) -> None:
+    """G2 S2.3 T7: the sightings count only with the other two legs — the facings beside Gold at least 1 + half the
+    planted lift over the 8 weeks before, Gold's season-corrected dip at most 1 − half the planted cut."""
+    a6_case, write_rows = a6_rows
+    assert a6_bars(STORIES) == (1.25, 0.94)
+    for k, (lift, dip, found) in enumerate(((1.5, 0.88, 5), (1.2, 0.88, 0), (1.5, 0.96, 0))):
+        write_rows(tmp_path / str(k), a6_case(5, lift, dip))
+        seen, rose, fell = a6_arc(Build(tmp_path / str(k)), STORIES)
+        assert seen == 5 and rose == pytest.approx(lift, abs=0.05) and fell == pytest.approx(dip, abs=1e-9)
+        assert a6(Build(tmp_path / str(k)), STORIES) == found
+
+
+def test_a6_on_a_build_before_its_weeks_finds_nothing(tmp_path: Path, a6_rows: Any) -> None:
+    """A build that ends before A-6's weeks (CI's one quarter) has no observation or sighting in them: the probe is
+    0, not an error."""
+    a6_case, write_rows = a6_rows
+    rows = a6_case()
+    rows["visit_observation"], rows["competitor_sighting"] = [], []
+    write_rows(tmp_path, rows)
+    seen, lift, _ = a6_arc(Build(tmp_path), STORIES)
+    assert seen == 0 and math.isnan(lift) and a6(Build(tmp_path), STORIES) == 0
+
+
+def test_a6_on_a_build_that_ends_inside_its_weeks_reads_the_dip_from_its_days(tmp_path: Path, a6_rows: Any) -> None:
+    """review-248 R9: a build that ends on 2025-11-30, inside A-6's weeks, reads Gold's "during" a day over the days it
+    holds (to its last order day, as s5.sql's `as_of`): the planted dip, and none where none is planted. The ratio is
+    the other regions' too, so their days cancel in it — the clip makes the rates true, the verdict stays."""
+    a6_case, write_rows = a6_rows
+    for k, (dip, found) in enumerate(((0.88, 3), (1.0, 0))):
+        write_rows(tmp_path / str(k), a6_case(3, 1.5, dip, cut=date(2025, 11, 30)))
+        seen, rose, fell = a6_arc(Build(tmp_path / str(k)), STORIES)
+        assert seen == 3 and rose == pytest.approx(1.5, abs=0.05) and fell == pytest.approx(dip, abs=1e-9)
+        assert a6(Build(tmp_path / str(k)), STORIES) == found
+
+
+def test_a6_on_a_build_that_ends_before_its_from_has_no_dip(tmp_path: Path, a6_rows: Any) -> None:
+    """The sightings start a week before the dip's `from` (2025-11-10): a build that ends on 11-07 has no "during" day,
+    so no dip, not a ratio of nothing."""
+    a6_case, write_rows = a6_rows
+    write_rows(tmp_path, a6_case(1, 1.5, 0.88, cut=date(2025, 11, 7)))
+    seen, _, dip = a6_arc(Build(tmp_path), STORIES)
+    assert seen == 1 and math.isnan(dip) and a6(Build(tmp_path), STORIES) == 0
 
 
 def test_a_probe_s_expectation_and_the_null_world_s_opposite(tmp_path: Path) -> None:

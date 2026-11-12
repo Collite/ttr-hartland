@@ -14,14 +14,16 @@ before `history.first_day`).
   since the month-end too), the day's visit plan and its rep prompts (`loop.prompts.generate`; on a month's 1st
   the month's figures first, `prompts.refresh`, before step 4 books the day's orders), the visits, their
   observations and competitor sightings — a converting one then takes its customer's basket as its order, among the
-  day's baskets the orders step makes — the prompts classified after them (`prompts.classify`) and the notes; in the
-  warm-up only the visits and their orders, which move the `World` (nothing else is written, and every draw is the
-  visit's or the prompt's own: no prompt is made before the data, so their memory starts with it);
+  day's baskets the orders step makes — the give-aways (`field.handouts`, G2 S2.3), the stores' conversion counts
+  (`field.tally`), the prompts classified after them (`prompts.classify`) and the notes; in the warm-up only the
+  visits, their orders and the counts, which move the `World` (nothing else is written, and every draw is the visit's
+  or the prompt's own: no prompt is made before the data, so their memory starts with it);
 - 4 `orders`: the customers' asks, then the baskets' orders, priced (`loop.orders`);
 - 5 `supply`, 6 `delivery` (G3), 7 `finance`, 8 `shops` (G4), 8b `documents` (DOC): stubs, called and returning
   nothing;
 - the period ends (`periods`), on the last calendar day of each: a quarter's runs `quarter_end.roll_lists` — M+1's
-  channel lists need Q+1's standard list — then `month_end.close`, then `quarter_end.roll_budgets`, which reads the
+  channel lists need Q+1's standard list — then `month_end.close` (its last step the point of sale's: the displays,
+  the asset ledger, G2 S2.3), then `quarter_end.roll_budgets`, which reads the
   month-end's plan of M+1…M+3 (= Q+1); 31 December then `year_end.close`; any other month's last day
   `month_end.close`;
 - 9 `checkpoint`: `World.day` and `last_day_done` move to the day. The checkpoint row itself is written when the
@@ -50,6 +52,7 @@ from hartland_sim.loop import acquisition, demand, orders
 from hartland_sim.loop.field import (
     Crew,
     calls,
+    handouts,
     note,
     observe,
     plan,
@@ -57,6 +60,7 @@ from hartland_sim.loop.field import (
     sight,
     sighting_row,
     take_orders,
+    tally,
     visit,
     visit_plan_row,
     visit_row,
@@ -236,12 +240,15 @@ class Loop:
         today = self.today
         if not written:  # the warm-up: the visits and their orders move the World, the rest is dropped
             today.events = take_orders(self.world, self.crew, day, made, today.events, today.shares)
+            tally(made)
             return
         observations = observe(self.world, self.crew, day, made, today.events)
         self.output.append(day, "visit_observation", observations)
         sightings = sight(self.world, self.crew, day, made)
         self.output.append(day, "competitor_sighting", (sighting_row(s) for s in sightings))
         today.events = take_orders(self.world, self.crew, day, made, today.events, today.shares)
+        self.output.append(day, "pos_handout", handouts(self.world, self.crew, day, made, today.events))
+        tally(made)
         listings = classify(self.world, self.rulebook, day, briefed, made, today.events)
         note(self.world, self.crew, day, made, observations, sightings, listings)
         self.output.append(day, "visit", (visit_row(v, day) for v in made))

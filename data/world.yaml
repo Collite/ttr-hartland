@@ -331,6 +331,21 @@ field:
     home: { KAVALIR: VCH }
     home_weight: 3
     promotions_planted: [KAVALIR]
+  # The point of sale (G2 S2.3, `loop.pos`; 04 S5). Each month-end a region's manager lends displays to the reps'
+  # small-retail stores from the next day — `pos_displays`, in the order the manager reaches for them, each with the
+  # brand whose lines it carries (one that brands a line, pos_material.csv, carries that line) — up to `pos_budget` CZK
+  # of their cost a month: 45 CZK a planned call of the region at the opening, to the thousand (S5's generous manager
+  # × its budget_factor). A loan runs a whole number of months in `pos_loans.months` and comes back in a condition of
+  # `condition_on_return`; an asset is written off `pos_asset_life_months` after its purchase, or when it comes back
+  # damaged, and on the first day of `pos_acquisitions.month` a region buys its pools back to pos_material.csv's
+  # `assets_per_region`. Give-aways (`pos_handouts`): at `share` of the recorded visits that dealt with someone, `qty`
+  # pieces of one item, the cheaper ones likelier.
+  pos_budget: { PHA: 61000, SJC: 65000, ZSC: 65000, VCH: 33000, JMV: 56000, SMS: 67000 }
+  pos_displays: { STO-HARCAFE: HARCAFE, STO-HARSOUP: HARSOUP, PUL-GOLD: HARCAFE, PUL-SMESI: HARCAFE, REG-HARSOUP: HARSOUP }
+  pos_loans: { months: [3, 9], condition_on_return: { good: 0.6, worn: 0.35, damaged: 0.05 } }
+  pos_asset_life_months: 36
+  pos_acquisitions: { month: 1 }
+  pos_handouts: { share: 0.35, qty: [1, 5] }
 
 delivery:
   carriers_per_dc: 3
