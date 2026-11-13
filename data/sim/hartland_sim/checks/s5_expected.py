@@ -36,10 +36,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
-from hartland_sim.checks.stories import S5_BEST, S5_LIFE_DAYS, S5_WORST
+from hartland_sim.checks.stories import S5_BEST, S5_FROM, S5_LIFE_DAYS, S5_WORST, Build
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.loop.field import UNREACHED, kind_of
+from hartland_sim.loop.field import UNREACHED, Crew, kind_of
 from hartland_sim.loop.pos import Material, Terms, best_line, fits
 from hartland_sim.world import World
 
@@ -146,6 +147,75 @@ def expected(world: World, config: WorldConfig, stories: StoriesConfig) -> dict[
             float((held_by * cost).sum() / S5_LIFE_DAYS),
             float(giveaway),
         )
+    return out
+
+
+def planned(build: Build) -> tuple[pd.DataFrame, int]:
+    """A built world's planned visits of S5's window (`S5_FROM` to its last order day) — each one's day, rep, customer
+    (its `channel`, `since`, `until`, `status`) and region — and the window's days: the input of `giveaways`, the
+    tourplans as they grew, never what a visit, a sale or a display did."""
+    day = build["sales_order"]["ordered_on"].max()
+    plan = build["visit_plan"]
+    plan = plan[plan["planned_day"].between(pd.Timestamp(S5_FROM), day)]
+    plan = plan.merge(build["tourplan"][["tourplan_id", "customer_id"]], on="tourplan_id")
+    customers = build["customer"][["customer_id", "channel", "since", "until", "status"]]
+    places = build["store"][["store_id", "area_id"]].merge(build["area"][["area_id", "region_id"]], on="area_id")
+    places = places.merge(build["region"][["region_id", "code"]], on="region_id").rename(columns={"code": "region"})
+    plan = plan.merge(customers, on="customer_id").merge(places[["store_id", "region"]], on="store_id")
+    keep = ["planned_day", "employee_id", "customer_id", "channel", "since", "until", "status", "region"]
+    return plan[keep].reset_index(drop=True), (day - pd.Timestamp(S5_FROM)).days + 1
+
+
+def giveaways(
+    world: World, config: WorldConfig, stories: StoriesConfig, plan: pd.DataFrame, days: int
+) -> dict[str, float]:
+    """Each region's give-aways a day over `plan` (`planned`), from the mechanics (G2 S2.4 T3, R4; `field.handouts`):
+    a planned visit is made at its rep's adherence (A-7's for the skipping reps, `Crew`) and brings `ad_hoc_share` of an
+    ad-hoc one; it deals with someone at its kind's shares on its day (merchandising at a key account's station, sales
+    at an active customer, else acquisition) and is recorded but A-8's share; one give-away at `pos_handouts.share`
+    × the manager's `budget_factor` of those — a skilled manager's `giveaway_cut` fewer in all, every one at a sales
+    call (the stores above the area's median conversion, normalised by their share of its calls). Its item: of the
+    customer's lines at a sales call that orders — P = `conversion_base` × the rep's conversion skill — else
+    brand-wide, ∝ 1 ÷ `unit_cost`; `pos_handouts.qty` pieces. `world` is the opening world of `stories`; a customer or
+    a rep it does not know (acquired, hired later) takes its region's mean item and the average skill."""
+    demand = world.demand
+    if demand is None:
+        raise ValueError("the World has no demand state (setup makes it)")
+    terms, crew = Terms.of(config, stories, demand.lines), Crew.of(world, config, stories)
+    s5, field, spec = stories.story("S5"), config.field, config.field.pos_handouts
+    skills = {r: float(s5.parameters["pos_skill"][r]) if s5.enabled else 1.0 for r in terms.regions}
+    factors = {r: float(s5.parameters["budget_factor"].get(r, 1.0)) if s5.enabled else 1.0 for r in terms.regions}
+    pool = tuple(m for m in terms.materials.values() if m.kind == "giveaway")
+    brand_wide = handout_cost(pool, set())
+    lines = {
+        int(customer_id): handout_cost(pool, {line.code for i, line in enumerate(demand.lines) if bought[i]})
+        for customer_id, bought in zip(demand.customer_ids, demand.carried, strict=True)
+    }
+    v = plan.copy()
+    day = v["planned_day"]
+    active = v["since"].notna() & (v["since"] <= day) & (v["until"].isna() | (day <= v["until"]))
+    v["kind"] = np.where(v["channel"] == "gas_ka", "merchandising", np.where(active, "sales", "acquisition"))
+    dealt = {kind: 1 - sum(shares[name] for name in UNREACHED) for kind, shares in field.outcomes.items()}
+    reps = v["employee_id"].astype("int64")
+    made = reps.map(lambda e: crew.adherence.get(e, field.adherence)) + field.ad_hoc_share
+    recorded = 1 - reps.map(lambda e: crew.unrecorded.get(e, 0.0))
+    v["calls"] = made * v["kind"].map(dealt) * recorded  # a recorded call that dealt with someone, expected
+    skill = reps.map(lambda e: world.actors[e].skills.conversion if e in world.actors else 1.0)
+    orders = (crew.conversion_base * skill).clip(upper=1.0)
+    line = v["customer_id"].astype("int64").map(lines)
+    line = line.fillna(v.assign(line=line).groupby("region")["line"].transform("mean"))
+    sales = v["kind"] == "sales"
+    v["unit"] = np.where(sales, orders * line + (1 - orders) * brand_wide, brand_wide)
+    pieces = sum(spec.qty) / 2
+    out = {}
+    for region in terms.regions:
+        mine = v[v["region"] == region]
+        if terms.skilled(skills[region]):
+            at_sales = mine[mine["kind"] == "sales"]
+            unit = float(np.average(at_sales["unit"], weights=at_sales["calls"]))
+            out[region] = float(mine["calls"].sum()) * spec.share * (1 - terms.giveaway_cut) * unit * pieces / days
+        else:
+            out[region] = float((mine["calls"] * mine["unit"]).sum()) * spec.share * factors[region] * pieces / days
     return out
 
 

@@ -614,18 +614,46 @@ def s5_loans(build: Build) -> Frame:
     `during`, its `controls` and theirs (`control_before`, `control_during`: the cell's stores, `S5_CELL`, but its own
     and those with a display out in either window), `raw_gain` (S2.3's, q = 1) and `gain` — NaN where it is not known:
     fewer than `S5_CONTROLS` controls, their margin before not positive, or no store — and `new_store`, its store bought
-    nothing before (NH-D17)."""
+    nothing before (NH-D17); then its `customer_id`, `store_id`, `lent_on` and `days`."""
     return build.joined("s5_loans", _join_s5_loans)
 
 
 def _join_s5_loans(build: Build) -> Frame:
+    every = s5_held(build)
+    return s5_score(build, every[every["lent_on"] >= pd.Timestamp(S5_FROM)], every)
+
+
+def s5_held(build: Build) -> Frame:
+    """Every loan lent by the last order day, its asset's `cost` and `region` and its `until`: `returned_on`, at the
+    latest that day (s5.sql's `held`, and `loan` before its first day)."""
     day = build["sales_order"]["ordered_on"].max()
-    week, one = pd.Timedelta(days=WEEK_DAYS), pd.Timedelta(days=1)
     regions = build["region"][["region_id", "code"]].rename(columns={"code": "region"})
     every = build["pos_loan"].merge(build["pos_asset"][["pos_asset_id", "cost", "region_id"]], on="pos_asset_id")
     every["until"] = every["returned_on"].fillna(day).clip(upper=day)
-    loans = every[every["lent_on"].between(pd.Timestamp(S5_FROM), day)].merge(regions, on="region_id")
-    loans = loans.drop(columns="region_id").reset_index(drop=True)
+    lent: Frame = every[every["lent_on"] <= day].merge(regions, on="region_id").drop(columns="region_id")
+    return lent.reset_index(drop=True)
+
+
+def s5_outlets(build: Build) -> Frame:
+    """s5.sql's `outlet`: each customer and store of `delivery_point` with its cell (`S5_CELL`)."""
+    return (
+        build["delivery_point"][["customer_id", "store_id"]]
+        .dropna()
+        .drop_duplicates()
+        .merge(build["customer"][["customer_id", "channel"]], on="customer_id")
+        .merge(build["store"][["store_id", "area_id", "store_class", "street_type", "size_class"]], on="store_id")
+        .merge(build["area"][["area_id", "region_id"]], on="area_id")
+        .drop(columns="area_id")
+    )
+
+
+def s5_score(build: Build, loans: Frame, held: Frame) -> Frame:
+    """`s5_loans`' estimator on `loans` (`pos_loan_id`, `region`, `customer_id`, `store_id`, `lent_on`, `until` and the
+    asset's `cost`), each against the stores of its cell but its own and any with a display of `held` (`store_id`,
+    `lent_on`, `until`) out in either window — `loans` themselves need not be in `held` (G2 S2.4 T3's placebo loans
+    are not)."""
+    week, one = pd.Timedelta(days=WEEK_DAYS), pd.Timedelta(days=1)
+    loans = loans.reset_index(drop=True)
     loans["days"] = (loans["until"] - loans["lent_on"]).dt.days + 1
     loans["before_from"], loans["before_to"] = loans["lent_on"] - week, loans["lent_on"] - one
     sales = _sales_pl(build)
@@ -645,20 +673,12 @@ def _join_s5_loans(build: Build) -> Frame:
             whole = daily.groupby(["customer_id", "ordered_on"])["customer_margin"].sum().reset_index()
             found[anywhere] = _sums(whole, ["customer_id"], ["customer_margin"], theirs, first, last).iloc[:, 0]
         loans[column] = found / (days if days else loans["days"])
-    outlets = (
-        build["delivery_point"][["customer_id", "store_id"]]
-        .dropna()
-        .drop_duplicates()
-        .merge(build["customer"][["customer_id", "channel"]], on="customer_id")
-        .merge(build["store"][["store_id", "area_id", "store_class", "street_type", "size_class"]], on="store_id")
-        .merge(build["area"][["area_id", "region_id"]], on="area_id")
-        .drop(columns="area_id")
-    )
+    outlets = s5_outlets(build)
     treated = loans[["pos_loan_id", "customer_id", "store_id", "lent_on", "until", "before_from", "before_to"]]
     pairs = treated.merge(outlets, on=["customer_id", "store_id"]).drop(columns="customer_id")
     pairs = pairs.merge(outlets, on=S5_CELL, suffixes=("_treated", ""))
     pairs = pairs[pairs["store_id"] != pairs["store_id_treated"]].reset_index(drop=True)
-    held = every.loc[every["store_id"].notna(), ["store_id", "lent_on", "until"]]
+    held = held.loc[held["store_id"].notna(), ["store_id", "lent_on", "until"]]
     spans = pairs[["store_id", "before_from", "until"]].reset_index().merge(held, on="store_id", suffixes=("", "_held"))
     busy = spans[(spans["lent_on"] <= spans["until"]) & (spans["until_held"] >= spans["before_from"])]["index"]
     controls = pairs[~pairs.index.isin(busy)]
@@ -683,7 +703,7 @@ def _join_s5_loans(build: Build) -> Frame:
     loans["new_store"] = loans["before"] == 0
     loans["cost"] = loans["cost"] * loans["days"] / S5_LIFE_DAYS
     columns = ["region", "cost", "before", "during", "controls", "control_before", "control_during", "raw_gain"]
-    return loans.set_index("pos_loan_id")[[*columns, "gain", "new_store"]]
+    return loans.set_index("pos_loan_id")[[*columns, "gain", "new_store", "customer_id", "store_id", "lent_on", "days"]]
 
 
 def s5_regions(build: Build) -> Frame:
