@@ -1,7 +1,7 @@
 -- S5 — PoS efficiency by area manager (design 04 §S5): per region, the return on its displays, (gain − cost) ÷ cost,
 -- from the block below. The metric is Spearman's rho between the regions' returns and their managers' pos_skill, on
--- average ranks (VCH and SMS, both 0.5, share theirs; s5.yaml, and a test keeps the pairs below in step). NULL when
--- a region's coverage is under 0.9 (the block below; G2 S2.4, NH-D17).
+-- average ranks (VCH and SMS, both 0.5, share theirs; s5.yaml, and a test keeps the pairs below in step). NULL unless
+-- every region is `covered` (the block below; G2 S2.4, NH-D17, NH-D19).
 WITH skill (region, pos_skill) AS (
     VALUES ('PHA', 1.4), ('JMV', 1.3), ('SJC', 1.0), ('ZSC', 0.6), ('VCH', 0.5), ('SMS', 0.5)
 ),
@@ -12,11 +12,12 @@ WITH skill (region, pos_skill) AS (
 -- its store's region, its customer's channel and its store's class, street type and size class, but its own and any
 -- store with a display out in the 56 days before or during the loan — the same stores in both windows. A loan is
 -- supported by 5 controls or more whose margin before is positive; otherwise, or without a store, its gain is not
--- known and counts as 0, while its cost counts. `coverage` is the supported share of a region's loan cost: under 0.9
--- in any region, both metrics are NULL. A store that bought nothing before gains all it buys during: kept, and
--- reported apart (`new_store_gain`). `raw_gain` is S2.3's gain, q = 1, a diagnostic (and the counts). Only loans lent from 2024-02-26
--- count, so their 56 days before are inside the history. The cost is the asset's over 36 months for the loan's days,
--- plus the region's give-aways from the same day on.
+-- known and counts as 0, while its cost counts. `coverage` is the supported share of a region's loan cost
+-- (`loan_cost`), `identified` that of the loans whose store bought before. Unless every region of `region` has loan
+-- cost and a coverage of 0.9 or more (`covered`), both metrics are NULL (NH-D19). A store that bought nothing before
+-- gains all it buys during: kept, and reported apart (`new_store_gain`). `raw_gain` is S2.3's gain, q = 1, a
+-- diagnostic (and the counts). Only loans lent from 2024-02-26 count, so their 56 days before are inside the history.
+-- The cost is the asset's over 36 months for the loan's days, plus the region's give-aways from the same day on.
 as_of AS (
     SELECT MAX(ordered_on) AS day, DATE '2024-02-26' AS first_day FROM sales_order
 ),
@@ -126,16 +127,24 @@ region_return AS (
         SUM(m.cost) + COALESCE(MAX(g.cost), 0) AS cost,
         SUM(m.raw_gain) AS raw_gain,
         COALESCE(SUM(m.gain) FILTER (WHERE m.new_store), 0) AS new_store_gain,
+        SUM(m.cost) AS loan_cost,
         COALESCE(SUM(m.cost) FILTER (WHERE m.gain IS NOT NULL), 0) / NULLIF(SUM(m.cost), 0) AS coverage,
+        COALESCE(SUM(m.cost) FILTER (WHERE m.gain IS NOT NULL AND NOT m.new_store), 0) / NULLIF(SUM(m.cost), 0)
+            AS identified,
         COUNT(*) AS loans,
         COUNT(*) FILTER (WHERE m.gain IS NULL) AS unknown,
         COUNT(*) FILTER (WHERE m.new_store) AS new_stores
     FROM margin m
     LEFT JOIN giveaway g ON g.region = m.region
     GROUP BY m.region
+),
+covered AS (
+    SELECT BOOL_AND(COALESCE(rr.loan_cost > 0 AND rr.coverage >= 0.9, FALSE)) AS ok
+    FROM region r
+    LEFT JOIN region_return rr ON rr.region = r.code
 )
 -- region return: end
-SELECT CASE WHEN (SELECT MIN(coverage) FROM region_return) >= 0.9 THEN corr(rr, rs) END AS metric
+SELECT CASE WHEN (SELECT ok FROM covered) THEN corr(rr, rs) END AS metric
 FROM (
     SELECT
         RANK() OVER (ORDER BY pos_return) + (COUNT(*) OVER (PARTITION BY pos_return) - 1) / 2.0 AS rr,

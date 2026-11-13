@@ -194,13 +194,15 @@ def test_s5s_two_files_judge_one_return() -> None:
 
 def test_s5s_controls_are_the_twin_s() -> None:
     """NH-D17's cohort in the SQL is the twin's: the cell's columns (`S5_CELL`), `S5_CONTROLS` controls at least, and
-    `S5_COVERAGE` of a region's loan cost for either metric to stand."""
+    every region of `region` with loan cost and `S5_COVERAGE` of it for either metric to stand (NH-D19)."""
     rank, spread = _sql("detectors/s5.sql"), _sql("detectors/s5_best_worst.sql")
     pairs = re.findall(r"o\.(\w+) = t\.(\w+)", rank)
     assert [a for a, b in pairs] == [b for a, b in pairs] == S5_CELL
     assert f"WHEN c.controls >= {S5_CONTROLS} AND c.before > 0 THEN" in rank
-    assert f"(SELECT MIN(coverage) FROM region_return) >= {S5_COVERAGE} THEN corr(rr, rs)" in rank
-    assert f"SELECT CASE WHEN MIN(coverage) >= {S5_COVERAGE} THEN" in spread
+    assert f"BOOL_AND(COALESCE(rr.loan_cost > 0 AND rr.coverage >= {S5_COVERAGE}, FALSE))" in rank
+    assert "FROM region r\n    LEFT JOIN region_return rr ON rr.region = r.code" in rank
+    assert "SELECT CASE WHEN (SELECT ok FROM covered) THEN corr(rr, rs)" in rank
+    assert "SELECT CASE WHEN (SELECT ok FROM covered) THEN\n" in spread
 
 
 def test_a6_s_probe_reads_the_case_s_parameters(stories: StoriesConfig) -> None:

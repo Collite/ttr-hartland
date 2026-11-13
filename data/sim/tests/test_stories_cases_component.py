@@ -601,6 +601,8 @@ def test_s5_a_new_store_gains_all_it_buys_and_is_reported_apart(
     assert float(both.regions["PHA"]["new_store_gain"]) == pytest.approx(13_000)
     assert both.found.loc["PHA", "new_store_gain"] == pytest.approx(13_000)
     assert float(both.regions["PHA"]["gain"]) == pytest.approx(13_000 * 1.8)
+    assert float(both.regions["PHA"]["coverage"]) == pytest.approx(1.0)
+    assert float(both.regions["PHA"]["identified"]) == pytest.approx(0.5) == both.found.loc["PHA", "identified"]
 
 
 @pytest.mark.parametrize(("other_cost", "known"), [(3_000.0, True), (4_800.0, False)])
@@ -627,7 +629,8 @@ def test_s5_the_twins_are_the_sql_s_values(db: psycopg.Connection, put: Put, tmp
     assert float(both.rho) == pytest.approx(both.rho_twin, rel=1e-9) and both.rho_twin > 0.98
     assert float(both.spread) == pytest.approx(both.spread_twin, rel=1e-9) and both.spread_twin > 3
     for region, row in both.regions.items():
-        for column in ("gain", "cost", "raw_gain", "new_store_gain", "coverage", "loans", "unknown", "new_stores"):
+        columns = ("gain", "cost", "raw_gain", "new_store_gain", "loan_cost", "coverage", "identified", "loans")
+        for column in (*columns, "unknown", "new_stores"):
             assert float(row[column]) == pytest.approx(both.found.loc[region, column], rel=1e-9), (region, column)
 
 
@@ -647,12 +650,35 @@ def test_s5_a_worst_region_destroying_margin_is_null_in_both(db: psycopg.Connect
 
 
 def test_s5_a_region_without_cost_has_no_spread(db: psycopg.Connection, put: Put, tmp_path: Path) -> None:
-    """T1(e): VCH's display cost nothing and it handed out nothing: gain ÷ cost has no denominator — NULL, NaN."""
+    """T1(e), NH-D19: VCH's display cost nothing and it handed out nothing: gain ÷ cost has no denominator and its
+    coverage none — VCH is not covered, so both metrics are NULL (NaN in the twins)."""
     case = Case(SIX, dict.fromkeys(SIX, 500.0) | {"VCH": 0.0})
     (vch,) = [a for a in case.rows["pos_asset"] if a["region_id"] == 5]
     vch["cost"] = 0.0
     both = _s5_both(db, put, case, tmp_path)
-    assert both.spread is None and math.isnan(both.spread_twin)
+    assert (both.rho, both.spread) == (None, None)
+    assert math.isnan(both.rho_twin) and math.isnan(both.spread_twin)
+
+
+@pytest.mark.parametrize("lent", [None, date(2023, 12, 4)])
+def test_s5_a_region_without_a_loan_is_not_covered(
+    db: psycopg.Connection, put: Put, tmp_path: Path, lent: date | None
+) -> None:
+    """NH-D19: all six regions of `region` must be covered. Five lift and pay as in the twins' case; SMS, the sixth, has
+    no loan, or only one lent before the history (not counted): it is in no region return, and both metrics are NULL
+    — in SQL and in the twins, which judge the five present no more than the SQL does."""
+    five = {r: lift for r, lift in SIX.items() if r != "SMS"}
+    case = Case(five, dict.fromkeys(five, 500.0), drift=1.1)
+    case.rows["region"].append({"region_id": 6, "code": "SMS"})
+    case.rows["area"].append({"area_id": 6, "region_id": 6})
+    if lent:
+        case.rows["pos_asset"].append({"pos_asset_id": 6, "region_id": 6, "cost": 36_000.0})
+        case.store(600, 6, 1000.0, 1000.0)
+        case.loan(6, 6, 600, lent=lent, back=lent + timedelta(days=60))
+    both = _s5_both(db, put, case, tmp_path)
+    assert "SMS" not in both.regions and "SMS" not in both.found.index
+    assert (both.rho, both.spread) == (None, None)
+    assert math.isnan(both.rho_twin) and math.isnan(both.spread_twin)
 
 
 # ── S6: the twin's measure in SQL (G1 S1.5 T1(d)) ─────────────────────────────

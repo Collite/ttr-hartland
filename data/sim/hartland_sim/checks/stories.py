@@ -604,7 +604,7 @@ S5_FROM = date(2024, 2, 26)  # s5.sql: loans whose 8 weeks before lie inside the
 S5_LIFE_DAYS = 36 * 30.4  # s5.sql: a display's cost spread over 36 months
 S5_BEST, S5_WORST = "PHA", "VCH"  # s5_best_worst.sql: the most skilled manager's region, the least (not the generous)
 S5_CONTROLS = 5  # s5.sql: a loan's gain is known with this many controls or more (NH-D17)
-S5_COVERAGE = 0.9  # s5.sql: under this supported share of a region's loan cost, both metrics are NULL
+S5_COVERAGE = 0.9  # s5.sql: unless every region has loan cost and this supported share of it, both metrics are NULL
 S5_CELL = ["region_id", "channel", "store_class", "street_type", "size_class"]  # s5.sql: what a control shares
 
 
@@ -689,14 +689,16 @@ def _join_s5_loans(build: Build) -> Frame:
 def s5_regions(build: Build) -> Frame:
     """s5.sql's and s5_best_worst.sql's shared block (`region return`): per region with a loan, its displays' `gain`
     (`s5_loans`; a loan whose gain is not known counts 0) and `cost` — the loans', plus the region's give-aways from
-    `S5_FROM` on — and the diagnostics: `raw_gain`, `new_store_gain`, `coverage` (the supported share of the loans'
-    cost) and the counts of `loans`, those `unknown` and those at `new_stores`."""
+    `S5_FROM` on — and the diagnostics: `raw_gain`, `new_store_gain`, the loans' own cost (`loan_cost`), `coverage`
+    (its supported share), `identified` (the share supported at a store that bought before) and the counts of `loans`,
+    those `unknown` and those at `new_stores`."""
     return build.joined("s5_regions", _join_s5_regions)
 
 
 def _join_s5_regions(build: Build) -> Frame:
     day = build["sales_order"]["ordered_on"].max()
     loans = s5_loans(build).assign(supported=lambda frame: frame["cost"].where(frame["gain"].notna(), 0.0))
+    loans["identified"] = loans["supported"].where(~loans["new_store"], 0.0)
     loans["new_store_gain"] = loans["gain"].where(loans["new_store"], 0.0)
     loans["loans"], loans["unknown"], loans["new_stores"] = 1, loans["gain"].isna().astype(int), loans["new_store"]
     regions = build["region"][["region_id", "code"]].rename(columns={"code": "region"})
@@ -705,9 +707,11 @@ def _join_s5_regions(build: Build) -> Frame:
     places = build["store"][["store_id", "area_id"]].merge(build["area"][["area_id", "region_id"]], on="area_id")
     handed = build["pos_handout"][["visit_id", "cost"]].merge(visits, on="visit_id").merge(places, on="store_id")
     giveaways = handed.merge(regions, on="region_id").groupby("region")["cost"].sum()
-    sums = ["gain", "cost", "raw_gain", "new_store_gain", "supported", "loans", "unknown", "new_stores"]
+    sums = ["gain", "cost", "raw_gain", "new_store_gain", "supported", "identified", "loans", "unknown", "new_stores"]
     out = loans.fillna({"gain": 0.0, "new_store_gain": 0.0}).groupby("region", as_index=False)[sums].sum()
+    out["loan_cost"] = out["cost"]
     out["coverage"] = out["supported"] / out["cost"].where(out["cost"] != 0)
+    out["identified"] = out["identified"] / out["cost"].where(out["cost"] != 0)
     out["cost"] = out["cost"] + out["region"].map(giveaways).fillna(0.0)
     return out.drop(columns="supported")
 
@@ -720,17 +724,20 @@ def s5_note(build: Build, stories: StoriesConfig) -> str:
     return " · ".join(f"{r} {ratio[r]:.2f} ({raw[r]:.2f}) {found['coverage'][r]:.0%}" for r in found.index)
 
 
-def _covered(found: Frame) -> bool:
-    """s5.sql's guard: every region's `coverage` at `S5_COVERAGE` or more (a region without loan cost is not judged)."""
-    return bool((found["coverage"].dropna() >= S5_COVERAGE).all())
+def _covered(build: Build, found: Frame) -> bool:
+    """s5.sql's `covered`: every region of `region` has a finite, positive loan cost and its `coverage` at
+    `S5_COVERAGE` or more — a region without a loan, or without loan cost, fails it (NH-D19)."""
+    every = found.set_index("region").reindex(build["region"]["code"])
+    cost = every["loan_cost"].to_numpy(dtype=float)
+    return bool(len(every) and (np.isfinite(cost) & (cost > 0) & (every["coverage"] >= S5_COVERAGE)).all())
 
 
 def s5(build: Build, stories: StoriesConfig) -> float:
     """s5.sql: Spearman's rho between the regions' returns, (gain − cost) ÷ cost, and their managers' `pos_skill`, on
-    average ranks; NaN for fewer than two regions, no spread, or a region's coverage under `S5_COVERAGE`."""
+    average ranks; NaN for fewer than two regions, no spread, or a region not `_covered`."""
     skill = stories.story("S5").parameters["pos_skill"]
     found = s5_regions(build)
-    if not _covered(found):
+    if not _covered(build, found):
         return math.nan
     found = found[found["region"].isin(list(skill)) & (found["cost"] != 0)]
     if len(found) < 2:
@@ -743,10 +750,11 @@ def s5(build: Build, stories: StoriesConfig) -> float:
 
 def s5_best_worst(build: Build, stories: StoriesConfig) -> float:
     """s5_best_worst.sql: the best region's gain ÷ cost over the worst's (`S5_BEST`, `S5_WORST`); NaN where the
-    worst's is ≤ 0, either is missing or a region's coverage is under `S5_COVERAGE`, as the SQL's NULL."""
-    found = s5_regions(build).set_index("region")
-    if not _covered(found):
+    worst's is ≤ 0, either is missing or a region is not `_covered`, as the SQL's NULL."""
+    found = s5_regions(build)
+    if not _covered(build, found):
         return math.nan
+    found = found.set_index("region")
     ratio = (found["gain"] / found["cost"].where(found["cost"] != 0)).to_dict()
     best, worst = ratio.get(S5_BEST, math.nan), ratio.get(S5_WORST, math.nan)
     if not worst > 0 or math.isnan(best):
