@@ -1,5 +1,6 @@
 """The named random streams (contracts §2; G1 S1.1 T1): one seed per (stream, key), the catalogue, and the guard that
-no draw is made outside `rng.py`."""
+no draw is made outside `rng.py`; the offline diagnostics' frozen generator (NH-D21-A) and the guard that keeps the
+rest of the package from it."""
 
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import pytest
 import hartland_sim
 from hartland_sim import rng as rng_module
 from hartland_sim.config import SCHEMA_DIR, WorldConfig
-from hartland_sim.rng import master_seed, pairs, rng, uniforms, using_master_seed
+from hartland_sim.rng import frozen_diagnostic_rng, master_seed, pairs, rng, uniforms, using_master_seed
 from hartland_sim.streams import STREAMS
 
 PACKAGE = Path(hartland_sim.__file__).resolve().parent
@@ -204,3 +205,79 @@ def test_every_draw_call_in_the_package_names_a_catalogued_stream_by_its_literal
             elif first.value not in STREAMS:
                 problems.append(f"{path.name}:{node.lineno}: {first.value!r} is not catalogued")
     assert problems == []
+
+
+# ── the offline diagnostics' frozen generator (contracts §2, NH-D21-A) ──────────────────────────────────────────────
+FROZEN = 20261113  # G2 S2.4's S5 prototype seed (`checks.s5_pooled.SEED`)
+DIAGNOSTICS = {"checks/s5_pooled.py"}  # the frozen generator's callers, relative to the package
+
+
+def test_a_frozen_diagnostic_draws_numpy_s_own_from_its_seed() -> None:
+    """`default_rng(seed)`'s uniforms then exponentials, in that order, under the locked NumPy — the first pinned."""
+    found, expected = frozen_diagnostic_rng(FROZEN), np.random.default_rng(FROZEN)
+    uniform, exponential = found.random(1000), found.exponential(size=(200, 37))
+    assert np.array_equal(uniform, expected.random(1000)) and uniform.dtype == np.float64
+    assert np.array_equal(exponential, expected.exponential(size=(200, 37))) and exponential.shape == (200, 37)
+    assert uniform[:3].tolist() == [0.18400199779628634, 0.8376162964490108, 0.21073844371423278]
+    first = frozen_diagnostic_rng(FROZEN)
+    first.random(3)
+    assert first.exponential(size=3).tolist() == [0.17598387883556, 0.8335597343932627, 0.9120051180479031]
+    for seed in (-1, 1.0, True, "1"):
+        with pytest.raises(ValueError, match="nonnegative integer"):
+            frozen_diagnostic_rng(seed)  # type: ignore[arg-type]
+
+
+def test_each_frozen_diagnostic_call_starts_afresh() -> None:
+    used = frozen_diagnostic_rng(FROZEN)
+    head = used.random(5)
+    used.exponential(size=100)
+    assert np.array_equal(frozen_diagnostic_rng(FROZEN).random(5), head)
+    assert frozen_diagnostic_rng(FROZEN) is not frozen_diagnostic_rng(FROZEN)
+
+
+def test_a_frozen_diagnostic_and_the_world_s_streams_leave_each_other_alone() -> None:
+    """Another master seed moves the streams, never the diagnostic; drawing from the diagnostic moves no stream."""
+    with using_master_seed(1):
+        one = frozen_diagnostic_rng(FROZEN).random(5), rng("pos", "term", 7).random(3)
+    with using_master_seed(2):
+        two = frozen_diagnostic_rng(FROZEN).random(5), rng("pos", "term", 7).random(3)
+    assert np.array_equal(one[0], two[0]) and not np.array_equal(one[1], two[1])
+    ids = np.arange(50, dtype=np.int64)
+    before = rng("pos", "term", 7).random(3), uniforms("pos", "place", "PHA", date(2025, 3, 1), ids=ids)
+    frozen_diagnostic_rng(FROZEN).exponential(size=10_000)
+    after = rng("pos", "term", 7).random(3), uniforms("pos", "place", "PHA", date(2025, 3, 1), ids=ids)
+    assert np.array_equal(before[0], after[0]) and np.array_equal(before[1], after[1])
+
+
+def _frozen_reaches(source: str) -> list[str]:
+    """Where `source` names the frozen generator: imported, called or read as an attribute."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and any(a.name == "frozen_diagnostic_rng" for a in node.names):
+            found.append(f"{node.lineno} import")
+        elif isinstance(node, ast.Name) and node.id == "frozen_diagnostic_rng":
+            found.append(f"{node.lineno} name")
+        elif isinstance(node, ast.Attribute) and node.attr == "frozen_diagnostic_rng":
+            found.append(f"{node.lineno} attribute")
+    return found
+
+
+def test_no_generator_code_reaches_the_frozen_diagnostic_rng() -> None:
+    """Only the offline diagnostics (`DIAGNOSTICS`) call it: the generator, setup, loop and world code never."""
+    own = Path(rng_module.__file__).resolve()
+    offenders = [
+        f"{path.relative_to(PACKAGE)}:{where}"
+        for path in _modules()
+        if path != own and path.relative_to(PACKAGE).as_posix() not in DIAGNOSTICS
+        for where in _frozen_reaches(path.read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
+    for diagnostic in DIAGNOSTICS:
+        assert _frozen_reaches((PACKAGE / diagnostic).read_text(encoding="utf-8"))
+    for source in (
+        "from hartland_sim.rng import frozen_diagnostic_rng\nfrozen_diagnostic_rng(1)",
+        "from hartland_sim import rng\nrng.frozen_diagnostic_rng(1)",
+        "import hartland_sim.rng as r\nf = r.frozen_diagnostic_rng",
+        "from hartland_sim.rng import frozen_diagnostic_rng as quiet\n",
+    ):
+        assert _frozen_reaches(source), source

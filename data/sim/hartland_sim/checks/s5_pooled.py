@@ -44,11 +44,12 @@ from hartland_sim.checks.stories import (
     s5_score,
 )
 from hartland_sim.loop.pos import Grid
+from hartland_sim.rng import frozen_diagnostic_rng
 
 Frame = pd.DataFrame
 Array = np.ndarray[Any, Any]
 
-SEED = 20261113  # every draw of T3's protocol
+SEED = 20261113  # every draw of T3's protocol, through `rng.frozen_diagnostic_rng` (NH-D21-A)
 DRAWS = 5  # placebos a loan at most: draw 0 estimates, 1–4 evaluate
 MIN_PLACEBOS = 20  # a cell's σ² needs this many, else its region's
 RESAMPLES = 200
@@ -72,7 +73,7 @@ def placebos(build: Build, draws: int = DRAWS, seed: int = SEED) -> Frame:
     busy = spans[(spans["lent_on_held"] <= spans["until"]) & (spans["until_held"] >= spans["lent_on"] - week)]
     free = pairs[~pairs.index.isin(busy["index"])].sort_values(["pos_loan_id", "store_id", "customer_id"])
     free = free.drop_duplicates(["pos_loan_id", "store_id"]).reset_index(drop=True)
-    free["key"] = np.random.default_rng(seed).random(len(free))
+    free["key"] = frozen_diagnostic_rng(seed).random(len(free))
     free = free.sort_values(["pos_loan_id", "key"])
     free["draw"] = free.groupby("pos_loan_id").cumcount()
     free = free[free["draw"] < draws].rename(columns={"pos_loan_id": "mirrors"}).reset_index(drop=True)
@@ -170,7 +171,7 @@ def regions(loans: Frame, variance: Variance, weights: Array | None = None) -> F
 
 def resampling(loans: Frame, n: int = RESAMPLES, seed: int = SEED) -> Array:
     """`n` rows of a weight a loan, A_store · B_month (module docstring); a loan at no store is a store of its own."""
-    rng = np.random.default_rng(seed)
+    rng = frozen_diagnostic_rng(seed)
     stores, _ = pd.factorize(loans["store_id"])
     lone = stores < 0
     stores[lone] = stores.max() + 1 + np.arange(lone.sum())

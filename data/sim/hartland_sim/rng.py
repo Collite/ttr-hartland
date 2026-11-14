@@ -9,6 +9,10 @@ outside this module.
 counter-based hash of the stream's seed for `key` and the id alone (splitmix64), so an id's draw never depends on
 which other ids are drawn with it, and `pairs` makes one id of two (a point and a SKU, a customer and a line).
 
+`frozen_diagnostic_rng(seed)` is the one exception (contracts §2, NH-D21-A): a fresh `numpy.random.default_rng(seed)`
+for an offline diagnostic that froze its own seed (G2 S2.4's S5 prototype, `checks.s5_pooled`) — no master seed, no
+stream, and drawing from it moves neither; a test keeps every other module of the package from it.
+
 The key's parts are canonical before they are hashed (review-188): an integer is an `int` whatever numpy type it
 came in, a date is its ISO text, text is `str`; anything else — a float, a set, `None`, an object — is refused, as
 its text would not be a stable key. The parts are hashed as the `repr` of a tuple, so `(12, 3)` is not `(1, 23)` and
@@ -82,6 +86,14 @@ def seed_of(stream: str, *key: object) -> int:
 def rng(stream: str, *key: object) -> np.random.Generator:
     """The generator for one draw site: `stream` from `streams.STREAMS`, `key` the site's business key (+ day)."""
     return np.random.default_rng(seed_of(stream, *key))
+
+
+def frozen_diagnostic_rng(seed: int) -> Generator:
+    """A fresh `numpy.random.default_rng(seed)` for an offline diagnostic (module docstring): `seed` a nonnegative
+    integer the diagnostic froze; never the master seed's, never a stream's, and each call starts again."""
+    if isinstance(seed, bool | np.bool_) or not isinstance(seed, int | np.integer) or seed < 0:
+        raise ValueError(f"a diagnostic seed is a nonnegative integer, not {seed!r}")
+    return np.random.default_rng(int(seed))
 
 
 def draw_day(draw: Generator, first: date, last: date) -> date:
