@@ -41,10 +41,11 @@ everything dated the next day, `first`:
 
 **The effective day** (`revalidate`, G2 S2.5; the day loop's `placements` step): the month-end lends from `first`
 before `first`'s acquisitions and losses run. After them, before its demand, a placement of the day whose customer
-is not active on it (`Customer.active_on`, since and until both included: one lost that day is not, one acquired that
-day is) is cancelled — no loan, its asset back in the region's stock and its cost back in `World.display_budget`. The
-other placements keep their ids and term draws; a loan running at a customer lost later comes back at a month-end, as
-above.
+is not active on it (`Customer.active_on`, since and until both included: one lost that day is not) is cancelled —
+no loan, its asset back in the region's stock and its cost back in `World.display_budget`. The other placements keep
+their ids and term draws; a loan running at a customer lost later comes back at a month-end, as above. Losses on the
+1st cancel; acquisitions on the 1st do not lend: a store acquired that day was potential at the month-end, so it has
+no placement to keep, and it is a candidate from the next month-end on.
 
 **The measure** (`Measure`): the orders step books each small-retail order's paid cases by line into its point's
 month, the last `MONTHS` months kept: a loan's two months before and its first `withdraw_after_months`, the last of
@@ -52,7 +53,9 @@ them the month in progress — so `Terms.of` refuses a `withdraw_after_months` o
 
 **The rows**: `pos_asset` and `pos_loan` are state tables, rendered from the `World` when a build ends
 (`setup.opening.state_rows`): an asset's condition and write-off, a loan's return move after they are made. The
-warm-up's loans are among them, so 2024 starts with displays out (`05` §3.0).
+warm-up's loans are among them, so 2024 starts with displays out (`05` §3.0). A build that ends on a month-end
+renders that month-end's placements, pending: their day revalidates them, so a prolong may drop one — a loader
+replaces `pos_loan`, never appends to it.
 """
 
 from __future__ import annotations
