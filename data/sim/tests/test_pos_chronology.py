@@ -69,13 +69,13 @@ def _lose(monkeypatch: pytest.MonkeyPatch, day: date, *customers: int) -> None:
     monkeypatch.setattr("hartland_sim.loop.acquisition.uniforms", forced)
 
 
-def _placed(world: World) -> dict[int, Loan]:
-    return {loan_id: loan for loan_id, loan in world.loans.items() if loan.lent_on == FIRST}
+def _placed(world: World, day: date = FIRST) -> dict[int, Loan]:
+    return {loan_id: loan for loan_id, loan in world.loans.items() if loan.lent_on == day}
 
 
-def _victim(world: World) -> tuple[int, Loan]:
-    """A placement of `FIRST` at a customer the churn can lose (not a planted case's), its customer's only one."""
-    placed = _placed(world)
+def _victim(world: World, day: date = FIRST) -> tuple[int, Loan]:
+    """A placement of `day` at a customer the churn can lose (not a planted case's), its customer's only one."""
+    placed = _placed(world, day)
     per = Counter(loan.customer_id for loan in placed.values())
     return next(
         (loan_id, loan)
@@ -184,6 +184,23 @@ def test_a_restart_from_the_month_end_keeps_every_valid_placement_s_id_and_draws
     assert straight.loans == restarted.loans and straight.lent == restarted.lent
     assert straight.display_budget == restarted.display_budget
     assert {i: a.loan for i, a in straight.assets.items()} == {i: a.loan for i, a in restarted.assets.items()}
+
+
+def test_a_restart_across_the_year_end_is_the_straight_run_s_whole_world(
+    opening: Setup, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """31 December runs the quarter's, the month's and the year's ends, and is the warm-up's last day: run from its
+    checkpoint, 1 January cancels the one placement the straight run cancels, and the whole `World` is the same."""
+    eve, new_year = date(2023, 12, 31), date(2024, 1, 1)
+    kept = _run(opening, _at(opening, eve - timedelta(days=1)), tmp_path / "eve", eve).world
+    Checkpoint.of(kept).save(tmp_path / "eve")
+    loan_id, loan = _victim(kept, new_year)
+    _lose(monkeypatch, new_year, loan.customer_id)
+    straight = _run(opening, _at(opening, eve - timedelta(days=1)), tmp_path / "straight", eve, new_year).world
+    restarted = _run(opening, Checkpoint.load(tmp_path / "eve", eve).restore(), tmp_path / "restarted", new_year).world
+    assert loan_id not in straight.loans and loan.delivery_point_id not in straight.lent
+    assert _placed(straight, new_year) == {i: held for i, held in _placed(kept, new_year).items() if i != loan_id}
+    assert straight == restarted  # by value, as `test_world`'s restarts (pickles may share objects otherwise)
 
 
 def test_the_placements_are_revalidated_after_the_acquisitions_and_before_the_demand_and_the_visits() -> None:
