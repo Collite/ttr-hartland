@@ -362,6 +362,21 @@ def test_the_loans_are_consistent_with_their_assets(story_world: Built) -> None:
     assert set(register["code"].str[:8]) == {"MAJ-POS-"} and len(register) == 6 * 6
 
 
+def test_every_loan_is_lent_on_a_day_its_customer_is_active(story_world: Built, null_world: Built) -> None:
+    """G2 S2.5: in both worlds a loan's `lent_on` lies in its customer's `since`…`until`, both included
+    (`Customer.active_on`) — a month-end lends from the 1st before the 1st's losses run, and the 1st's `placements`
+    step cancels a placement they leave at a lost customer. A build ending on a month-end renders that month-end's
+    placements, pending (lent the day after `last_day_done`): they pass against `last_day_done`'s dates, and their own
+    day revalidates them in a prolong (`loop.pos`)."""
+    for world in (story_world, null_world):
+        build = Build(world.run)
+        customers = build["customer"][["customer_id", "since", "until"]]
+        loans = build["pos_loan"].merge(customers, on="customer_id", validate="many_to_one")
+        lent = loans["lent_on"]
+        active = (loans["since"] <= lent) & (loans["until"].isna() | (lent <= loans["until"]))
+        assert len(loans) == len(build["pos_loan"]) and active.all(), loans[~active][["pos_loan_id", "lent_on"]]
+
+
 def test_the_give_aways_follow_the_managers(story_world: Built) -> None:
     """T4: at 35 % of the recorded visits that dealt with someone (SMS's generous manager × 1.5), 30 % fewer in PHA and
     JMV (skilled); one item each, its cost `unit_cost × qty`."""

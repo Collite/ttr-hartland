@@ -285,7 +285,9 @@ class Asset:
 @dataclass
 class Loan:
     """A display lent to a store (`pos_loan`, G2 S2.3, `loop.pos`): its lines' demand at the store's delivery point
-    × (1 + `uplift`) from `lent_on` until the day before `returned_on`; it is due back after `until`."""
+    × (1 + `uplift`) from `lent_on` until the day before `returned_on`; it is due back after `until`. A month-end's
+    placement is one from the month-end on, and is cancelled — gone — when its customer is not active on `lent_on`
+    (`loop.pos.revalidate`, G2 S2.5)."""
 
     pos_asset_id: int
     customer_id: int
