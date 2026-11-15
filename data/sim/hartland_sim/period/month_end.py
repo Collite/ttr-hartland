@@ -50,7 +50,7 @@ import numpy as np
 from hartland_sim.dates import add_months, month_end, quarter_end, quarter_start
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import Row
-from hartland_sim.loop import pos
+from hartland_sim.loop import pilot, pos
 from hartland_sim.loop.demand import CHANNELS
 from hartland_sim.loop.field import recut
 from hartland_sim.loop.pricing import TIERED, channel_list, channel_rows, condition, condition_row, standard_list
@@ -93,8 +93,8 @@ def _lines(closing: Closing, held: Bought) -> list[str]:
 
 
 def pos_loans(world: World, closing: Closing, day: date, output: Output) -> None:
-    """The point of sale's month-end (module docstring): `loop.pos.close`."""
-    pos.close(world, closing.pos, day, output)
+    """The point of sale's month-end (module docstring): `loop.pos.close`, a pilot-mode build's `loop.pilot.close`."""
+    (pos.close if world.pilot is None else pilot.close)(world, closing.pos, day, output)
 
 
 def conditions(world: World, closing: Closing, first: date, output: Output) -> list[Row]:

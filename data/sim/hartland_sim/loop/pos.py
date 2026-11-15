@@ -291,15 +291,22 @@ def fits(terms: Terms, line: str) -> list[str]:
 
 
 def close(world: World, terms: Terms, day: date, output: Output) -> None:
-    """The PoS month-end of `day`, a month's last day (module docstring)."""
+    """The PoS month-end of `day`, a month's last day (module docstring); a pilot-mode build's is
+    `loop.pilot.close`."""
     first = day + timedelta(days=1)
+    review(world, terms, day, first, output)
+    place(world, terms, first)
+    if world.measure is not None:
+        world.measure.start(month_index(first))
+
+
+def review(world: World, terms: Terms, day: date, first: date, output: Output) -> None:
+    """The month-end's steps before its placements (module docstring): the returns, the ledger, the areas' conversion
+    and the stores' display uplifts."""
     returns(world, terms, day, first)
     ledger(world, terms, first, output)
     medians(world)
     world.display_uplift = uplifts(world, terms)
-    place(world, terms, first)
-    if world.measure is not None:
-        world.measure.start(month_index(first))
 
 
 def returns(world: World, terms: Terms, day: date, first: date) -> list[int]:

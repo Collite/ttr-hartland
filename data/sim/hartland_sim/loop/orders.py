@@ -49,6 +49,7 @@ from hartland_sim.config import Channel, WorldConfig
 from hartland_sim.dates import next_working_day, quarter_end, quarter_start
 from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.io.reference import Row
+from hartland_sim.loop import pilot
 from hartland_sim.loop.demand import BasketReady
 from hartland_sim.loop.pricing import (
     KAM_CHANNELS,
@@ -328,7 +329,10 @@ def step(world: World, desk: Desk, day: date, events: Sequence[BasketReady], out
     heads, lines, discounts = [], [], []
     for event, n, draw in zip(events, counts, draws, strict=True):
         made = order(world, desk, event, n, draw, write, today)
-        book(world, desk, world.customers[event.customer_id], day, made, event.delivery_point_id)
+        customer = world.customers[event.customer_id]
+        book(world, desk, customer, day, made, event.delivery_point_id)
+        if world.pilot is not None:  # its observed history (G2 S2.6)
+            pilot.book(world.pilot, desk.rules, customer, event.delivery_point_id, day, made.priced)
         done.lines += len(made.priced)
         if made.head is not None:
             heads.append(made.head)
