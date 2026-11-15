@@ -34,7 +34,8 @@ written.
   rep that day.
 
 - **The point of sale** (G2 S2.3, `pos_loans`, last): the displays that come back, the asset ledger, the areas'
-  conversion medians, the stores' display uplifts and the next month's placements (`loop.pos.close`).
+  conversion medians, the stores' display uplifts and the next month's placements (`loop.pos.close`), which the
+  1st revalidates after its acquisitions and losses (the day loop's `placements`, G2 S2.5).
 
 `World.bought` keeps the months the next month-end and the next month's conditions read; the older ones are dropped.
 """

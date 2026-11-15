@@ -6,6 +6,9 @@ before `history.first_day`).
 - `weather`: the regions' temperatures of the day (S1's weather term) and its `weather_daily` rows;
 - 3 `acquisition` — the acquisitions, losses and cross-sales — first, as S1.2 built it: a store acquired today
   orders today, and one lost today buys nothing;
+- `placements` (G2 S2.5, `loop.pos.revalidate`): the displays the month-end lent from today, revalidated after the
+  acquisitions — one at a customer not active today (lost today) is cancelled: no loan, its asset in stock and its
+  cost in the region's display budget again — before the demand reads the running loans and the visits the budget;
 - `conditions`, on a month's first day: the month's `customer_condition` from what the month before booked
   (`month_end.conditions`), after the acquisitions, so a store lost on the 1st has none and one acquired on the 1st
   has one; the warm-up's first month has none (no month before it);
@@ -48,7 +51,7 @@ import numpy as np
 
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import month_end, quarter_end
-from hartland_sim.loop import acquisition, demand, orders
+from hartland_sim.loop import acquisition, demand, orders, pos
 from hartland_sim.loop.field import (
     Crew,
     calls,
@@ -79,6 +82,7 @@ from hartland_sim.world import Checkpoint, World
 STEPS = (
     "weather",
     "acquisition",
+    "placements",
     "conditions",
     "demand",
     "field",
@@ -214,6 +218,9 @@ class Loop:
 
     def acquisition(self, day: date) -> None:
         acquisition.step(self.world, self.reps, day, self.today.shares)
+
+    def placements(self, day: date) -> None:
+        pos.revalidate(self.world, day)
 
     def conditions(self, day: date) -> None:
         if day.day == 1 and day != self.config.history.warm_up_from:
