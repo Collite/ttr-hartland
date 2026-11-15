@@ -16,14 +16,15 @@ The month-end reads the last `baseline_days` days of both, then drops what no la
 
 **The assignment** (`assign`, the month-end of the last PoS-free day, dated `assigned_on`): every small-retail customer
 registered then — potential, active or lost — with its region, the one of all its delivery points (one that spans
-two regions is `outside`, `cross_region`). Within a region its customers sort by their portfolio — the sorted
-(store class, street type, size class) of their stores, `portfolio_key` — then their baseline, then customer_id;
-consecutive ones form pairs, numbered from 1 (`pair_id`, a hash of the revision, the region and the number), and a last
-one left alone is `outside`, `unpaired`. A fair coin per pair (stream `pos`, keyed by `pilot_revision`,
-`assignment_revision`, the region and the pair_id) gives its first customer the programme or the holdout, the other the
-other arm. Only the `story` mode draws this map: every other mode takes the story pre-pilot's (`Pilot.story_map`) and
-keeps its own baselines, so `assignment_digest` — a sha256 of the map without the baselines — is the same in all five.
-A customer registered later is in no arm: it receives no pilot PoS while the pilot runs.
+two regions is `outside`, `cross_region`). Within a region and channel — the world's, whose terms a customer takes
+(`setup.customers.terms`: the station shops are `special_retail`, ⚑R295-B) — its customers sort by their portfolio —
+the sorted (store class, street type, size class) of their stores, `portfolio_key` — then their baseline, then
+customer_id; consecutive ones form pairs, numbered from 1 (`pair_id`, a hash of the revision, the region, the channel
+and the number), and a last one left alone is `outside`, `unpaired`. A fair coin per pair (stream `pos`, keyed by
+`pilot_revision`, `assignment_revision`, the region and the pair_id) gives its first customer the programme or the
+holdout, the other the other arm. Only the `story` mode draws this map: every other mode takes the story pre-pilot's
+(`Pilot.story_map`) and keeps its own baselines, so `assignment_digest` — a sha256 of the map without the baselines —
+is the same in all five. A customer registered later is in no arm: it receives no pilot PoS while the pilot runs.
 
 **The arms**: a holdout or outside customer gets no display, no give-away (`hands_out`) and no display prompt
 (`programme`) through `window_until`; a programme customer only what its manager chooses. The pilot gates its universe
@@ -76,6 +77,7 @@ from hartland_sim.loop.pricing import Priced, Rules, halere, milli
 from hartland_sim.loop.warmup import Output
 from hartland_sim.protocol import PROTOCOL_FILE, Protocol
 from hartland_sim.rng import uniforms
+from hartland_sim.setup.customers import terms as channel_of
 from hartland_sim.setup.rows import Row, row
 from hartland_sim.world import Customer, Tourplan, World
 
@@ -326,13 +328,14 @@ def _outlet(spot: Any) -> tuple[str, str, str]:
 
 
 def draw(pilot: Pilot, universe: Sequence[Customer], spots: Sequence[Any], terms: pos.Terms) -> dict[int, Mapped]:
-    """The story mode's map of `universe` (module docstring), from its stores (`spots`) and its baselines."""
+    """The story mode's map of `universe` (module docstring), from its stores (`spots`) and its baselines, pairing
+    within each region and channel."""
     p = pilot.protocol
     held: dict[int, list[Any]] = {}
     for spot in spots:
         held.setdefault(spot.customer_id, []).append(spot)
     out: dict[int, Mapped] = {}
-    sorting: dict[str, list[tuple[tuple[tuple[str, str, str], ...], int, int, str]]] = {}
+    strata: dict[tuple[str, str], list[tuple[tuple[tuple[str, str, str], ...], int, int, str]]] = {}
     for customer in universe:
         mine = held.get(customer.customer_id, [])
         regions = sorted({spot.region for spot in mine})
@@ -346,14 +349,17 @@ def draw(pilot: Pilot, universe: Sequence[Customer], spots: Sequence[Any], terms
             out[customer.customer_id] = Mapped(regions[0], "outside", None, "cross_region", key)
             continue
         baseline = pilot.baseline.get(customer.customer_id, 0)
-        sorting.setdefault(regions[0], []).append((portfolio, baseline, customer.customer_id, key))
-    stray = sorted(set(sorting) - set(terms.regions))
+        strata.setdefault((regions[0], channel_of(customer)), []).append(
+            (portfolio, baseline, customer.customer_id, key)
+        )
+    stray = sorted({region for region, _ in strata} - set(terms.regions))
     if stray:
         raise ValueError(f"customers in regions the region list lacks: {stray}")
-    for region in terms.regions:
-        ranked = sorted(sorting.get(region, []))
+    order = {region: i for i, region in enumerate(terms.regions)}
+    for region, channel in sorted(strata, key=lambda stratum: (order[stratum[0]], stratum[1])):
+        ranked = sorted(strata[(region, channel)])
         pairs = [
-            business_id("pos_pilot_pair", SEPARATOR.join((p.pilot_revision, region, str(n))))
+            business_id("pos_pilot_pair", SEPARATOR.join((p.pilot_revision, region, channel, str(n))))
             for n in range(1, len(ranked) // 2 + 1)
         ]
         coins = uniforms("pos", p.pilot_revision, p.assignment_revision, region, ids=np.array(pairs, dtype=np.int64))

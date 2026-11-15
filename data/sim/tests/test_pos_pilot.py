@@ -26,6 +26,7 @@ from hartland_sim.loop.pricing import channel_list, standard_list
 from hartland_sim.loop.warmup import Output
 from hartland_sim.protocol import Protocol
 from hartland_sim.rng import uniforms
+from hartland_sim.setup.customers import terms as channel_of
 from hartland_sim.setup.opening import state_rows
 from hartland_sim.setup.run import Setup
 from hartland_sim.world import Checkpoint, World
@@ -90,26 +91,36 @@ def _lose(monkeypatch: pytest.MonkeyPatch, day: date, *customers: int) -> None:
 # ── 1. the pair assignment, frozen before any exposure ─────────────────────
 
 
-def test_every_registered_small_retail_customer_is_assigned_in_pairs_of_one_region(world: World) -> None:
+def test_every_registered_small_retail_customer_is_assigned_in_pairs_of_one_region_and_channel(world: World) -> None:
     held = _pilot(world).assigned
     small = {c.customer_id for c in world.customers.values() if c.channel == "small_retail"}
     assert set(held) == small and len(held) == 8160
-    pairs: dict[int, list[Mapped]] = {}
-    for a in held.values():
+    pairs: dict[int, list[tuple[int, Mapped]]] = {}
+    for c, a in held.items():
         if a.mapped.arm == "outside":
             assert a.mapped.pair_id is None and a.mapped.outside_reason in ("unpaired", "cross_region")
         else:
-            pairs.setdefault(a.mapped.pair_id, []).append(a.mapped)  # type: ignore[arg-type]
-    assert all(sorted(m.arm for m in two) == ["holdout", "programme"] for two in pairs.values())
-    assert all(len({m.region for m in two}) == 1 for two in pairs.values())
+            pairs.setdefault(a.mapped.pair_id, []).append((c, a.mapped))  # type: ignore[arg-type]
+    assert all(sorted(m.arm for _, m in two) == ["holdout", "programme"] for two in pairs.values())
+    assert all(len({m.region for _, m in two}) == 1 for two in pairs.values())
+    assert all(len({channel_of(world.customers[c]) for c, _ in two}) == 1 for two in pairs.values())  # ⚑R295-B
+    alone = Counter(
+        (a.mapped.region, channel_of(world.customers[c])) for c, a in held.items() if a.mapped.arm == "outside"
+    )
+    strata = Counter((a.mapped.region, channel_of(world.customers[c])) for c, a in held.items())
+    assert alone == Counter({stratum: 1 for stratum, n in strata.items() if n % 2})  # one alone per odd stratum
     potential = {c.customer_id for c in world.customers.values() if c.channel == "small_retail" and c.since is None}
     assert potential and all(held[c].baseline == 0 for c in potential)  # a zero baseline is a valid one
 
 
 def test_the_pairs_are_consecutive_in_the_declared_order_and_the_coin_is_keyed(world: World) -> None:
     p = _pilot(world)
-    for region in ("PHA", "VCH"):
-        mine = [(c, a) for c, a in p.assigned.items() if a.mapped.region == region and a.mapped.arm != "outside"]
+    for region, channel in [("PHA", "small_retail"), ("VCH", "small_retail"), ("VCH", "special_retail")]:
+        mine = [
+            (c, a)
+            for c, a in p.assigned.items()
+            if a.mapped.region == region and channel_of(world.customers[c]) == channel and a.mapped.arm != "outside"
+        ]
         mine.sort(key=lambda ca: (_portfolio(ca[1].mapped), ca[1].baseline, ca[0]))
         order = [a.mapped.pair_id for _, a in mine]
         assert order[0::2] == order[1::2]  # each pair two consecutive customers
@@ -149,10 +160,12 @@ def test_an_odd_customer_is_outside_and_another_mode_takes_the_story_map(world: 
     assert demand is not None
     terms = pos.Terms.of(WORLD, STORIES, demand.lines)
     pha = [c for c in world.customers.values() if c.channel == "small_retail" and _region(terms, c.area) == "PHA"]
-    odd = pha[: 2 * (len(pha) // 2) - 1]
+    shops, stations = ([c for c in pha if (channel_of(c) == "special_retail") == s] for s in (False, True))
+    odd = shops[: 2 * (len(shops) // 2) - 1] + stations[: 2 * (len(stations) // 2) - 1]
     drawn = pilot.draw(p, odd, demand.spots, terms)
     alone = [c for c, m in drawn.items() if m.arm == "outside"]
-    assert len(alone) == 1 and drawn[alone[0]].outside_reason == "unpaired"
+    assert len(alone) == 2 and {drawn[c].outside_reason for c in alone} == {"unpaired"}  # one per odd stratum
+    assert {channel_of(world.customers[c]) for c in alone} == {"small_retail", "special_retail"}
     story_map = {c: a.mapped for c, a in p.assigned.items()}
     other = pilot.start("full-null", PROTOCOL, story_map)
     other.baseline = {c: 7 for c in story_map}  # its own baselines
