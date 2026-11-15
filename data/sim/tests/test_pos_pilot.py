@@ -22,6 +22,7 @@ from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import pilot, pos
 from hartland_sim.loop.day import Loop
 from hartland_sim.loop.pilot import Mapped, Pilot
+from hartland_sim.loop.pricing import channel_list, standard_list
 from hartland_sim.loop.warmup import Output
 from hartland_sim.protocol import Protocol
 from hartland_sim.rng import uniforms
@@ -349,3 +350,80 @@ def test_a_selection_cancelled_on_its_effective_day_keeps_its_decision(
     assert {r["loan_id"] for r in rows if r["loan_id"] is not None} <= set(world.loans)  # no dangling link
     (row,) = [r for r in rows if r["delivery_point_id"] == point]
     assert (row["outcome"], row["loan_id"], row["decision_day"]) == ("cancelled", None, END)
+
+
+# ── T6: a restart at the month and the year edge, with a cancellation ──────
+
+
+def _moved(opening: Setup, world: World, day: date) -> World:
+    """`world` moved to `day`, its lists those of `day + 1`'s month (`test_pos_chronology._at`) and its observed
+    history by as many days, so the next month-end forecasts from the same 56 days."""
+    shift = (day - world.day).days
+    skus = opening.portfolio.skus
+    world.day = day
+    following = day + timedelta(days=1)
+    world.standard_list = standard_list(skus, following)
+    world.channel_lists = {c: channel_list(world.standard_list, skus, WORLD, c, following) for c in world.channel_lists}
+    p = _pilot(world)
+    p.lines = {d + shift: held for d, held in p.lines.items()}
+    p.handouts = {d + shift: held for d, held in p.handouts.items()}
+    return world
+
+
+def _written(*runs: Path) -> dict[str, list[str]]:
+    """Each file's header and the rows of `runs` after it, in order (a run cut at a checkpoint, then resumed)."""
+    out: dict[str, list[str]] = {}
+    for run in runs:
+        for path in sorted(run.glob("*.csv")):
+            header, *rows = path.read_text(encoding="utf-8").splitlines()
+            out.setdefault(path.name, [header]).extend(rows)
+    return out
+
+
+@pytest.mark.parametrize("edge", ["month", "year"])
+def test_a_restart_at_the_edge_is_the_straight_run_cancellation_and_export_included(
+    edge: str, opening: Setup, assigned: Checkpoint, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The straight run over a month-end and its effective day — a selection's customer lost that day — and the run
+    cut at the month-end's checkpoint, then restarted from it, reach the same `World`, the same state rows and the
+    same files."""
+    day = END if edge == "month" else date(2023, 12, 31)
+    first_day = day + timedelta(days=1)
+    if edge == "month":  # the month-end itself is the fixture's: run it again from its eve
+        start = Checkpoint.of(_eve(opening, tmp_path / "before"))
+    else:
+        start = Checkpoint.of(_moved(opening, assigned.restore(), day - timedelta(days=1)))
+    straight, eve, held, restarted = (tmp_path / name for name in ("straight", "eve", "held", "restarted"))
+    loop, writer = _loop(opening, start.restore(), straight, first_day)
+    with writer:
+        loop.run(day)
+        point, victim = next(
+            (point, d)
+            for point, d in _decided(loop.world, day).items()
+            if d.outcome == "selected" and not loop.world.customers[d.customer_id].traits
+        )
+        _lose(monkeypatch, first_day, victim.customer_id)
+        loop.run(first_day)
+    cut, writer = _loop(opening, start.restore(), eve, first_day)
+    with writer:
+        cut.run(day)
+    Checkpoint.of(cut.world).save(held)
+    again, writer = _loop(opening, Checkpoint.load(held, day).restore(), restarted, first_day)
+    with writer:
+        again.run(first_day)
+    assert again.world == loop.world
+    assert _pilot(again.world).decisions[(day, point)].outcome == "cancelled"
+    assert state_rows(again.world, WORLD) == state_rows(loop.world, WORLD)
+    files = _written(straight)
+    assert files == _written(eve, restarted)
+    assert len(files["pos_handout.csv"]) > 1 or first_day == date(2024, 1, 1)  # New Year's Day: no visit at all
+
+
+def _eve(opening: Setup, run: Path) -> World:
+    """The opening run as a story pilot to the day before `END` (the `assigned` fixture's, stopped a day short)."""
+    world = Checkpoint.of(opening.world).restore()
+    world.pilot = pilot.start("story", PROTOCOL)
+    loop, writer = _loop(opening, world, run)
+    with writer:
+        loop.until(END - timedelta(days=1))
+    return loop.world
