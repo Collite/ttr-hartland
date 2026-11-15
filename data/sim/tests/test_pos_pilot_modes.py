@@ -10,12 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from hartland_sim.checks.stories import check
+from hartland_sim.checks.stories import check, report
 from hartland_sim.cli import main
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.loop.build import Built, PilotRefused, build, prolong
 from hartland_sim.loop.pilot import stories_of
-from hartland_sim.protocol import MODES, Protocol
+from hartland_sim.protocol import META_KEYS, MODES, PROTOCOL_FILE, Protocol
+from hartland_sim.setup import opening
 from hartland_sim.setup.market import Market
 from hartland_sim.world import Checkpoint, Meta
 
@@ -57,6 +58,38 @@ def test_a_pilot_build_carries_its_metadata_and_s5_is_not_certified(story: Built
     s5 = [v for v in check(story.run, STORIES) if v.story == "S5"]
     assert s5 and all((v.status, v.passed) == ("NOT_CERTIFIED", False) for v in s5)
     assert _rows(story.run / "pos_pilot_assignment.csv") == 8160 and _rows(story.run / "pos_placement_decision.csv")
+
+
+def test_stories_check_counts_not_certified_apart_and_refuses_the_wrong_direction(
+    story: Built, reference: Built, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """review-295 N2: the tail counts S5's NOT_CERTIFIED as neither run nor passed; `--null` must match the mode."""
+    tail = report(check(story.run, STORIES), story.run, False).splitlines()[-1]
+    assert " 2 NOT_CERTIFIED;" in tail and tail.startswith(tuple(f"{n} of " for n in range(30)))
+    capsys.readouterr()
+    assert main(["stories-check", "--csv", str(story.run), "--null"]) == 1
+    assert main(["stories-check", "--csv", str(reference.run)]) == 1
+    assert capsys.readouterr().err.count("judges it in the wrong direction") == 2
+
+
+def test_the_protocol_is_an_input_of_a_pilot_build_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """review-295 N3: a default build reads no protocol, so the file's bytes move a pilot's build id only."""
+    day = date(2023, 1, 3)
+    before = (opening.meta(WORLD, STORIES, day), opening.meta(WORLD, STORIES, day, mode="story"))
+    edited = tmp_path / "s5_protocol.yaml"
+    edited.write_bytes(PROTOCOL_FILE.read_bytes() + b"# another revision\n")
+    monkeypatch.setattr("hartland_sim.setup.opening.PROTOCOL_FILE", edited)
+    after = (opening.meta(WORLD, STORIES, day), opening.meta(WORLD, STORIES, day, mode="story"))
+    assert after[0].build_id == before[0].build_id and after[1].build_id != before[1].build_id
+
+
+def test_meta_reads_the_pilots_keys_only(story: Built, tmp_path: Path) -> None:
+    """review-295 N7: an unknown `_sim_meta` key is not a pilot key."""
+    held = Meta.load(story.run)
+    assert [key for key, _ in held.pilot] == list(META_KEYS)
+    lines = (story.run / "_sim_meta.csv").read_text(encoding="utf-8") + "some_later_key,1\n"
+    (tmp_path / "_sim_meta.csv").write_text(lines, encoding="utf-8")
+    assert Meta.load(tmp_path).pilot == held.pilot
 
 
 def test_another_mode_takes_the_story_map_with_its_own_baselines(story: Built, reference: Built) -> None:

@@ -325,6 +325,14 @@ def test_a_missing_material_and_an_invalid_cost_are_no_offers(world: World) -> N
         assert (unheld.manager_id, unheld.score, unheld.outcome) == (None, 0.0, "ineligible")
 
 
+def test_a_second_decision_on_one_point_and_day_stops(world: World) -> None:
+    """design08 §9: two decisions on one delivery point a day are a planner stop, not a key suffix (review-295 N5)."""
+    demand = world.demand
+    assert demand is not None
+    with pytest.raises(ValueError, match="a second pilot decision on delivery point"):
+        pilot.place(world, pos.Terms.of(WORLD, STORIES, demand.lines), _pilot(world), END, FIRST)
+
+
 def test_the_pilot_ends_with_its_window(world: World, tmp_path: Path) -> None:
     """The window's last month-end lends nothing for the day after it: no decision, nil budgets."""
     demand = world.demand
@@ -424,9 +432,9 @@ def _written(*runs: Path) -> dict[str, list[str]]:
 def test_a_restart_at_the_edge_is_the_straight_run_cancellation_and_export_included(
     edge: str, opening: Setup, assigned: Checkpoint, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The straight run over a month-end and its effective day — a selection's customer lost that day — and the run
-    cut at the month-end's checkpoint, then restarted from it, reach the same `World`, the same state rows and the
-    same files."""
+    """The straight run over a month-end, its effective day — a selection's customer lost that day — and the day after
+    (a working day at either edge), and the run cut at the month-end's checkpoint, then restarted from it, reach the
+    same `World`, the same state rows and the same files."""
     day = END if edge == "month" else date(2023, 12, 31)
     first_day = day + timedelta(days=1)
     if edge == "month":  # the month-end itself is the fixture's: run it again from its eve
@@ -444,6 +452,7 @@ def test_a_restart_at_the_edge_is_the_straight_run_cancellation_and_export_inclu
         )
         _lose(monkeypatch, first_day, victim.customer_id)
         loop.run(first_day)
+        loop.run(first_day + timedelta(days=1))
     cut, writer = _loop(opening, start.restore(), eve, first_day)
     with writer:
         cut.run(day)
@@ -451,12 +460,13 @@ def test_a_restart_at_the_edge_is_the_straight_run_cancellation_and_export_inclu
     again, writer = _loop(opening, Checkpoint.load(held, day).restore(), restarted, first_day)
     with writer:
         again.run(first_day)
+        again.run(first_day + timedelta(days=1))
     assert again.world == loop.world
     assert _pilot(again.world).decisions[(day, point)].outcome == "cancelled"
     assert state_rows(again.world, WORLD) == state_rows(loop.world, WORLD)
     files = _written(straight)
     assert files == _written(eve, restarted)
-    assert len(files["pos_handout.csv"]) > 1 or first_day == date(2024, 1, 1)  # New Year's Day: no visit at all
+    assert len(files["pos_handout.csv"]) > 1 and len(files["visit.csv"]) > 1  # 2023-03-02, 2024-01-02: working days
 
 
 def _eve(opening: Setup, run: Path) -> World:

@@ -145,13 +145,7 @@ def stock(
 
 def inputs() -> list[Path]:
     """The committed files a build reads (module docstring)."""
-    return [
-        WORLD_FILE,
-        INVENTORY_FILE,
-        *sorted(STORIES_DIR.glob("*.yaml")),
-        PROTOCOL_FILE,
-        *tracked(REFERENCE_DIR),
-    ]
+    return [WORLD_FILE, INVENTORY_FILE, *sorted(STORIES_DIR.glob("*.yaml")), *tracked(REFERENCE_DIR)]
 
 
 def tracked(folder: Path) -> list[Path]:
@@ -179,8 +173,9 @@ def meta(
 ) -> Meta:
     """`_sim_meta` for a build of the committed inputs (`world.Meta`): the files on disk, the seed, the package version,
     the generator's revision (`hartland_sim.REVISION`) and the stories' `sha256` — the files' own, or the null world's
-    (`StoriesConfig.null`), so a null build has an id of its own — and a pilot-mode build's mode (G2 S2.6), from its
-    pilot (`held`, whose metadata it carries) or by name (`mode`, a prolong's check)."""
+    (`StoriesConfig.null`), so a null build has an id of its own — and a pilot-mode build's mode and protocol file
+    (G2 S2.6), from its pilot (`held`, whose metadata it carries) or by name (`mode`, a prolong's check). A default
+    build reads no protocol, so the protocol file is no input of its id (review-295 N3)."""
     mode = held.mode if held is not None else mode
     return Meta(
         master_seed=world.master_seed,
@@ -194,7 +189,7 @@ def meta(
             hartland_sim.__version__,
             str(hartland_sim.REVISION),
             stories.sha256,
-            *([f"pilot:{mode}"] if mode is not None else []),
+            *([f"pilot:{mode}", hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest()] if mode is not None else []),
         )[:16],
         pilot=pilot.metadata(held, world) if held is not None else (),
     )

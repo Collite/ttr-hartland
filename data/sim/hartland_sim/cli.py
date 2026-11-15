@@ -246,6 +246,7 @@ def _stories_check_csv(args: argparse.Namespace) -> int:
     the CSVs, the report printed; exit 1 when a judged check fails."""
     from hartland_sim.checks.stories import check, report
     from hartland_sim.config import ConfigError, StoriesConfig
+    from hartland_sim.world import META_FILE, Meta
 
     if args.csv == "latest":
         written = {p: [f.stat().st_mtime for f in p.glob("*.csv")] for p in BUILD_DIR.glob("*") if p.is_dir()}
@@ -263,6 +264,14 @@ def _stories_check_csv(args: argparse.Namespace) -> int:
         stories = StoriesConfig.load()
     except ConfigError as error:
         print(error, file=sys.stderr)
+        return 1
+    mode = Meta.load(run).pilot_mode if (run / META_FILE).is_file() else None
+    if mode is not None and args.null != (mode in ("full-null", "no-pos-null")):
+        print(
+            f"hartland-sim stories-check: {run} is a {mode} pilot run:"
+            f" {'with' if args.null else 'without'} --null judges it in the wrong direction",
+            file=sys.stderr,
+        )
         return 1
     verdicts = check(run, stories, null=args.null)
     text = report(verdicts, run, args.null)

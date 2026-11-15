@@ -950,8 +950,11 @@ def report(verdicts: list[Verdict], run: Path, null: bool) -> str:
         rows.append(
             f"| {v.story} | `{v.check}` | {v.metric} | {v.direction} {v.threshold} | {value} | {result}{note} |"
         )
-    ran = [v for v in verdicts if v.passed is not None]
+    ran = [v for v in verdicts if v.passed is not None and not v.status]
+    held = len([v for v in verdicts if v.status])  # NOT_CERTIFIED: neither run nor passed (module docstring)
     tail = (
-        f"\n\n{sum(bool(v.passed) for v in ran)} of {len(ran)} run checks pass; {len(verdicts) - len(ran)} not run.\n"
+        f"\n\n{sum(bool(v.passed) for v in ran)} of {len(ran)} run checks pass;"
+        + (f" {held} NOT_CERTIFIED;" if held else "")
+        + f" {len(verdicts) - len(ran) - held} not run.\n"
     )
     return head + "\n".join(rows) + tail

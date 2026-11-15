@@ -439,7 +439,8 @@ def medians(world: World) -> None:
 
 def place(world: World, terms: Terms, first: date) -> list[int]:
     """Each region's placements of `first` (module docstring), the stores' lines and uplifts from
-    `World.display_uplift`; the loans' ids."""
+    `World.display_uplift`; the loans' ids. `loop.pilot.place` is its twin — the stock, the candidates, the keys,
+    first-fit and the budget's stop: a change to one is made to both."""
     stock: dict[tuple[str, str], list[int]] = {}
     for asset_id, asset in world.assets.items():
         if asset.written_off_on is None and asset.loan is None and asset.material in terms.displays:

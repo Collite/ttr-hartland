@@ -22,6 +22,18 @@ from hartland_sim.config import DATA_DIR
 
 PROTOCOL_FILE = DATA_DIR / "s5_protocol.yaml"
 MODES = ("story", "skill-neutral", "full-null", "no-pos", "no-pos-null")  # the file's, for the CLI's parser
+# the `_sim_meta` keys a pilot-mode build adds (`loop.pilot.metadata`), in its order; `world.Meta.load` reads these only
+META_KEYS = (
+    "pilot_mode",
+    "pilot_design",
+    "pilot_revision",
+    "policy_revision",
+    "pilot_protocol_sha256",
+    "pilot_window",
+    "pilot_term_days",
+    "assignment_digest",
+    "s5_status",
+)
 
 
 def seed(label: str, i: int) -> int:

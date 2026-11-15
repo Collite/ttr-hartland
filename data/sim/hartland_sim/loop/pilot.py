@@ -75,7 +75,7 @@ from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.loop import pos
 from hartland_sim.loop.pricing import Priced, Rules, halere, milli
 from hartland_sim.loop.warmup import Output
-from hartland_sim.protocol import PROTOCOL_FILE, Protocol
+from hartland_sim.protocol import META_KEYS, PROTOCOL_FILE, Protocol
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.customers import terms as channel_of
 from hartland_sim.setup.rows import Row, row
@@ -395,7 +395,8 @@ def term_days(config: WorldConfig) -> Fraction:
 
 
 def place(world: World, terms: pos.Terms, pilot: Pilot, day: date, first: date) -> list[int]:
-    """The pilot's placements of `first`, decided on `day` (module docstring); the loans' ids."""
+    """The pilot's placements of `first`, decided on `day` (module docstring); the loans' ids. `loop.pos.place` is its
+    twin — the stock, the candidates, the keys, first-fit and the budget's stop: a change to one is made to both."""
     p = pilot.protocol
     demand = world.demand
     if demand is None:
@@ -423,6 +424,8 @@ def place(world: World, terms: pos.Terms, pilot: Pilot, day: date, first: date) 
         manager = terms.manager(world, region, first)
         decided = [forecast(world, terms, history, t, region, manager, start) for t in found]
         for t, d in zip(found, decided, strict=True):
+            if (day, t.delivery_point_id) in pilot.decisions:  # design08 §9: two decisions on one point a day stop
+                raise ValueError(f"a second pilot decision on delivery point {t.delivery_point_id} on {day}")
             pilot.decisions[(day, t.delivery_point_id)] = d
         if manager is None:
             world.display_budget[region] = 0.0
@@ -573,14 +576,15 @@ def metadata(pilot: Pilot, config: WorldConfig) -> tuple[tuple[str, str], ...]:
     """A pilot-mode build's `_sim_meta` keys: its design, mode and revisions, the protocol file's sha256, the window,
     `H` exact, the assignment's digest (`-` before the assignment day), and S5's status, never certified here."""
     p, h = pilot.protocol, term_days(config)
-    return (
-        ("pilot_mode", pilot.mode),
-        ("pilot_design", p.design),
-        ("pilot_revision", p.pilot_revision),
-        ("policy_revision", p.policy_revision),
-        ("pilot_protocol_sha256", hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest()),
-        ("pilot_window", f"{p.window_from.isoformat()}/{p.window_until.isoformat()}"),
-        ("pilot_term_days", f"{h.numerator}/{h.denominator}"),
-        ("assignment_digest", pilot.digest or "-"),
-        ("s5_status", "NOT_CERTIFIED"),
+    values = (
+        pilot.mode,
+        p.design,
+        p.pilot_revision,
+        p.policy_revision,
+        hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest(),
+        f"{p.window_from.isoformat()}/{p.window_until.isoformat()}",
+        f"{h.numerator}/{h.denominator}",
+        pilot.digest or "-",
+        "NOT_CERTIFIED",
     )
+    return tuple(zip(META_KEYS, values, strict=True))

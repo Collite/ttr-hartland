@@ -39,6 +39,8 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hartland_sim.protocol import META_KEYS
+
 if TYPE_CHECKING:
     from hartland_sim.loop.demand import Demand
     from hartland_sim.loop.pilot import Pilot
@@ -526,7 +528,7 @@ class Meta:
     world_sha256: str
     last_day_done: date
     build_id: str
-    pilot: tuple[tuple[str, str], ...] = ()  # a pilot-mode build's (G2 S2.6, `loop.pilot.metadata`); none otherwise
+    pilot: tuple[tuple[str, str], ...] = ()  # a pilot-mode build's (G2 S2.6, `protocol.META_KEYS`); none otherwise
 
     @property
     def pilot_mode(self) -> str | None:
@@ -557,14 +559,13 @@ class Meta:
     def load(cls, run: Path) -> Meta:
         with (run / META_FILE).open(encoding="utf-8", newline="") as source:
             values = {row["key"]: row["value"] for row in csv.DictReader(source)}
-        known = ("master_seed", "stories_sha256", "world_sha256", "last_day_done", "build_id")
         return cls(
             int(values["master_seed"]),
             values["stories_sha256"],
             values["world_sha256"],
             date.fromisoformat(values["last_day_done"]),
             values["build_id"],
-            tuple((key, value) for key, value in values.items() if key not in known),
+            tuple((key, values[key]) for key in META_KEYS if key in values),
         )
 
 

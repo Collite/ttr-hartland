@@ -211,8 +211,9 @@ def _differs(held: Meta, current: Meta) -> list[str]:
         ("world.yaml", held.world_sha256 != current.world_sha256),
         ("the stories", held.stories_sha256 != current.stories_sha256),
     ]
+    rest = "the inventory, reference files, version or generator revision"
     return [name for name, differ in named if differ] or [
-        "the inventory, reference files, version or generator revision"
+        rest + (" or the pilot's protocol" if held.pilot_mode else "")
     ]
 
 
