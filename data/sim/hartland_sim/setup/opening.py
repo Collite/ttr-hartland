@@ -51,6 +51,7 @@ from hartland_sim.io.reference import REFERENCE_DIR
 from hartland_sim.loop import pilot
 from hartland_sim.loop.field import tourplan_row
 from hartland_sim.loop.pos import asset_row, loan_row
+from hartland_sim.protocol import PROTOCOL_FILE
 from hartland_sim.setup.customers import Customers, customer_row, phases
 from hartland_sim.setup.org import assignment, employee_row
 from hartland_sim.setup.policies import budget_row
@@ -144,7 +145,13 @@ def stock(
 
 def inputs() -> list[Path]:
     """The committed files a build reads (module docstring)."""
-    return [WORLD_FILE, INVENTORY_FILE, *sorted(STORIES_DIR.glob("*.yaml")), *tracked(REFERENCE_DIR)]
+    return [
+        WORLD_FILE,
+        INVENTORY_FILE,
+        *sorted(STORIES_DIR.glob("*.yaml")),
+        PROTOCOL_FILE,
+        *tracked(REFERENCE_DIR),
+    ]
 
 
 def tracked(folder: Path) -> list[Path]:
@@ -163,10 +170,18 @@ def tracked(folder: Path) -> list[Path]:
     return sorted(folder / name for name in names if name and (folder / name).is_file())
 
 
-def meta(world: WorldConfig, stories: StoriesConfig, last_day_done: date) -> Meta:
+def meta(
+    world: WorldConfig,
+    stories: StoriesConfig,
+    last_day_done: date,
+    held: pilot.Pilot | None = None,
+    mode: str | None = None,
+) -> Meta:
     """`_sim_meta` for a build of the committed inputs (`world.Meta`): the files on disk, the seed, the package version,
     the generator's revision (`hartland_sim.REVISION`) and the stories' `sha256` — the files' own, or the null world's
-    (`StoriesConfig.null`), so a null build has an id of its own."""
+    (`StoriesConfig.null`), so a null build has an id of its own — and a pilot-mode build's mode (G2 S2.6), from its
+    pilot (`held`, whose metadata it carries) or by name (`mode`, a prolong's check)."""
+    mode = held.mode if held is not None else mode
     return Meta(
         master_seed=world.master_seed,
         stories_sha256=stories.sha256,
@@ -179,7 +194,9 @@ def meta(world: WorldConfig, stories: StoriesConfig, last_day_done: date) -> Met
             hartland_sim.__version__,
             str(hartland_sim.REVISION),
             stories.sha256,
+            *([f"pilot:{mode}"] if mode is not None else []),
         )[:16],
+        pilot=pilot.metadata(held, world) if held is not None else (),
     )
 
 

@@ -9,7 +9,8 @@ import pytest
 
 from hartland_sim.config import DATA_DIR, inventory
 from hartland_sim.io.csv_writer import cells
-from hartland_sim.loop.pilot import ARMS, OUTCOMES, Assigned, Decision, Mapped, Pilot, Protocol, state_rows
+from hartland_sim.loop.pilot import ARMS, OUTCOMES, Assigned, Decision, Mapped, Pilot, state_rows
+from hartland_sim.protocol import Protocol
 
 ASSIGNMENT = {  # design08 §9: name → (type, nullable)
     "pos_pilot_assignment_id": ("bigint", False),

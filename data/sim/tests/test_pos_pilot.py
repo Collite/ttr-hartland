@@ -23,6 +23,7 @@ from hartland_sim.loop import pilot, pos
 from hartland_sim.loop.day import Loop
 from hartland_sim.loop.pilot import Mapped, Pilot
 from hartland_sim.loop.warmup import Output
+from hartland_sim.protocol import Protocol
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.opening import state_rows
 from hartland_sim.setup.run import Setup
@@ -30,7 +31,7 @@ from hartland_sim.world import Checkpoint, World
 
 WORLD = WorldConfig.load()
 STORIES = StoriesConfig.load()
-PROTOCOL = pilot.Protocol.load()
+PROTOCOL = Protocol.load()
 END, FIRST = date(2023, 2, 28), date(2023, 3, 1)  # the last PoS-free day (the assignment's month-end) and the next
 MARCH = date(2023, 3, 31)
 H = Fraction(1461, 8)  # (3 + 9) ÷ 2 months × 365.25 ÷ 12 days

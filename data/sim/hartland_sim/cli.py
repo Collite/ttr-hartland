@@ -117,8 +117,9 @@ def _run_dir(name: str) -> Path:
 
 
 def build_world(args: argparse.Namespace) -> int:
-    """The world built from the warm-up to `--until` into `data/build/<run>/` (`loop.build`); CSV only until G5 S5.1
-    loads it into Postgres."""
+    """The world built from the warm-up to `--until` into `data/build/<run>/` (`loop.build`), with `--pilot` in one of
+    S5's pilot modes (G2 S2.6, `loop.pilot`; to the end of its window by default); CSV only until G5 S5.1 loads it into
+    Postgres."""
     if not args.csv:
         print(
             "hartland-sim build-world: --csv only — loading a build into Postgres arrives at G5 S5.1", file=sys.stderr
@@ -127,20 +128,26 @@ def build_world(args: argparse.Namespace) -> int:
     from hartland_sim.config import WorldConfig
     from hartland_sim.loop.build import build
     from hartland_sim.loop.day import quarter
+    from hartland_sim.protocol import Protocol
 
     world = WorldConfig.load()
-    until = args.until or world.history.until
-    run = _run_dir(args.run or f"{'null' if args.null else 'world'}-{until.isoformat()}")
+    until = args.until or (Protocol.load().window_until if args.pilot else world.history.until)
+    name = f"pilot-{args.pilot}" if args.pilot else "null" if args.null else "world"
+    run = _run_dir(args.run or f"{name}-{until.isoformat()}")
     try:
-        built = build(run, until, world, null=args.null)
+        built = build(run, until, world, null=args.null, pilot=args.pilot)
     except FileExistsError as error:
         print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
         return 1
+    except ValueError as error:
+        print(f"hartland-sim build-world: {error}", file=sys.stderr)
+        return 1
     first = world.history.first_day  # a quarter's first day: the quarters from its own are the written ones
     written = sum(q["orders"] for name, q in built.report.quarters.items() if name >= quarter(first))
+    pilot = f", pilot {args.pilot} NOT_CERTIFIED" if args.pilot else ""
     print(
         f"hartland-sim build-world: {run} — {written} orders written, {first} to {until},"
-        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id})"
+        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id}{pilot})"
     )
     return 0
 
@@ -149,6 +156,13 @@ def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--until", type=date.fromisoformat, metavar="DAY", help="the last simulated day (ISO date)")
     parser.add_argument("--csv", action="store_true", help="write the CSV set to data/build/<run>/")
     parser.add_argument("--null", action="store_true", help="the null world: every story disabled (04 §9)")
+    from hartland_sim.protocol import Protocol
+
+    parser.add_argument(
+        "--pilot",
+        choices=Protocol.load().modes,
+        help="S5's opt-in pilot in this mode (design08 §8), NOT_CERTIFIED; not with --null (its mode is full-null)",
+    )
     parser.add_argument(
         "--run", metavar="NAME", help="the folder under data/build/ (default: world-<until>), or a path"
     )

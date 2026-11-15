@@ -2,12 +2,8 @@
 the display budgets and a cost-aware score, with its two audit tables. A build is a pilot only in one of the protocol's
 five modes (`World.pilot`); the default build stays the legacy one (`loop.pos`).
 
-**The protocol** (`Protocol`, `data/s5_protocol.yaml`) is committed before any pilot-mode build runs and never edited:
-a change is a new design revision with a `pilot_revision` of its own. It holds the pilot's revisions, the PoS-free
-months and the assignment day after them, the baseline's days, the window W, the share of the display budgets the
-pilot places, the five modes, the acceptance bars S2.7–S2.8 apply, and the seeds: the development three, the ten
-certification seeds — each `seed(label, i)` — and the master seeds built before the manifest, which a certification
-seed may not be.
+**The protocol** (`hartland_sim.protocol.Protocol`, `data/s5_protocol.yaml`) is committed before any pilot-mode build
+runs and never edited: the pilot's revisions, dates, budget share, modes, acceptance bars and seeds.
 
 **The PoS-free months** (`pos_free`, January–February 2023): no display is lent and no give-away handed out; each
 region's display budget is nil, so no rep is prompted to place one. Every other warm-up mechanism runs as built (the
@@ -65,83 +61,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from fractions import Fraction
-from pathlib import Path
 from typing import Any
 
 import numpy as np
-import yaml
 
-from hartland_sim.config import DATA_DIR, WorldConfig
+from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.loop import pos
 from hartland_sim.loop.pricing import Priced, Rules, halere, milli
 from hartland_sim.loop.warmup import Output
+from hartland_sim.protocol import PROTOCOL_FILE, Protocol
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.rows import Row, row
 from hartland_sim.world import Customer, Tourplan, World
-
-PROTOCOL_FILE = DATA_DIR / "s5_protocol.yaml"
-
-
-def seed(label: str, i: int) -> int:
-    """design08 §8's `seed(label, i)`: a master seed in [1, 2**31 − 2] from the design's label and the index."""
-    digest = hashlib.sha256(f"NH-D21-B/v1/{label}/{i}".encode()).digest()
-    return 1 + int.from_bytes(digest[:8], "big") % (2**31 - 2)
-
-
-@dataclass(frozen=True)
-class Protocol:
-    """`data/s5_protocol.yaml` (module docstring)."""
-
-    design: str
-    pilot_revision: str
-    assignment_revision: int
-    policy_revision: str
-    pos_free_from: date
-    pos_free_until: date
-    baseline_days: int
-    window_from: date
-    window_until: date
-    placement_budget_share: float
-    asset_days_per_month: float
-    modes: tuple[str, ...]
-    acceptance: dict[str, Any]
-    development: tuple[int, ...]
-    certification: tuple[int, ...]
-    built_before: tuple[int, ...]
-
-    @property
-    def assigned_on(self) -> date:
-        """The assignment's day, the first a pilot display may be lent from: the day after the PoS-free months."""
-        return self.pos_free_until + timedelta(days=1)
-
-    @property
-    def baseline_from(self) -> date:
-        return self.pos_free_until - timedelta(days=self.baseline_days - 1)
-
-    @classmethod
-    def load(cls, path: Path = PROTOCOL_FILE) -> Protocol:
-        held = yaml.safe_load(path.read_text(encoding="utf-8"))
-        seeds = held["seeds"]
-        return cls(
-            held["design"],
-            held["pilot_revision"],
-            int(held["assignment_revision"]),
-            held["policy_revision"],
-            held["pos_free"]["from"],
-            held["pos_free"]["until"],
-            int(held["baseline_days"]),
-            held["window"]["from"],
-            held["window"]["until"],
-            float(held["placement_budget_share"]),
-            float(held["asset_days_per_month"]),
-            tuple(held["modes"]),
-            dict(held["acceptance"]),
-            tuple(int(s) for s in seeds["development"]),
-            tuple(int(s) for s in seeds["certification"]),
-            tuple(int(s) for s in seeds["built_before"]),
-        )
-
 
 # ── the state (`World.pilot`) and its rows ──────────────────────────────────
 
@@ -600,3 +532,34 @@ def revalidate(world: World, day: date) -> list[int]:
             raise ValueError(f"the cancelled pilot loan {loan_id} has no selected decision of {decided}")
         held.outcome, held.loan_id = "cancelled", None
     return cancelled
+
+
+# ── the modes ───────────────────────────────────────────────────────────────
+
+
+def stories_of(mode: str, stories: StoriesConfig) -> StoriesConfig:
+    """A mode's stories (design08 §8): the story and its no-PoS reference the stories as they are; the skill-neutral
+    control every area manager's `pos_skill` 1.0 (`StoriesConfig.skill_neutral`); the full null and its no-PoS
+    reference the null world's (`StoriesConfig.null`)."""
+    if mode == "skill-neutral":
+        return stories.skill_neutral()
+    if mode in ("full-null", "no-pos-null"):
+        return stories.null()
+    return stories
+
+
+def metadata(pilot: Pilot, config: WorldConfig) -> tuple[tuple[str, str], ...]:
+    """A pilot-mode build's `_sim_meta` keys: its design, mode and revisions, the protocol file's sha256, the window,
+    `H` exact, the assignment's digest (`-` before the assignment day), and S5's status, never certified here."""
+    p, h = pilot.protocol, term_days(config)
+    return (
+        ("pilot_mode", pilot.mode),
+        ("pilot_design", p.design),
+        ("pilot_revision", p.pilot_revision),
+        ("policy_revision", p.policy_revision),
+        ("pilot_protocol_sha256", hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest()),
+        ("pilot_window", f"{p.window_from.isoformat()}/{p.window_until.isoformat()}"),
+        ("pilot_term_days", f"{h.numerator}/{h.denominator}"),
+        ("assignment_digest", pilot.digest or "-"),
+        ("s5_status", "NOT_CERTIFIED"),
+    )

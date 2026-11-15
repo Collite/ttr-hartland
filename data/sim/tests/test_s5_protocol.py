@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pytest
 
 from hartland_sim.config import WorldConfig
-from hartland_sim.loop.pilot import Protocol, seed
+from hartland_sim.protocol import Protocol, seed
 
 
 @pytest.fixture(scope="module")
