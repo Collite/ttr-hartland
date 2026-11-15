@@ -17,8 +17,9 @@ day loop from the warm-up to the last day, the state at the end.
 - **A pilot mode** (`pilot`, G2 S2.6, `loop.pilot`): one of the protocol's five — `story`, `skill-neutral`,
   `full-null` and the no-PoS references `no-pos`, `no-pos-null` — with its stories (`pilot.stories_of`), to the end of
   the pilot's window at the latest. Every mode but `story` first runs the story pre-pilot of the same seed, written
-  nowhere (`story_map`), and takes its map. `build_id` names the mode; `_sim_meta` carries the pilot's metadata, S5
-  NOT_CERTIFIED.
+  nowhere (`story_map`), on the same OSM market, and takes its map. `build_id` names the mode; `_sim_meta` carries the
+  pilot's metadata, S5 NOT_CERTIFIED. A mode the protocol lacks, a pilot with `null`, or one past the window is
+  refused (`PilotRefused`) before any work.
 
 **Prolong** (`prolong`): the loop resumed from a run's last checkpoint to a later day, its rows appended to the run's
 files, then the same end — the state tables and the promotions rendered again, the checkpoint and `_sim_meta` moved.
@@ -61,6 +62,7 @@ from hartland_sim.loop.day import Loop, Report
 from hartland_sim.loop.warmup import Output
 from hartland_sim.protocol import Protocol
 from hartland_sim.rng import using_master_seed
+from hartland_sim.setup import market as market_setup
 from hartland_sim.setup import opening
 from hartland_sim.setup import portfolio as portfolio_setup
 from hartland_sim.setup.market import Market
@@ -72,6 +74,10 @@ from hartland_sim.world import Checkpoint, Meta
 
 BUILD_JSON = "build.json"
 PROLONG_MARK = "_prolong.json"
+
+
+class PilotRefused(ValueError):
+    """A pilot build or prolong its inputs refuse before any work (module docstring): the CLI prints it in one line."""
 
 
 @dataclass(frozen=True)
@@ -93,21 +99,26 @@ def build(
     pilot: str | None = None,
 ) -> Built:
     """Setup and the days from the warm-up to `until` into `run` (module docstring), in `pilot`'s mode when given;
-    `FileExistsError` when `run` already holds a build, `ValueError` for a pilot past its window or with `null`.
-    `market` saves rebuilding the OSM market (tests)."""
+    `FileExistsError` when `run` already holds a build, `PilotRefused` for a mode the protocol lacks, a pilot with
+    `null` or past its window. `market` saves rebuilding the OSM market (tests)."""
     if run.exists() and any(run.glob("*.csv")):
         raise FileExistsError(f"{run} already holds a build")
     world = world or WorldConfig.load()
     stories = stories or StoriesConfig.load()
+    protocol = Protocol.load() if pilot is not None else None
+    if protocol is not None:
+        if pilot not in protocol.modes:
+            raise PilotRefused(f"no pilot mode {pilot!r}: the protocol's are {', '.join(protocol.modes)}")
+        if null:
+            raise PilotRefused("a pilot's mode names its stories: the null world is the full-null mode's")
+        _within(protocol, until)
     if null:
-        if pilot is not None:
-            raise ValueError("a pilot's mode names its stories: the null world is the full-null mode's")
         stories = stories.null()
     started = time.perf_counter()
     held = None
-    if pilot is not None:
-        protocol = Protocol.load()
-        _within(protocol, until)
+    if pilot is not None and protocol is not None:
+        if pilot != "story":  # two setups, one market (it reads only the reference files)
+            market = market or market_setup.build()
         mapped = None if pilot == "story" else story_map(world, stories, market, protocol)
         held = pilots.start(pilot, protocol, mapped)
         stories = pilots.stories_of(pilot, stories)
@@ -147,14 +158,15 @@ def story_map(
 
 def _within(protocol: Protocol, until: date) -> None:
     if until > protocol.window_until:
-        raise ValueError(
+        raise PilotRefused(
             f"the pilot ends with its window on {protocol.window_until}: a longer one is another protocol, not {until}"
         )
 
 
 def prolong(run: Path, until: date, world: WorldConfig | None = None, stories: StoriesConfig | None = None) -> Built:
     """`run`'s loop from its last checkpoint to `until` (module docstring), an unfinished prolong's cut back first;
-    `ValueError` when `run` is not a build of these inputs, is past `until`, or is a pilot that `until` outlasts."""
+    `ValueError` when `run` is not a build of these inputs or is past `until`, `PilotRefused` (one) when it is a pilot
+    that `until` outlasts."""
     world = world or WorldConfig.load()
     stories = stories or StoriesConfig.load()
     held = Meta.load(run)

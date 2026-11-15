@@ -1,5 +1,5 @@
-"""S5's pilot protocol (G2 S2.6; NH-D21-B design08 §8): `data/s5_protocol.yaml`, read without the generator's machinery
-(the CLI's parser reads its modes).
+"""S5's pilot protocol (G2 S2.6; NH-D21-B design08 §8): `data/s5_protocol.yaml`, read without the generator's machinery;
+`MODES` repeats the file's five for the CLI's parser, which reads no file (a test holds the two equal).
 
 It is committed before any pilot-mode build runs and never edited: a change is a new design revision with a
 `pilot_revision` of its own. It holds the pilot's revisions, the PoS-free months and the assignment day after them,
@@ -21,6 +21,7 @@ import yaml
 from hartland_sim.config import DATA_DIR
 
 PROTOCOL_FILE = DATA_DIR / "s5_protocol.yaml"
+MODES = ("story", "skill-neutral", "full-null", "no-pos", "no-pos-null")  # the file's, for the CLI's parser
 
 
 def seed(label: str, i: int) -> int:

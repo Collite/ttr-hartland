@@ -13,9 +13,9 @@ import pytest
 from hartland_sim.checks.stories import check
 from hartland_sim.cli import main
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.loop.build import Built, build, prolong
+from hartland_sim.loop.build import Built, PilotRefused, build, prolong
 from hartland_sim.loop.pilot import stories_of
-from hartland_sim.protocol import Protocol
+from hartland_sim.protocol import MODES, Protocol
 from hartland_sim.setup.market import Market
 from hartland_sim.world import Checkpoint, Meta
 
@@ -35,7 +35,7 @@ def reference(osm_market: Market, tmp_path_factory: pytest.TempPathFactory) -> B
 
 
 def test_each_mode_has_its_stories() -> None:
-    assert Protocol.load().modes == ("story", "skill-neutral", "full-null", "no-pos", "no-pos-null")
+    assert Protocol.load().modes == MODES == ("story", "skill-neutral", "full-null", "no-pos", "no-pos-null")
     assert stories_of("story", STORIES) is STORIES and stories_of("no-pos", STORIES) is STORIES
     assert stories_of("full-null", STORIES) == stories_of("no-pos-null", STORIES) == STORIES.null()
     neutral = stories_of("skill-neutral", STORIES)
@@ -69,13 +69,22 @@ def test_another_mode_takes_the_story_map_with_its_own_baselines(story: Built, r
     assert reference.meta.build_id != story.meta.build_id
 
 
-def test_a_prolong_keeps_the_mode_and_stops_at_the_window(story: Built, tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="ends with its window"):
+def test_a_prolong_keeps_the_mode_and_stops_at_the_window(
+    story: Built, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def never(*_: object) -> None:
+        raise AssertionError("a refused pilot runs no setup")
+
+    monkeypatch.setattr("hartland_sim.loop.build.setup", never)  # refused before any work (review-295 N6)
+    with pytest.raises(PilotRefused, match="ends with its window"):
         prolong(story.run, date(2026, 1, 1), WORLD, STORIES)
-    with pytest.raises(ValueError, match="ends with its window"):
+    with pytest.raises(PilotRefused, match="ends with its window"):
         build(tmp_path / "long", date(2026, 1, 1), WORLD, STORIES, pilot="story")
-    with pytest.raises(ValueError, match="full-null"):
+    with pytest.raises(PilotRefused, match="full-null"):
         build(tmp_path / "null", FIRST, WORLD, STORIES, null=True, pilot="story")
+    with pytest.raises(PilotRefused, match="no pilot mode 'bogus'"):
+        build(tmp_path / "bogus", FIRST, WORLD, STORIES, pilot="bogus")
+    monkeypatch.undo()
     copy = tmp_path / "copy"
     copy.mkdir()
     for path in story.run.iterdir():
@@ -87,6 +96,18 @@ def test_a_prolong_keeps_the_mode_and_stops_at_the_window(story: Built, tmp_path
 def test_the_cli_refuses_a_pilot_with_null(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     assert main(["build-world", "--csv", "--null", "--pilot", "story", "--run", str(tmp_path / "x")]) == 1
     assert "full-null" in capsys.readouterr().err
+
+
+def test_a_failure_inside_a_build_keeps_its_traceback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a pilot's refusal is one line and exit 1 (review-295 R1): any other `ValueError` propagates."""
+
+    def broken(*_: object) -> None:
+        raise ValueError("boom")
+
+    monkeypatch.setattr("hartland_sim.loop.build.setup", broken)
+    for pilot in ([], ["--pilot", "story"]):
+        with pytest.raises(ValueError, match="boom"):
+            main(["build-world", "--csv", "--until", "2023-03-01", *pilot, "--run", str(tmp_path / f"r{len(pilot)}")])
 
 
 def _rows(path: Path) -> int:

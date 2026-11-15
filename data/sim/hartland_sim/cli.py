@@ -126,7 +126,7 @@ def build_world(args: argparse.Namespace) -> int:
         )
         return 1
     from hartland_sim.config import WorldConfig
-    from hartland_sim.loop.build import build
+    from hartland_sim.loop.build import PilotRefused, build
     from hartland_sim.loop.day import quarter
     from hartland_sim.protocol import Protocol
 
@@ -139,7 +139,7 @@ def build_world(args: argparse.Namespace) -> int:
     except FileExistsError as error:
         print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
         return 1
-    except ValueError as error:
+    except PilotRefused as error:  # refused before any work; any other failure keeps its traceback
         print(f"hartland-sim build-world: {error}", file=sys.stderr)
         return 1
     first = world.history.first_day  # a quarter's first day: the quarters from its own are the written ones
@@ -156,11 +156,11 @@ def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--until", type=date.fromisoformat, metavar="DAY", help="the last simulated day (ISO date)")
     parser.add_argument("--csv", action="store_true", help="write the CSV set to data/build/<run>/")
     parser.add_argument("--null", action="store_true", help="the null world: every story disabled (04 §9)")
-    from hartland_sim.protocol import Protocol
+    from hartland_sim.protocol import MODES
 
     parser.add_argument(
         "--pilot",
-        choices=Protocol.load().modes,
+        choices=MODES,
         help="S5's opt-in pilot in this mode (design08 §8), NOT_CERTIFIED; not with --null (its mode is full-null)",
     )
     parser.add_argument(
