@@ -26,7 +26,9 @@ keeps its own baselines, so `assignment_digest` — a sha256 of the map without 
 A customer registered later is in no arm: it receives no pilot PoS while the pilot runs.
 
 **The arms**: a holdout or outside customer gets no display, no give-away (`hands_out`) and no display prompt
-(`programme`) through `window_until`; a programme customer only what its manager chooses. The pilot ends with the
+(`programme`) through `window_until`; a programme customer only what its manager chooses. The pilot gates its universe
+only: a customer of another channel — a key account whose gas station a rep visits — gets its give-aways as the legacy
+build hands them out (⚑R295-A), and only small-retail give-aways enter the observed history. The pilot ends with the
 window: its last month-end lends nothing for the day after, and a pilot-mode build ends by then (`loop.build`). The
 two no-PoS modes lend nothing and hand out nothing at all, but assign.
 
@@ -232,10 +234,16 @@ def programme(pilot: Pilot, customer_id: int) -> bool:
     return held is not None and held.mapped.arm == "programme"
 
 
-def hands_out(pilot: Pilot, customer_id: int, day: date) -> bool:
-    """Whether a visit at `customer_id`'s store may hand out a give-away on `day` (module docstring)."""
+def hands_out(pilot: Pilot, customer: Customer, day: date) -> bool:
+    """Whether a visit at `customer`'s store may hand out a give-away on `day` (module docstring): never in a no-PoS
+    mode; outside the small-retail universe as the legacy build does; in it, at a programme customer within the
+    pilot's days."""
+    if no_pos(pilot):
+        return False
+    if customer.channel != "small_retail":
+        return True
     p = pilot.protocol
-    return not no_pos(pilot) and p.assigned_on <= day <= p.window_until and programme(pilot, customer_id)
+    return p.assigned_on <= day <= p.window_until and programme(pilot, customer.customer_id)
 
 
 def margin(line: Priced) -> int:
@@ -263,10 +271,12 @@ def book(
         pilot.baseline[customer.customer_id] = pilot.baseline.get(customer.customer_id, 0) + total
 
 
-def handed(pilot: Pilot, customer_id: int, day: date, cost: float) -> None:
-    """A give-away's `cost` into the observed history (module docstring)."""
+def handed(pilot: Pilot, customer: Customer, day: date, cost: float) -> None:
+    """A give-away's `cost` into the observed history (module docstring): a small-retail customer's only."""
+    if customer.channel != "small_retail":
+        return
     held = pilot.handouts.setdefault(day.toordinal(), {})
-    held[customer_id] = held.get(customer_id, 0) + halere(cost)
+    held[customer.customer_id] = held.get(customer.customer_id, 0) + halere(cost)
 
 
 def close(world: World, terms: pos.Terms, day: date, output: Output) -> None:

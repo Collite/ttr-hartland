@@ -87,8 +87,9 @@ those stores, and none elsewhere. The item is one of the give-aways that brand a
 those that brand no line (brand-wide items of either brand), the cheaper ones likelier (∝ 1 ÷ `unit_cost`); `qty`
 pieces in `pos_handouts.qty`, its cost `unit_cost × qty`. Each sales visit that dealt with someone counts on its
 tourplan's calls, a converting one on its conversions (`tally`, every day): the store's sales calls and conversions
-under its tourplans, across reps — a re-cut tourplan carries them on. A pilot-mode build hands out at its programme
-customers only, from its assignment on (G2 S2.6, `loop.pilot.hands_out`), and books each give-away's cost.
+under its tourplans, across reps — a re-cut tourplan carries them on. A pilot-mode build hands out at its small-retail
+programme customers only, from its assignment on, and at other channels' customers (a key account's station) as
+above (G2 S2.6, `loop.pilot.hands_out`, ⚑R295-A); it books each small-retail give-away's cost.
 """
 
 from __future__ import annotations
@@ -884,7 +885,7 @@ def handouts(world: World, crew: Crew, day: date, visits: Sequence[Visit], event
     held = world.pilot
     for k, v in enumerate(dealt):
         t = v.tourplan
-        if held is not None and not hands_out(held, t.customer_id, day):  # a pilot's holdout, outside, PoS-free
+        if held is not None and not hands_out(held, world.customers[t.customer_id], day):  # holdout, outside, PoS-free
             continue
         region = crew.pos.region_of[t.area]
         if region not in managers:
@@ -914,5 +915,5 @@ def handouts(world: World, crew: Crew, day: date, visits: Sequence[Visit], event
             )
         )
         if held is not None:
-            handed(held, t.customer_id, day, rows[-1]["cost"])
+            handed(held, world.customers[t.customer_id], day, rows[-1]["cost"])
     return rows

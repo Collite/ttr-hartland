@@ -125,9 +125,22 @@ def _portfolio(m: Mapped) -> tuple[tuple[str, ...], ...]:
 def test_nothing_is_lent_or_handed_out_before_the_assignment_day(world: World) -> None:
     p = _pilot(world)
     assert all(loan.lent_on == FIRST for loan in world.loans.values())
-    member = next(iter(_arm(world, "programme")))
+    member = world.customers[next(iter(_arm(world, "programme")))]
     assert not pilot.hands_out(p, member, END) and pilot.hands_out(p, member, FIRST)
     assert pilot.hands_out(p, member, date(2025, 12, 31)) and not pilot.hands_out(p, member, date(2026, 1, 1))
+
+
+def test_the_pilot_gates_give_aways_in_its_universe_only(world: World) -> None:
+    """⚑R295-A: a key account's station hands out as the legacy build does, a holdout never, a no-PoS mode nowhere."""
+    p = _pilot(world)
+    holdout = world.customers[next(iter(_arm(world, "holdout")))]
+    station = next(c for c in world.customers.values() if c.channel == "gas_ka")
+    day = date(2024, 1, 2)
+    assert pilot.hands_out(p, station, day) and not pilot.hands_out(p, holdout, day)
+    reference = replace(p, mode="no-pos")
+    assert not pilot.hands_out(reference, station, day) and not pilot.hands_out(reference, holdout, day)
+    pilot.handed(p, station, day, 12.5)
+    assert day.toordinal() not in p.handouts  # only the universe's give-aways are its history
 
 
 def test_an_odd_customer_is_outside_and_another_mode_takes_the_story_map(world: World) -> None:
@@ -171,7 +184,9 @@ def test_a_holdout_gets_no_display_no_give_away_and_no_display_prompt(
     assert {d.customer_id for d in _pilot(world).decisions.values()}.isdisjoint(others)
     customer_of = {r["visit_id"]: int(r["customer_id"]) for r in _rows(tmp_path / "visit.csv") if r["customer_id"]}
     given = {customer_of[r["visit_id"]] for r in _rows(tmp_path / "pos_handout.csv")}
-    assert given and given <= _arm(world, "programme")
+    small = {c for c in given if world.customers[c].channel == "small_retail"}  # the pilot's universe (⚑R295-A)
+    assert small and small <= _arm(world, "programme")
+    assert {world.customers[c].channel for c in given - small} == {"gas_ka"}  # a key account's stations, as legacy
     prompted = {int(r["customer_id"]) for r in _rows(tmp_path / "rep_prompt.csv") if r["kind"] == "pos_placement"}
     assert prompted and prompted <= _arm(world, "programme")
 
