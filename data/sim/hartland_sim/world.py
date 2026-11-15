@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hartland_sim.loop.demand import Demand
+    from hartland_sim.loop.pilot import Pilot
     from hartland_sim.loop.pos import Measure
     from hartland_sim.loop.prompts import Purchases
 
@@ -372,6 +373,7 @@ class World:
     display_uplift: dict[int, dict[str, float]] = field(default_factory=dict)
     display_budget: dict[str, float] = field(default_factory=dict)
     measure: Measure | None = None
+    pilot: Pilot | None = None  # G2 S2.6: S5's opt-in pilot (`loop.pilot`); None outside a pilot-mode build
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such

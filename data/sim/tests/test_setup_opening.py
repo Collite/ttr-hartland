@@ -204,6 +204,8 @@ def test_setup_makes_no_state_rows_the_world_renders_them(opening: Setup) -> Non
         len(world.tourplans),
         len(world.assets),
         0,  # no display is lent before the warm-up's first month-end (G2 S2.3)
+        0,  # nor a pilot assigned, nor decided, outside a pilot-mode build (G2 S2.6)
+        0,
     ]
 
 

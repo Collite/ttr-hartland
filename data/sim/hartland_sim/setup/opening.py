@@ -13,11 +13,12 @@ The warm-up year's reorder runs (G3) bring the stock to the plan's own rate, the
 day. The opening `stock_day` rows are dated the day before the warm-up.
 
 **The state tables** (`STATE_TABLES`, ⚑R201-A): `employee`, `assignment`, `customer`, `lifecycle_phase`,
-`discount_budget`, `tourplan` (G2 S2.1), `pos_asset` and `pos_loan` (G2 S2.3) hold state the loop changes — a churned
+`discount_budget`, `tourplan` (G2 S2.1), `pos_asset` and `pos_loan` (G2 S2.3), `pos_pilot_assignment` and
+`pos_placement_decision` (G2 S2.6, empty outside a pilot-mode build) hold state the loop changes — a churned
 customer's `until`, a closed phase episode or duty, a budget's `used_amount`, a re-cut tourplan's `valid_to`, an asset
-written off, a display returned. They are rendered from the `World` when a
-build ends (`state_rows`), never appended, and a prolong renders them from the checkpoint alone. The opening is a build
-of zero days: setup makes no rows for them.
+written off, a display returned, a pilot placement cancelled on its effective day (NH-D22). They are rendered from
+the `World` when a build ends (`state_rows`), never appended, and a prolong renders them from the checkpoint alone.
+The opening is a build of zero days: setup makes no rows for them.
 
 **Writing** (`write`): setup's other tables and the state tables, through the CSV writer in `load_order`,
 `_sim_meta` (the inputs' hashes, the day before the warm-up as `last_day_done`) and the opening checkpoint. A run
@@ -47,6 +48,7 @@ from hartland_sim.dates import quarter_end
 from hartland_sim.ids import row_id
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import REFERENCE_DIR
+from hartland_sim.loop import pilot
 from hartland_sim.loop.field import tourplan_row
 from hartland_sim.loop.pos import asset_row, loan_row
 from hartland_sim.setup.customers import Customers, customer_row, phases
@@ -67,6 +69,8 @@ STATE_TABLES = (
     "tourplan",
     "pos_asset",
     "pos_loan",
+    "pos_pilot_assignment",
+    "pos_placement_decision",
 )
 RENDERED = ("promotion", *STATE_TABLES)  # rendered at a build's end, never appended to (module docstring)
 OWN = (CHECKPOINT_FILE, META_FILE)  # the run's own files
@@ -191,6 +195,7 @@ def state_rows(world_state: World, world: WorldConfig) -> Tables:
     out["tourplan"] = [tourplan_row(tourplan_id, held) for tourplan_id, held in world_state.tourplans.items()]
     out["pos_asset"] = [asset_row(asset_id, asset) for asset_id, asset in world_state.assets.items()]
     out["pos_loan"] = [loan_row(loan_id, loan) for loan_id, loan in world_state.loans.items()]
+    out["pos_pilot_assignment"], out["pos_placement_decision"] = pilot.state_rows(world_state.pilot)
     return out
 
 

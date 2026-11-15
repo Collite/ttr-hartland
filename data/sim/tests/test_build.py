@@ -52,9 +52,10 @@ def test_a_build_writes_setup_s_tables_then_the_loop_s_rows(early: Path) -> None
 
 
 def test_the_end_renders_the_state_tables_meta_the_checkpoint_and_build_json(early: Path) -> None:
-    for table in STATE_TABLES:  # no display is lent before the first month-end (G2 S2.3): the file, with no row
-        assert _rows(early, table) or table == "pos_loan", table
-    assert (early / "pos_loan.csv").is_file()
+    empty = ("pos_loan", "pos_pilot_assignment", "pos_placement_decision")  # no display before the first month-end
+    for table in STATE_TABLES:  # (G2 S2.3), no pilot outside a pilot-mode build (G2 S2.6): the file, with no row
+        assert _rows(early, table) or table in empty, table
+    assert all((early / f"{table}.csv").is_file() for table in empty)
     assert {r["quarter"] for r in _rows(early, "discount_budget")} == {"2023-01-01"}
     meta = Meta.load(early)
     assert (meta.last_day_done, meta.stories_sha256, meta.master_seed) == (

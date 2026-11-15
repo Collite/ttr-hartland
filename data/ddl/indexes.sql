@@ -33,6 +33,9 @@ CREATE INDEX competitor_sighting_competitor_id_idx ON hartland.competitor_sighti
 CREATE INDEX pos_loan_customer_id_idx ON hartland.pos_loan (customer_id);
 CREATE INDEX pos_loan_pos_asset_id_idx ON hartland.pos_loan (pos_asset_id);
 CREATE INDEX pos_handout_visit_id_idx ON hartland.pos_handout (visit_id);
+CREATE INDEX pos_pilot_assignment_customer_id_idx ON hartland.pos_pilot_assignment (customer_id);
+CREATE INDEX pos_placement_decision_customer_id_idx ON hartland.pos_placement_decision (customer_id);
+CREATE INDEX pos_placement_decision_loan_id_idx ON hartland.pos_placement_decision (loan_id);
 CREATE INDEX sales_order_customer_id_ordered_on_idx ON hartland.sales_order (customer_id, ordered_on);
 CREATE INDEX sales_order_ordered_on_idx ON hartland.sales_order (ordered_on);
 CREATE INDEX sales_order_taken_by_employee_id_idx ON hartland.sales_order (taken_by_employee_id);
