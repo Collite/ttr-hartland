@@ -1,0 +1,28 @@
+# S5's pilot protocol (NH-D21-B revision 1: design08 §§3–4 and §8; NH-D22), frozen before any pilot-mode build ran
+# (G2 S2.6 pre-flight) and read by `hartland_sim.loop.pilot.Protocol`. A change is a new design revision with a
+# `pilot_revision` of its own, never an edit of this one.
+design: NH-D21-B/v1
+pilot_revision: s5-pilot-v1 # the audit rows' revision and the assignment coin's business key
+assignment_revision: 1
+policy_revision: nh-d21-b-r1 # the placement score's (design08 §4)
+pos_free: { from: 2023-01-01, until: 2023-02-28 } # no display, no give-away; the assignment the day after
+baseline_days: 56 # the pre-pilot's last days: the observed baseline and the first decisions' history
+window: { from: 2024-01-01, until: 2025-12-31 } # W, for gain and cost; the pilot ends with it
+placement_budget_share: 0.5 # of each region's display budget × its manager's budget factor
+asset_days_per_month: 30.4 # an asset's cost over pos_asset_life_months × this many days
+modes: [story, skill-neutral, full-null, no-pos, no-pos-null]
+# design08 §8, fixed before the new mode first runs; S2.7 and S2.8 apply them.
+acceptance:
+  rank: 0.8
+  group_ratio: 1.35
+  high: [PHA, JMV]
+  low: [ZSC, VCH, SMS]
+  coverage: 0.90
+  bias: 0.10
+  rms: 0.25
+seeds:
+  # seed(label, i) = 1 + int.from_bytes(SHA256("NH-D21-B/v1/" + label + "/" + str(i)).digest()[:8], "big") % (2**31 - 2)
+  development: [31102026, 1797428728, 285672490] # world.yaml's, seed("dev", 1), seed("dev", 2)
+  certification: # seed("cert", 1…10): not built before S2.7's PASS and merge
+    [1206907222, 47937215, 2091533869, 1194136224, 1266417267, 2130616110, 400452181, 1213695083, 1687912256, 1321611371]
+  built_before: [31102026, 31102027] # the master seeds built before this manifest: the story world, the determinism tests'
