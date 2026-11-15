@@ -292,8 +292,20 @@ def test_a_missing_material_and_an_invalid_cost_are_no_offers(world: World) -> N
     world.assets[free] = replace(world.assets[free], cost=math.nan)
     nan = pilot.forecast(world, terms, history, t, d.region, manager, {(d.region, d.material): free})  # type: ignore[dict-item]
     assert (nan.score, nan.outcome) == (0.0, "ineligible")
-    unheld = pilot.forecast(world, terms, history, t, d.region, None, {(d.region, d.material): free})  # type: ignore[dict-item]
-    assert (unheld.manager_id, unheld.score, unheld.outcome) == (None, 0.0, "ineligible")
+    for start in ({(d.region, d.material): free}, {}):  # a region without a manager decides nothing
+        unheld = pilot.forecast(world, terms, history, t, d.region, None, start)  # type: ignore[arg-type]
+        assert (unheld.manager_id, unheld.score, unheld.outcome) == (None, 0.0, "ineligible")
+
+
+def test_the_pilot_ends_with_its_window(world: World, tmp_path: Path) -> None:
+    """The window's last month-end lends nothing for the day after it: no decision, nil budgets."""
+    demand = world.demand
+    assert demand is not None
+    terms = pos.Terms.of(WORLD, STORIES, demand.lines)
+    held = len(_pilot(world).decisions)
+    with CsvWriter(tmp_path) as writer:
+        pilot.close(world, terms, date(2025, 12, 31), Output(writer, date(2100, 1, 1)))
+    assert len(_pilot(world).decisions) == held and set(world.display_budget.values()) == {0.0}
 
 
 # ── 5. complete audit rows, provenance, the effective day (NH-D22) ─────────

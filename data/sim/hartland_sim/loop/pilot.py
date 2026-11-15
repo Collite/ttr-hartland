@@ -26,10 +26,12 @@ keeps its own baselines, so `assignment_digest` — a sha256 of the map without 
 A customer registered later is in no arm: it receives no pilot PoS while the pilot runs.
 
 **The arms**: a holdout or outside customer gets no display, no give-away (`hands_out`) and no display prompt
-(`programme`) through `window_until`; a programme customer only what its manager chooses. A pilot-mode build ends by
-then (`loop.build`). The two no-PoS modes lend nothing and hand out nothing at all, but assign.
+(`programme`) through `window_until`; a programme customer only what its manager chooses. The pilot ends with the
+window: its last month-end lends nothing for the day after, and a pilot-mode build ends by then (`loop.build`). The
+two no-PoS modes lend nothing and hand out nothing at all, but assign.
 
-**The placements** (`place`, every month-end from the last PoS-free day on, dated the next day, `first`): the
+**The placements** (`place`, every month-end from the last PoS-free day to the window's last month but one, dated
+the next day, `first`): the
 candidates are the legacy ones (`loop.pos.place`) of the programme customers — their stores on an open tourplan,
 active on `first`, holding no display — each a decision of its month-end's day (`Decision`, `decision_day`). Before
 the draw each is forecast, its inputs kept: the store's line and catalogue fit (`World.display_uplift`, the declared
@@ -279,7 +281,7 @@ def close(world: World, terms: pos.Terms, day: date, output: Output) -> None:
         assign(world, pilot, terms)
     if first >= p.assigned_on and not pilot.assigned:
         raise ValueError(f"the pilot was never assigned (its day is {p.assigned_on}): build it from the warm-up")
-    if first < p.assigned_on or no_pos(pilot):
+    if first < p.assigned_on or first > p.window_until or no_pos(pilot):
         world.display_budget = dict.fromkeys(terms.regions, 0.0)
     else:
         place(world, terms, pilot, day, first)
@@ -502,13 +504,16 @@ def forecast(
         math.floor(history.term + Fraction(1, 2)),
         "no_asset",
     )
-    if material is None:
-        return decision
-    asset_cost = world.assets[start[(region, material)]].cost
-    decision.asset_cost = asset_cost
-    decision.gain = round(max(0.0, margin56 / 100 / history.days) * fit * h, 2)
-    decision.cost = round(asset_cost * h / history.asset_days + given / 100 / history.days * h, 2)
-    if manager is None or not (math.isfinite(decision.cost) and decision.cost > 0):
+    if material is not None:
+        asset_cost = world.assets[start[(region, material)]].cost
+        decision.asset_cost = asset_cost
+        decision.gain = round(max(0.0, margin56 / 100 / history.days) * fit * h, 2)
+        decision.cost = round(asset_cost * h / history.asset_days + given / 100 / history.days * h, 2)
+    if manager is None:
+        decision.outcome = "ineligible"
+    elif decision.cost is None or decision.gain is None:
+        decision.outcome = "no_asset"
+    elif not (math.isfinite(decision.cost) and decision.cost > 0):
         decision.outcome = "ineligible"
     elif decision.gain <= 0:
         decision.outcome = "nonpositive_score"
