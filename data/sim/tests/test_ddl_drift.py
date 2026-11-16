@@ -219,8 +219,8 @@ def test_parse_errors_and_select_star_fail() -> None:
 def test_the_real_schema_sql_reads_whole() -> None:
     schema = dd.schema_from_sql((REPO / "data/ddl/schema.sql").read_text(encoding="utf-8"))
     kinds = [r.kind for r in schema.relations.values()]
-    assert (kinds.count("table"), kinds.count("materialized_view"), kinds.count("view")) == (98, 4, 1)
-    assert len(schema.fks) == 205
+    assert (kinds.count("table"), kinds.count("materialized_view"), kinds.count("view")) == (100, 4, 1)
+    assert len(schema.fks) == 213
     assert schema.errors == []
     okres = schema.relations["okres"]
     assert [c.type_text() for c in okres.columns] == [

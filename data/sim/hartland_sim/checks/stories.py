@@ -25,6 +25,9 @@ the cases, the Customer Margin (gross revenue less every discount, the delivery 
 0; no COGS, contracts §4) and the agreed discount. Before G3/G4 write the costs, the Customer Margin is the net
 revenue.
 
+**A pilot run** (G2 S2.6, `_sim_meta.pilot_mode`): S5's checks are NOT_CERTIFIED, never run nor passed — design08 §8's
+protocol judges the pilot (S2.7–S2.8) — so the check exits 1 on it.
+
 The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result, and a note where a twin
 has more to say (S1: each line's ratio, so the line that sets the margin shows).
 """
@@ -43,6 +46,7 @@ import pandas as pd
 
 from hartland_sim.config import Detector, StoriesConfig, inventory
 from hartland_sim.ids import row_id
+from hartland_sim.world import META_FILE, Meta
 
 S2_FROM = date(2024, 2, 26)  # s2_affluence.sql: promotions whose 8 weeks before lie inside the history
 S6_FROM = date(2024, 2, 26)  # s6.sql: agreements whose 8 weeks before lie inside the history
@@ -802,6 +806,7 @@ class Verdict:
     threshold: float | tuple[float, float]
     passed: bool | None  # None: not run
     note: str = ""
+    status: str = ""  # a result other than pass/FAIL/not run: NOT_CERTIFIED (a pilot run's S5, G2 S2.6)
 
 
 def holds(value: float, direction: str, threshold: float | tuple[float, float]) -> bool:
@@ -836,8 +841,19 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
     """Every detector of every enabled story over the CSV build in `run` (module docstring), in the stories' order,
     and S4's k-means, reported; a disabled story's rows say so; then the probes (`probes`)."""
     build = Build(run)
+    mode = Meta.load(run).pilot_mode if (run / META_FILE).is_file() else None
     out = []
     for story in stories.stories:
+        if mode is not None and story.story == "S5":  # never a pass: design08 §8's protocol judges it (S2.7–S2.8)
+            why = f"a {mode} pilot run: design08 §8's protocol judges S5"
+            for detector in story.detectors:
+                out.append(
+                    Verdict(
+                        "S5", detector.sql, detector.metric, None, detector.direction, detector.threshold, False, why,
+                        "NOT_CERTIFIED"
+                    )
+                )  # fmt: skip
+            continue
         if not story.enabled:
             for detector in story.detectors:
                 out.append(
@@ -927,15 +943,18 @@ def report(verdicts: list[Verdict], run: Path, null: bool) -> str:
     rows = ["| story | check | metric | threshold | value | result |", "|---|---|---|---|---|---|"]
     for v in verdicts:
         value = "—" if v.value is None else f"{v.value:.3f}"
-        result = (
+        result = v.status or (
             ("not run" if v.value is None else "reported") if v.passed is None else ("pass" if v.passed else "FAIL")
         )
         note = f" ({v.note})" if v.note else ""
         rows.append(
             f"| {v.story} | `{v.check}` | {v.metric} | {v.direction} {v.threshold} | {value} | {result}{note} |"
         )
-    ran = [v for v in verdicts if v.passed is not None]
+    ran = [v for v in verdicts if v.passed is not None and not v.status]
+    held = len([v for v in verdicts if v.status])  # NOT_CERTIFIED: neither run nor passed (module docstring)
     tail = (
-        f"\n\n{sum(bool(v.passed) for v in ran)} of {len(ran)} run checks pass; {len(verdicts) - len(ran)} not run.\n"
+        f"\n\n{sum(bool(v.passed) for v in ran)} of {len(ran)} run checks pass;"
+        + (f" {held} NOT_CERTIFIED;" if held else "")
+        + f" {len(verdicts) - len(ran) - held} not run.\n"
     )
     return head + "\n".join(rows) + tail

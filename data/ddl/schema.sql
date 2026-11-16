@@ -877,6 +877,57 @@ CREATE TABLE hartland.pos_handout (
     CONSTRAINT pos_handout_pos_material_id_fkey FOREIGN KEY (pos_material_id) REFERENCES hartland.pos_material (pos_material_id) DEFERRABLE INITIALLY DEFERRED
 );
 
+CREATE TABLE hartland.pos_pilot_assignment (
+    pos_pilot_assignment_id bigint NOT NULL,
+    pilot_revision text NOT NULL,
+    customer_id bigint NOT NULL,
+    region_id bigint NOT NULL,
+    pair_id bigint,
+    arm text NOT NULL CHECK (arm IN ('programme', 'holdout', 'outside')),
+    outside_reason text CHECK (outside_reason IN ('unpaired', 'cross_region')),
+    portfolio_key text NOT NULL,
+    assigned_on date NOT NULL,
+    baseline_from date NOT NULL,
+    baseline_until date NOT NULL,
+    window_from date NOT NULL,
+    window_until date NOT NULL,
+    baseline_customer_margin numeric(14,2) NOT NULL,
+    baseline_days integer NOT NULL,
+    assignment_digest text NOT NULL,
+    CONSTRAINT pos_pilot_assignment_pkey PRIMARY KEY (pos_pilot_assignment_id),
+    CONSTRAINT pos_pilot_assignment_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES hartland.customer (customer_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT pos_pilot_assignment_region_id_fkey FOREIGN KEY (region_id) REFERENCES hartland.region (region_id) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE hartland.pos_placement_decision (
+    pos_placement_decision_id bigint NOT NULL,
+    pilot_revision text NOT NULL,
+    policy_revision text NOT NULL,
+    decision_day date NOT NULL,
+    customer_id bigint NOT NULL,
+    delivery_point_id bigint NOT NULL,
+    region_id bigint NOT NULL,
+    manager_id bigint,
+    forecast_material_id bigint,
+    outcome text NOT NULL CHECK (outcome IN ('selected', 'no_budget', 'no_asset', 'nonpositive_score', 'ineligible', 'cancelled')),
+    prior56_line_margin numeric(14,2) NOT NULL,
+    prior56_handout_cost numeric(14,2) NOT NULL,
+    asset_cost numeric(14,2),
+    forecast_gain numeric(14,2),
+    forecast_cost numeric(14,2),
+    catalogue_fit numeric(18,8) NOT NULL,
+    score numeric(18,8) NOT NULL,
+    forecast_days integer NOT NULL,
+    loan_id bigint,
+    CONSTRAINT pos_placement_decision_pkey PRIMARY KEY (pos_placement_decision_id),
+    CONSTRAINT pos_placement_decision_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES hartland.customer (customer_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT pos_placement_decision_delivery_point_id_fkey FOREIGN KEY (delivery_point_id) REFERENCES hartland.delivery_point (delivery_point_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT pos_placement_decision_region_id_fkey FOREIGN KEY (region_id) REFERENCES hartland.region (region_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT pos_placement_decision_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES hartland.employee (employee_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT pos_placement_decision_forecast_material_id_fkey FOREIGN KEY (forecast_material_id) REFERENCES hartland.pos_material (pos_material_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT pos_placement_decision_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES hartland.pos_loan (pos_loan_id) DEFERRABLE INITIALLY DEFERRED
+);
+
 -- ── orders ──────────────────────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE hartland.sales_order (

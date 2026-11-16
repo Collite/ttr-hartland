@@ -9,6 +9,7 @@ before `history.first_day`).
 - `placements` (G2 S2.5, `loop.pos.revalidate`): the displays the month-end lent from today, revalidated after the
   acquisitions — one at a customer not active today (lost today) is cancelled: no loan, its asset in stock and its
   cost in the region's display budget again — before the demand reads the running loans and the visits the budget;
+  a pilot-mode build keeps the cancelled one's decision as `cancelled` (G2 S2.6, `loop.pilot.revalidate`);
 - `conditions`, on a month's first day: the month's `customer_condition` from what the month before booked
   (`month_end.conditions`), after the acquisitions, so a store lost on the 1st has none and one acquired on the 1st
   has one; the warm-up's first month has none (no month before it);
@@ -51,7 +52,7 @@ import numpy as np
 
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import month_end, quarter_end
-from hartland_sim.loop import acquisition, demand, orders, pos
+from hartland_sim.loop import acquisition, demand, orders, pilot
 from hartland_sim.loop.field import (
     Crew,
     calls,
@@ -220,7 +221,7 @@ class Loop:
         acquisition.step(self.world, self.reps, day, self.today.shares)
 
     def placements(self, day: date) -> None:
-        pos.revalidate(self.world, day)
+        pilot.revalidate(self.world, day)
 
     def conditions(self, day: date) -> None:
         if day.day == 1 and day != self.config.history.warm_up_from:

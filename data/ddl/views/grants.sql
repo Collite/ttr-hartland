@@ -61,6 +61,8 @@ GRANT SELECT ON hartland.visit_observation TO hartland_docwh;
 GRANT SELECT ON hartland.competitor_sighting TO hartland_docwh;
 GRANT SELECT ON hartland.pos_loan TO hartland_docwh;
 GRANT SELECT ON hartland.pos_handout TO hartland_docwh;
+GRANT SELECT ON hartland.pos_pilot_assignment TO hartland_docwh;
+GRANT SELECT ON hartland.pos_placement_decision TO hartland_docwh;
 GRANT SELECT ON hartland.sales_order TO hartland_docwh;
 GRANT SELECT ON hartland.sales_order_line TO hartland_docwh;
 GRANT SELECT ON hartland.sales_order_line_discount TO hartland_docwh;

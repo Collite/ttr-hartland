@@ -291,15 +291,22 @@ def fits(terms: Terms, line: str) -> list[str]:
 
 
 def close(world: World, terms: Terms, day: date, output: Output) -> None:
-    """The PoS month-end of `day`, a month's last day (module docstring)."""
+    """The PoS month-end of `day`, a month's last day (module docstring); a pilot-mode build's is
+    `loop.pilot.close`."""
     first = day + timedelta(days=1)
+    review(world, terms, day, first, output)
+    place(world, terms, first)
+    if world.measure is not None:
+        world.measure.start(month_index(first))
+
+
+def review(world: World, terms: Terms, day: date, first: date, output: Output) -> None:
+    """The month-end's steps before its placements (module docstring): the returns, the ledger, the areas' conversion
+    and the stores' display uplifts."""
     returns(world, terms, day, first)
     ledger(world, terms, first, output)
     medians(world)
     world.display_uplift = uplifts(world, terms)
-    place(world, terms, first)
-    if world.measure is not None:
-        world.measure.start(month_index(first))
 
 
 def returns(world: World, terms: Terms, day: date, first: date) -> list[int]:
@@ -432,7 +439,8 @@ def medians(world: World) -> None:
 
 def place(world: World, terms: Terms, first: date) -> list[int]:
     """Each region's placements of `first` (module docstring), the stores' lines and uplifts from
-    `World.display_uplift`; the loans' ids."""
+    `World.display_uplift`; the loans' ids. `loop.pilot.place` is its twin — the stock, the candidates, the keys,
+    first-fit and the budget's stop: a change to one is made to both."""
     stock: dict[tuple[str, str], list[int]] = {}
     for asset_id, asset in world.assets.items():
         if asset.written_off_on is None and asset.loan is None and asset.material in terms.displays:

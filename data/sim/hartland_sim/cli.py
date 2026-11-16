@@ -117,30 +117,37 @@ def _run_dir(name: str) -> Path:
 
 
 def build_world(args: argparse.Namespace) -> int:
-    """The world built from the warm-up to `--until` into `data/build/<run>/` (`loop.build`); CSV only until G5 S5.1
-    loads it into Postgres."""
+    """The world built from the warm-up to `--until` into `data/build/<run>/` (`loop.build`), with `--pilot` in one of
+    S5's pilot modes (G2 S2.6, `loop.pilot`; to the end of its window by default); CSV only until G5 S5.1 loads it into
+    Postgres."""
     if not args.csv:
         print(
             "hartland-sim build-world: --csv only — loading a build into Postgres arrives at G5 S5.1", file=sys.stderr
         )
         return 1
     from hartland_sim.config import WorldConfig
-    from hartland_sim.loop.build import build
+    from hartland_sim.loop.build import PilotRefused, build
     from hartland_sim.loop.day import quarter
+    from hartland_sim.protocol import Protocol
 
     world = WorldConfig.load()
-    until = args.until or world.history.until
-    run = _run_dir(args.run or f"{'null' if args.null else 'world'}-{until.isoformat()}")
+    until = args.until or (Protocol.load().window_until if args.pilot else world.history.until)
+    name = f"pilot-{args.pilot}" if args.pilot else "null" if args.null else "world"
+    run = _run_dir(args.run or f"{name}-{until.isoformat()}")
     try:
-        built = build(run, until, world, null=args.null)
+        built = build(run, until, world, null=args.null, pilot=args.pilot)
     except FileExistsError as error:
         print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
         return 1
+    except PilotRefused as error:  # refused before any work; any other failure keeps its traceback
+        print(f"hartland-sim build-world: {error}", file=sys.stderr)
+        return 1
     first = world.history.first_day  # a quarter's first day: the quarters from its own are the written ones
     written = sum(q["orders"] for name, q in built.report.quarters.items() if name >= quarter(first))
+    pilot = f", pilot {args.pilot} NOT_CERTIFIED" if args.pilot else ""
     print(
         f"hartland-sim build-world: {run} — {written} orders written, {first} to {until},"
-        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id})"
+        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id}{pilot})"
     )
     return 0
 
@@ -149,6 +156,13 @@ def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--until", type=date.fromisoformat, metavar="DAY", help="the last simulated day (ISO date)")
     parser.add_argument("--csv", action="store_true", help="write the CSV set to data/build/<run>/")
     parser.add_argument("--null", action="store_true", help="the null world: every story disabled (04 §9)")
+    from hartland_sim.protocol import MODES
+
+    parser.add_argument(
+        "--pilot",
+        choices=MODES,
+        help="S5's opt-in pilot in this mode (design08 §8), NOT_CERTIFIED; not with --null (its mode is full-null)",
+    )
     parser.add_argument(
         "--run", metavar="NAME", help="the folder under data/build/ (default: world-<until>), or a path"
     )
@@ -232,6 +246,7 @@ def _stories_check_csv(args: argparse.Namespace) -> int:
     the CSVs, the report printed; exit 1 when a judged check fails."""
     from hartland_sim.checks.stories import check, report
     from hartland_sim.config import ConfigError, StoriesConfig
+    from hartland_sim.world import META_FILE, Meta
 
     if args.csv == "latest":
         written = {p: [f.stat().st_mtime for f in p.glob("*.csv")] for p in BUILD_DIR.glob("*") if p.is_dir()}
@@ -249,6 +264,14 @@ def _stories_check_csv(args: argparse.Namespace) -> int:
         stories = StoriesConfig.load()
     except ConfigError as error:
         print(error, file=sys.stderr)
+        return 1
+    mode = Meta.load(run).pilot_mode if (run / META_FILE).is_file() else None
+    if mode is not None and args.null != (mode in ("full-null", "no-pos-null")):
+        print(
+            f"hartland-sim stories-check: {run} is a {mode} pilot run:"
+            f" {'with' if args.null else 'without'} --null judges it in the wrong direction",
+            file=sys.stderr,
+        )
         return 1
     verdicts = check(run, stories, null=args.null)
     text = report(verdicts, run, args.null)

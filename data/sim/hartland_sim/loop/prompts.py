@@ -29,7 +29,7 @@ station, whose rep merchandises — by `world.yaml policies.prompt_rules`:
   that `peer_share` of the store's cluster bought, of a line no listing prompt offers; flagged `ai_tip`;
 - `pos_placement` (R-2, PO-STOJAN): the store's line with the largest `World.display_uplift`, at least
   `min_display_uplift`, while its region's manager has display budget (`World.display_budget`) — both G2 S2.3's,
-  empty until then, so S2.2 generates none;
+  empty until then, so S2.2 generates none; in a pilot-mode build at a programme customer's store only (G2 S2.6);
 - the debt and competitor-response rules generate nothing yet: the invoices are G4's, the counter-measures H-D's.
 Each has a JSON `payload` (keys sorted; the SKUs by catalogue code, the line, the product or the promotion, the
 figures it was chosen on) and a Czech `explanation`. A visit's set is ranked by priority, then the kinds' order and
@@ -65,6 +65,7 @@ from hartland_sim.ids import row_id
 from hartland_sim.io.reference import read
 from hartland_sim.loop.demand import REFUSES, BasketReady, same
 from hartland_sim.loop.field import UNREACHED, Listing, Planned, Visit, kind_of
+from hartland_sim.loop.pilot import programme
 from hartland_sim.loop.pricing import TIERED, Priced, Rules, admits, running
 from hartland_sim.rng import uniforms
 from hartland_sim.setup.rows import Row, row
@@ -586,7 +587,7 @@ def generate(world: World, book: Rulebook, rules: Rules, day: date, planned: Seq
         if "unsupplied_items" in book.rules:
             listing, left = unsupplied(world, book, briefing, row, int(demand.point_group[point]), t.customer_id)
         drafts += listing
-        if "pos_placement" in book.rules:
+        if "pos_placement" in book.rules and (world.pilot is None or programme(world.pilot, t.customer_id)):
             drafts += display(world, book, t.delivery_point_id, demand.spots[point].region)
         if "ai_tip" in book.rules:
             store = demand.spots[point].store

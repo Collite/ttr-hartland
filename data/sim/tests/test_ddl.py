@@ -39,7 +39,7 @@ def test_the_tables_in_load_order(inventory: InventoryConfig, schema_sql: str) -
 
 def test_every_foreign_key_is_deferred(inventory: InventoryConfig, schema_sql: str) -> None:
     fks = re.findall(r"FOREIGN KEY .*$", schema_sql, re.M)
-    assert len(fks) == sum(len(table.fks) for table in inventory.tables) == 205
+    assert len(fks) == sum(len(table.fks) for table in inventory.tables) == 213
     assert all(fk.rstrip(",").endswith("DEFERRABLE INITIALLY DEFERRED") for fk in fks)
 
 
@@ -155,7 +155,7 @@ def ddl_copy(tmp_path: Path) -> Path:
 
 def test_check_passes_on_the_committed_files(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["ddl", "--check"]) == 0
-    assert "data/ddl/ matches data/inventory.yaml (98 tables)" in capsys.readouterr().out
+    assert "data/ddl/ matches data/inventory.yaml (100 tables)" in capsys.readouterr().out
 
 
 def test_check_fails_naming_each_file_that_drifted(ddl_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:

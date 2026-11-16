@@ -40,8 +40,8 @@ const defs = [...parsed].flatMap(([file, ast]) => ast.definitions.map((d) => ({ 
 const ttrmText = new Map();
 for (const file of parsed.keys()) ttrmText.set(file, await readFile(path.join(repoRoot, 'model/db', file), 'utf-8'));
 
-test('D1 — schema.sql holds 98 tables and 5 views (the inventory, contracts §1)', () => {
-  assert.equal(expectedTables.size, 98);
+test('D1 — schema.sql holds 100 tables and 5 views (the inventory, contracts §1)', () => {
+  assert.equal(expectedTables.size, 100);
   assert.equal(expectedViews.size, 5);
 });
 
@@ -97,11 +97,11 @@ test('D5 — views.ttrm: the four materialized views as `def table` (⚑NH-P-10)
   assert.equal(inViews.length, expectedViews.size);
 });
 
-test('D6 — fks.ttrm holds every foreign key of schema.sql (205), and no other file holds one', () => {
+test('D6 — fks.ttrm holds every foreign key of schema.sql (213), and no other file holds one', () => {
   const fks = defs.filter((d) => d.def.kind === 'fk');
   assert.ok(fks.every((d) => d.file === 'fks.ttrm'), 'foreign keys live in fks.ttrm');
   const sqlFks = [...schemaSql.matchAll(/CONSTRAINT (\w+) FOREIGN KEY/g)].map((m) => m[1]).sort();
-  assert.equal(sqlFks.length, 205);
+  assert.equal(sqlFks.length, 213);
   assert.deepEqual(fks.map((d) => d.def.name).sort(), sqlFks);
 });
 

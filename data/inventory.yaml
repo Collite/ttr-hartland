@@ -179,6 +179,15 @@ codes:
   activity_kind: { promotion: Akce, listing: Nové zalistování, display: Vystavení, price_cut: Snížení ceny }
   pos_kind: { giveaway: Drobný materiál, asset: Inventář }
   asset_condition: { new: Nový, good: Dobrý, worn: Opotřebený, damaged: Poškozený }
+  pilot_arm: { programme: Program, holdout: Kontrolní skupina, outside: Mimo pilot }
+  pilot_outside_reason: { unpaired: Bez páru, cross_region: Více regionů }
+  pilot_outcome:
+    selected: Vybráno
+    no_budget: Bez rozpočtu
+    no_asset: Bez stojanu
+    nonpositive_score: Nekladné skóre
+    ineligible: Nezpůsobilé
+    cancelled: Zrušeno
   prompt_outcome:
     successful: Úspěšný
     unsuccessful: Neúspěšný
@@ -1433,6 +1442,67 @@ tables:
     load_order: 650
     writer: daily
     rows_expected: 150000
+    serves: [S5]
+
+  # S5's opt-in pilot (G2 S2.6, design08 §9): its frozen assignment and its placement decisions — observed audit,
+  # never the simulator's truth (no skill, no uplift realised).
+  - name: pos_pilot_assignment
+    group: field
+    grain: a pilot revision's small-retail customer registered on its assignment day, with its arm and baseline
+    columns:
+      - { name: pos_pilot_assignment_id, type: bigint }
+      - { name: pilot_revision, type: text }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: region_id, type: bigint, ref: region.region_id }
+      - { name: pair_id, type: bigint, nullable: true }
+      - { name: arm, type: text, coded: pilot_arm }
+      - { name: outside_reason, type: text, nullable: true, coded: pilot_outside_reason }
+      - { name: portfolio_key, type: text }
+      - { name: assigned_on, type: date }
+      - { name: baseline_from, type: date }
+      - { name: baseline_until, type: date }
+      - { name: window_from, type: date }
+      - { name: window_until, type: date }
+      - { name: baseline_customer_margin, type: "numeric(14,2)" }
+      - { name: baseline_days, type: integer }
+      - { name: assignment_digest, type: text }
+    pk: [pos_pilot_assignment_id]
+    id_key: [pilot_revision, customer]
+    indexes: [[customer_id]]
+    load_order: 660
+    writer: month_end
+    rows_expected: 8160
+    serves: [S5]
+
+  - name: pos_placement_decision
+    group: field
+    grain: a pilot revision's monthly placement decision on a programme customer's store
+    columns:
+      - { name: pos_placement_decision_id, type: bigint }
+      - { name: pilot_revision, type: text }
+      - { name: policy_revision, type: text }
+      - { name: decision_day, type: date }
+      - { name: customer_id, type: bigint, ref: customer.customer_id }
+      - { name: delivery_point_id, type: bigint, ref: delivery_point.delivery_point_id }
+      - { name: region_id, type: bigint, ref: region.region_id }
+      - { name: manager_id, type: bigint, nullable: true, ref: employee.employee_id }
+      - { name: forecast_material_id, type: bigint, nullable: true, ref: pos_material.pos_material_id }
+      - { name: outcome, type: text, coded: pilot_outcome }
+      - { name: prior56_line_margin, type: "numeric(14,2)" }
+      - { name: prior56_handout_cost, type: "numeric(14,2)" }
+      - { name: asset_cost, type: "numeric(14,2)", nullable: true }
+      - { name: forecast_gain, type: "numeric(14,2)", nullable: true }
+      - { name: forecast_cost, type: "numeric(14,2)", nullable: true }
+      - { name: catalogue_fit, type: "numeric(18,8)" }
+      - { name: score, type: "numeric(18,8)" }
+      - { name: forecast_days, type: integer }
+      - { name: loan_id, type: bigint, nullable: true, ref: pos_loan.pos_loan_id }
+    pk: [pos_placement_decision_id]
+    id_key: [pilot_revision, decision_day, delivery_point]
+    indexes: [[customer_id], [loan_id]]
+    load_order: 670
+    writer: month_end
+    rows_expected: 55000
     serves: [S5]
 
   # ── orders ────────────────────────────────────────────────────────────────

@@ -883,6 +883,19 @@ class StoriesConfig:
             sha256=hashlib.sha256(f"null\0{self.sha256}".encode()).hexdigest(),
         )
 
+    def skill_neutral(self) -> StoriesConfig:
+        """S5's skill-neutral control (G2 S2.6, design08 §8): every area manager's `pos_skill` 1.0 — so the placement
+        gradient and the skilled managers' give-away and withdrawal rules see 1.0 — and every other story, S5's budget
+        factor and physical fit included, as it is; with a `sha256` of its own."""
+        s5 = self.story("S5")
+        skills = dict.fromkeys(s5.parameters["pos_skill"], 1.0)
+        neutral = replace(s5, parameters={**s5.parameters, "pos_skill": skills})
+        return replace(
+            self,
+            stories=tuple(neutral if story is s5 else story for story in self.stories),
+            sha256=hashlib.sha256(f"skill-neutral\0{self.sha256}".encode()).hexdigest(),
+        )
+
     def anomaly(self, id: str) -> Anomaly:
         (found,) = [anomaly for anomaly in self.anomalies if anomaly.id == id]
         return found

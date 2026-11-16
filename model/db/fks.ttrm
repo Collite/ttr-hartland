@@ -2,7 +2,7 @@ package hartland
 
 model db schema hartland
 
-// Every foreign key of data/ddl/schema.sql, by source table in the inventory's order (205; imported at M0 S0.1 T3).
+// Every foreign key of data/ddl/schema.sql, by source table in the inventory's order (213; imported at M0 S0.1 T3).
 // In the database each is DEFERRABLE INITIALLY DEFERRED (contracts §1: the load copies in load_order, and a
 // document's references interleave the groups); TTR-M has no deferrable flag, so it is said here. The names
 // are the database's constraint names.
@@ -425,6 +425,42 @@ def fk pos_handout_pos_material_id_fkey {
     to: [db.hartland.pos_material.pos_material_id]
 }
 def fk pos_handout_visit_id_fkey        { from: [db.hartland.pos_handout.visit_id], to: [db.hartland.visit.visit_id] }
+
+// -- pos_pilot_assignment --
+def fk pos_pilot_assignment_customer_id_fkey {
+    from: [db.hartland.pos_pilot_assignment.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk pos_pilot_assignment_region_id_fkey {
+    from: [db.hartland.pos_pilot_assignment.region_id],
+    to: [db.hartland.region.region_id]
+}
+
+// -- pos_placement_decision --
+def fk pos_placement_decision_customer_id_fkey {
+    from: [db.hartland.pos_placement_decision.customer_id],
+    to: [db.hartland.customer.customer_id]
+}
+def fk pos_placement_decision_delivery_point_id_fkey {
+    from: [db.hartland.pos_placement_decision.delivery_point_id],
+    to: [db.hartland.delivery_point.delivery_point_id]
+}
+def fk pos_placement_decision_forecast_material_id_fkey {
+    from: [db.hartland.pos_placement_decision.forecast_material_id],
+    to: [db.hartland.pos_material.pos_material_id]
+}
+def fk pos_placement_decision_loan_id_fkey {
+    from: [db.hartland.pos_placement_decision.loan_id],
+    to: [db.hartland.pos_loan.pos_loan_id]
+}
+def fk pos_placement_decision_manager_id_fkey {
+    from: [db.hartland.pos_placement_decision.manager_id],
+    to: [db.hartland.employee.employee_id]
+}
+def fk pos_placement_decision_region_id_fkey {
+    from: [db.hartland.pos_placement_decision.region_id],
+    to: [db.hartland.region.region_id]
+}
 
 // -- sales_order --
 def fk sales_order_customer_id_fkey {

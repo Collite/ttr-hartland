@@ -32,7 +32,7 @@ TABLES = {
     "stock_day stock_movement stockout",
     "delivery": "carrier vehicle shipment route route_stop delivery_event dispatch_case dc_invoice",
     "field": "tourplan visit_plan visit visit_observation competitor_sighting pos_material pos_asset pos_loan "
-    "pos_handout rep_prompt",
+    "pos_handout pos_pilot_assignment pos_placement_decision rep_prompt",
     "marketing": "campaign campaign_cost promotion promotion_eligibility promotion_exclusion promotion_result "
     "seasonal_exclusion",
     "shops": "shop_receipt shop_receipt_line menu_item",
@@ -74,7 +74,7 @@ def test_every_table_of_the_design_in_its_group(inventory: InventoryConfig) -> N
     for table in inventory.tables:
         by_group.setdefault(table.group, set()).add(table.name)
     assert by_group == {group: set(names.split()) for group, names in TABLES.items()}
-    assert len(inventory.tables) == 98
+    assert len(inventory.tables) == 100
 
 
 def test_the_generators_own_tables_are_not_here(inventory: InventoryConfig) -> None:

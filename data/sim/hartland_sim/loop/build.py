@@ -14,9 +14,16 @@ day loop from the warm-up to the last day, the state at the end.
     grants, refusals and holds by reason).
 - **The null world** (`null`): every story and planted case off (`StoriesConfig.null`), with a stories hash of its
   own; `world_sha256` and `build_id` hash the files on disk.
+- **A pilot mode** (`pilot`, G2 S2.6, `loop.pilot`): one of the protocol's five — `story`, `skill-neutral`,
+  `full-null` and the no-PoS references `no-pos`, `no-pos-null` — with its stories (`pilot.stories_of`), to the end of
+  the pilot's window at the latest. Every mode but `story` first runs the story pre-pilot of the same seed, written
+  nowhere (`story_map`), on the same OSM market, and takes its map. `build_id` names the mode; `_sim_meta` carries the
+  pilot's metadata, S5 NOT_CERTIFIED. A mode the protocol lacks, a pilot with `null`, or one past the window is
+  refused (`PilotRefused`) before any work.
 
 **Prolong** (`prolong`): the loop resumed from a run's last checkpoint to a later day, its rows appended to the run's
 files, then the same end — the state tables and the promotions rendered again, the checkpoint and `_sim_meta` moved.
+A pilot-mode run keeps its mode (`_sim_meta.pilot_mode`) and stops at the end of the pilot's window.
 - **The guard** (⚑R221-A, ⚑R221-C): the run's `_sim_meta.build_id` must be this checkout's — the seed, `world.yaml`,
   the stories (or their null world), `inventory.yaml`, the reference files, the package version and the generator's
   revision (`hartland_sim.REVISION`, `opening.meta`). A run of other inputs or of another generator is built again,
@@ -40,6 +47,7 @@ import csv
 import json
 import os
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -49,9 +57,12 @@ from typing import Any
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import quarter_start
 from hartland_sim.io.csv_writer import CsvWriter
+from hartland_sim.loop import pilot as pilots
 from hartland_sim.loop.day import Loop, Report
 from hartland_sim.loop.warmup import Output
+from hartland_sim.protocol import Protocol
 from hartland_sim.rng import using_master_seed
+from hartland_sim.setup import market as market_setup
 from hartland_sim.setup import opening
 from hartland_sim.setup import portfolio as portfolio_setup
 from hartland_sim.setup.market import Market
@@ -63,6 +74,10 @@ from hartland_sim.world import Checkpoint, Meta
 
 BUILD_JSON = "build.json"
 PROLONG_MARK = "_prolong.json"
+
+
+class PilotRefused(ValueError):
+    """A pilot build or prolong its inputs refuse before any work (module docstring): the CLI prints it in one line."""
 
 
 @dataclass(frozen=True)
@@ -81,17 +96,34 @@ def build(
     stories: StoriesConfig | None = None,
     null: bool = False,
     market: Market | None = None,
+    pilot: str | None = None,
 ) -> Built:
-    """Setup and the days from the warm-up to `until` into `run` (module docstring); `FileExistsError` when `run`
-    already holds a build. `market` saves rebuilding the OSM market (tests)."""
+    """Setup and the days from the warm-up to `until` into `run` (module docstring), in `pilot`'s mode when given;
+    `FileExistsError` when `run` already holds a build, `PilotRefused` for a mode the protocol lacks, a pilot with
+    `null` or past its window. `market` saves rebuilding the OSM market (tests)."""
     if run.exists() and any(run.glob("*.csv")):
         raise FileExistsError(f"{run} already holds a build")
     world = world or WorldConfig.load()
     stories = stories or StoriesConfig.load()
+    protocol = Protocol.load() if pilot is not None else None
+    if protocol is not None:
+        if pilot not in protocol.modes:
+            raise PilotRefused(f"no pilot mode {pilot!r}: the protocol's are {', '.join(protocol.modes)}")
+        if null:
+            raise PilotRefused("a pilot's mode names its stories: the null world is the full-null mode's")
+        _within(protocol, until)
     if null:
         stories = stories.null()
     started = time.perf_counter()
+    held = None
+    if pilot is not None and protocol is not None:
+        if pilot != "story":  # two setups, one market (it reads only the reference files)
+            market = market or market_setup.build()
+        mapped = None if pilot == "story" else story_map(world, stories, market, protocol)
+        held = pilots.start(pilot, protocol, mapped)
+        stories = pilots.stories_of(pilot, stories)
     made = setup(world, stories, market)
+    made.world.pilot = held
     timings = {"setup": time.perf_counter() - started}
     with using_master_seed(world.master_seed), CsvWriter(run) as writer:
         writer.write_all({name: rows for name, rows in made.tables.items() if name != "stock_day"})
@@ -107,16 +139,45 @@ def build(
     return Built(run, meta, loop.report, timings)
 
 
+def story_map(
+    world: WorldConfig, stories: StoriesConfig, market: Market | None, protocol: Protocol
+) -> dict[int, pilots.Mapped]:
+    """The story pre-pilot's map (module docstring): setup and the PoS-free months of a story pilot of the same seed
+    and stories, to its assignment, written nowhere."""
+    made = setup(world, stories, market)
+    held = made.world.pilot = pilots.start("story", protocol)
+    with (
+        tempfile.TemporaryDirectory() as scratch,
+        using_master_seed(world.master_seed),
+        CsvWriter(Path(scratch)) as out,
+    ):
+        loop = Loop.of(made.world, world, stories, made.portfolio.skus, Output(out, date.max))
+        loop.until(protocol.pos_free_until)
+    return {customer_id: assigned.mapped for customer_id, assigned in held.assigned.items()}
+
+
+def _within(protocol: Protocol, until: date) -> None:
+    if until > protocol.window_until:
+        raise PilotRefused(
+            f"the pilot ends with its window on {protocol.window_until}: a longer one is another protocol, not {until}"
+        )
+
+
 def prolong(run: Path, until: date, world: WorldConfig | None = None, stories: StoriesConfig | None = None) -> Built:
     """`run`'s loop from its last checkpoint to `until` (module docstring), an unfinished prolong's cut back first;
-    `ValueError` when `run` is not a build of these inputs or is past `until`."""
+    `ValueError` when `run` is not a build of these inputs or is past `until`, `PilotRefused` (one) when it is a pilot
+    that `until` outlasts."""
     world = world or WorldConfig.load()
     stories = stories or StoriesConfig.load()
     held = Meta.load(run)
+    mode = held.pilot_mode
+    if mode is not None:
+        _within(Protocol.load(), until)
+        stories = pilots.stories_of(mode, stories)
     null = held.stories_sha256 == stories.null().sha256
     if null:
         stories = stories.null()
-    differs = _differs(held, opening.meta(world, stories, held.last_day_done))
+    differs = _differs(held, opening.meta(world, stories, held.last_day_done, mode=mode))
     if differs:
         raise ValueError(f"{run} is a build of other inputs ({', '.join(differs)} differ); build it again")
     recovered = _recover(run, held.last_day_done)
@@ -150,8 +211,9 @@ def _differs(held: Meta, current: Meta) -> list[str]:
         ("world.yaml", held.world_sha256 != current.world_sha256),
         ("the stories", held.stories_sha256 != current.stories_sha256),
     ]
+    rest = "the inventory, reference files, version or generator revision"
     return [name for name, differ in named if differ] or [
-        "the inventory, reference files, version or generator revision"
+        rest + (" or the pilot's protocol" if held.pilot_mode else "")
     ]
 
 
@@ -213,7 +275,7 @@ def _end(run: Path, loop: Loop, world: WorldConfig, stories: StoriesConfig, sinc
     if loop.warm_up_end is not None:
         loop.warm_up_end.save(run, keep=keep)
     Checkpoint.of(state).save(run, keep=keep)
-    meta = opening.meta(world, stories, state.day)
+    meta = opening.meta(world, stories, state.day, state.pilot)
     meta.save(run)
     (run / PROLONG_MARK).unlink(missing_ok=True)
     return meta
@@ -274,6 +336,7 @@ def _report(
         "stories_sha256": meta.stories_sha256,
         "world_sha256": meta.world_sha256,
         "build_id": meta.build_id,
+        **({"pilot": dict(meta.pilot)} if meta.pilot else {}),
         "git_sha": sha,
         "git_dirty": dirty,
         "timings_s": {name: round(seconds, 1) for name, seconds in timings.items()},

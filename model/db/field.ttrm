@@ -4,7 +4,8 @@ model db schema hartland
 
 // field — tourplans, visits, observations, sightings, PoS materials, loans, rep prompts.
 // The inventory's group `field` (data/inventory.yaml; design 07 §1): pos_material, pos_asset, tourplan, visit_plan,
-// visit, visit_observation, competitor_sighting, pos_loan, pos_handout, rep_prompt.
+// visit, visit_observation, competitor_sighting, pos_loan, pos_handout, pos_pilot_assignment, pos_placement_decision,
+// rep_prompt.
 // Imported by `ttr import-schema` from data/ddl/schema.sql (M0 S0.1 T3), hand-kept since: numeric columns carry
 // their precision and scale; the foreign keys are in fks.ttrm. `just ddl-drift` keeps it equal to schema.sql.
 
@@ -138,6 +139,55 @@ def table pos_handout {
         def column pos_material_id { type: bigint },
         def column qty             { type: int },
         def column cost            { type: { type: decimal, length: 14, precision: 2 } }
+    ]
+}
+
+// a pilot revision's small-retail customer registered on its assignment day, with its arm and baseline
+def table pos_pilot_assignment {
+    primaryKey: [pos_pilot_assignment_id]
+    columns: [
+        def column pos_pilot_assignment_id  { type: bigint, isKey: true },
+        def column pilot_revision           { type: text },
+        def column customer_id              { type: bigint },
+        def column region_id                { type: bigint },
+        def column pair_id                  { type: bigint, optional: true },
+        def column arm                      { type: text },
+        def column outside_reason           { type: text, optional: true },
+        def column portfolio_key            { type: text },
+        def column assigned_on              { type: date },
+        def column baseline_from            { type: date },
+        def column baseline_until           { type: date },
+        def column window_from              { type: date },
+        def column window_until             { type: date },
+        def column baseline_customer_margin { type: { type: decimal, length: 14, precision: 2 } },
+        def column baseline_days            { type: int },
+        def column assignment_digest        { type: text }
+    ]
+}
+
+// a pilot revision's monthly placement decision on a programme customer's store
+def table pos_placement_decision {
+    primaryKey: [pos_placement_decision_id]
+    columns: [
+        def column pos_placement_decision_id { type: bigint, isKey: true },
+        def column pilot_revision            { type: text },
+        def column policy_revision           { type: text },
+        def column decision_day              { type: date },
+        def column customer_id               { type: bigint },
+        def column delivery_point_id         { type: bigint },
+        def column region_id                 { type: bigint },
+        def column manager_id                { type: bigint, optional: true },
+        def column forecast_material_id      { type: bigint, optional: true },
+        def column outcome                   { type: text },
+        def column prior56_line_margin       { type: { type: decimal, length: 14, precision: 2 } },
+        def column prior56_handout_cost      { type: { type: decimal, length: 14, precision: 2 } },
+        def column asset_cost                { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column forecast_gain             { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column forecast_cost             { type: { type: decimal, length: 14, precision: 2 }, optional: true },
+        def column catalogue_fit             { type: { type: decimal, length: 18, precision: 8 } },
+        def column score                     { type: { type: decimal, length: 18, precision: 8 } },
+        def column forecast_days             { type: int },
+        def column loan_id                   { type: bigint, optional: true }
     ]
 }
 

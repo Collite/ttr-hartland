@@ -39,8 +39,11 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hartland_sim.protocol import META_KEYS
+
 if TYPE_CHECKING:
     from hartland_sim.loop.demand import Demand
+    from hartland_sim.loop.pilot import Pilot
     from hartland_sim.loop.pos import Measure
     from hartland_sim.loop.prompts import Purchases
 
@@ -372,6 +375,7 @@ class World:
     display_uplift: dict[int, dict[str, float]] = field(default_factory=dict)
     display_budget: dict[str, float] = field(default_factory=dict)
     measure: Measure | None = None
+    pilot: Pilot | None = None  # G2 S2.6: S5's opt-in pilot (`loop.pilot`); None outside a pilot-mode build
 
     def duty(self, kind: str, target: str, day: date) -> Duty | None:
         """Who holds `kind` for `target` on `day` (the rep of an area, the manager of a region, …): the first such
@@ -524,6 +528,11 @@ class Meta:
     world_sha256: str
     last_day_done: date
     build_id: str
+    pilot: tuple[tuple[str, str], ...] = ()  # a pilot-mode build's (G2 S2.6, `protocol.META_KEYS`); none otherwise
+
+    @property
+    def pilot_mode(self) -> str | None:
+        return dict(self.pilot).get("pilot_mode")
 
     def rows(self) -> list[tuple[str, str]]:
         return [
@@ -532,6 +541,7 @@ class Meta:
             ("world_sha256", self.world_sha256),
             ("last_day_done", self.last_day_done.isoformat()),
             ("build_id", self.build_id),
+            *self.pilot,
         ]
 
     def save(self, run: Path) -> None:
@@ -555,6 +565,7 @@ class Meta:
             values["world_sha256"],
             date.fromisoformat(values["last_day_done"]),
             values["build_id"],
+            tuple((key, values[key]) for key in META_KEYS if key in values),
         )
 
 

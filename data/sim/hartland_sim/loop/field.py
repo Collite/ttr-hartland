@@ -87,7 +87,9 @@ those stores, and none elsewhere. The item is one of the give-aways that brand a
 those that brand no line (brand-wide items of either brand), the cheaper ones likelier (∝ 1 ÷ `unit_cost`); `qty`
 pieces in `pos_handouts.qty`, its cost `unit_cost × qty`. Each sales visit that dealt with someone counts on its
 tourplan's calls, a converting one on its conversions (`tally`, every day): the store's sales calls and conversions
-under its tourplans, across reps — a re-cut tourplan carries them on.
+under its tourplans, across reps — a re-cut tourplan carries them on. A pilot-mode build hands out at its small-retail
+programme customers only, from its assignment on, and at other channels' customers (a key account's station) as
+above (G2 S2.6, `loop.pilot.hands_out`, ⚑R295-A); it books each small-retail give-away's cost.
 """
 
 from __future__ import annotations
@@ -108,6 +110,7 @@ from hartland_sim.dates import is_working_day
 from hartland_sim.ids import row_id
 from hartland_sim.io.reference import REFERENCE_DIR, read
 from hartland_sim.loop.demand import BasketReady, Shares, take
+from hartland_sim.loop.pilot import handed, hands_out
 from hartland_sim.loop.pos import Material
 from hartland_sim.loop.pos import Terms as PosTerms
 from hartland_sim.loop.pricing import admits, running
@@ -879,8 +882,11 @@ def handouts(world: World, crew: Crew, day: date, visits: Sequence[Visit], event
     managers: dict[str, tuple[int, float, float] | None] = {}
     low, high = spec.qty
     rows = []
+    held = world.pilot
     for k, v in enumerate(dealt):
         t = v.tourplan
+        if held is not None and not hands_out(held, world.customers[t.customer_id], day):  # holdout, outside, PoS-free
+            continue
         region = crew.pos.region_of[t.area]
         if region not in managers:
             managers[region] = terms.manager(world, region, day)
@@ -908,4 +914,6 @@ def handouts(world: World, crew: Crew, day: date, visits: Sequence[Visit], event
                 cost=round(chosen.unit_cost * qty, 2),
             )
         )
+        if held is not None:
+            handed(held, world.customers[t.customer_id], day, rows[-1]["cost"])
     return rows
