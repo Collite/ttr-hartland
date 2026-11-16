@@ -11,12 +11,14 @@ import numpy as np
 import pytest
 
 from hartland_sim.config import StoriesConfig
+from hartland_sim.ids import row_id
 from hartland_sim.loop.acquisition import LOST, Outcome, Reps, chances, daily, step
 from hartland_sim.loop.demand import NEVER, REFUSES, Demand
+from hartland_sim.rng import uniforms
 from hartland_sim.setup.customers import FIRST_ORDER
 from hartland_sim.setup.opening import state_rows
 from hartland_sim.setup.run import Setup
-from hartland_sim.world import Checkpoint, World
+from hartland_sim.world import OPEN, Checkpoint, World
 
 STORIES = StoriesConfig.load()
 S3 = STORIES.story("S3").parameters
@@ -189,6 +191,47 @@ def test_a_gained_customer_orders_today_and_turns_occasional(opening: Setup) -> 
     assert demand.due[p] and demand.basket[p].sum() == pytest.approx(
         (demand.base[p] * demand.carried[c]).sum() * demand.cycle[p], rel=0.05
     )
+
+
+@pytest.mark.parametrize("on_the_first_day", [True, False], ids=["warm-up's first day", "a later day"])
+def test_a_gained_customer_s_phase_rows_start_on_the_days_it_held_them(
+    opening: Setup, monkeypatch: pytest.MonkeyPatch, on_the_first_day: bool
+) -> None:
+    """G2 S2.6a (NH-D23): a store acquired on the warm-up's first day was never a potential customer — its rows open
+    with its occasional phase, under the id that episode always had, and no row ends before it starts; one acquired
+    later keeps its potential interval to the day before. The `World` keeps both episodes, as the loop gave them."""
+    world, demand, reps = _copy(opening)
+    start = opening.config.history.warm_up_from
+    day = start if on_the_first_day else date(2023, 3, 1)
+    acquire, _, _ = chances(world, demand, reps, day)
+    c = int(np.flatnonzero(acquire > 0)[0])
+    target = int(demand.customer_ids[c])
+
+    def forced(stream: str, *key: object, ids: np.ndarray) -> np.ndarray:
+        drawn = uniforms(stream, *key, ids=ids)
+        return np.where(ids == target, 0.0, drawn) if (stream, key) == ("acquire", (day,)) else drawn
+
+    monkeypatch.setattr("hartland_sim.loop.acquisition.uniforms", forced)
+    assert target in step(world, reps, day).acquired
+    customer = world.customers[target]
+    assert [(e.phase, e.valid_from) for e in customer.episodes] == [("potential", start), ("occasional", day)]
+    assert customer.phase_on(day) == "occasional"
+    rows = state_rows(world, opening.config)["lifecycle_phase"]
+    held = [
+        (r["phase"], r["valid_from"], r["valid_to"], r["lifecycle_phase_id"])
+        for r in rows
+        if r["customer_id"] == target
+    ]
+    occasional = ("occasional", day, OPEN, row_id("lifecycle_phase", customer=customer.code, valid_from=day))
+    potential = (
+        "potential",
+        start,
+        day - timedelta(days=1),
+        row_id("lifecycle_phase", customer=customer.code, valid_from=start),
+    )
+    assert held == ([occasional] if on_the_first_day else [potential, occasional])
+    assert len({r["lifecycle_phase_id"] for r in rows}) == len(rows)
+    assert all(r["valid_from"] <= r["valid_to"] for r in rows)
 
 
 def test_a_customer_lost_today_is_not_cross_sold_and_leaves_no_extra(

@@ -49,6 +49,15 @@ def test_every_table_g1_writes_has_its_rows(story_world: Built) -> None:
     assert {"_sim_meta.csv", "_sim_checkpoint.csv", BUILD_JSON} <= {p.name for p in story_world.run.iterdir()}
 
 
+@pytest.mark.parametrize("world", ["story_world", "null_world"])
+def test_each_phase_row_is_an_interval_under_an_id_of_its_own(world: str, request: pytest.FixtureRequest) -> None:
+    """G2 S2.6a (NH-D23): `lifecycle_phase`'s primary key holds and no row ends before it starts — the stores acquired
+    on the warm-up's first day among them, in the story world and the null one."""
+    rows = _rows(request.getfixturevalue(world).run, "lifecycle_phase")
+    assert len({r["lifecycle_phase_id"] for r in rows}) == len(rows)
+    assert all(r["valid_from"] <= r["valid_to"] for r in rows)
+
+
 def test_each_written_year_has_4_standard_and_84_channel_list_versions_none_before_2024(story_world: Built) -> None:
     standard = Counter(r["valid_from"][:4] for r in _rows(story_world.run, "standard_price_list"))
     channel = Counter(r["valid_from"][:4] for r in _rows(story_world.run, "channel_price_list"))

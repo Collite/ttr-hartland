@@ -122,6 +122,28 @@ def test_a_prolong_is_the_straight_build_on_the_closed_documents(tmp_path: Path,
         prolong(prolonged, date(2023, 1, 9), replace(EARLY, master_seed=EARLY.master_seed + 1), STORIES)
 
 
+def test_a_prolong_renders_the_straight_build_s_phases_one_row_an_id(tmp_path: Path, early: tuple[Path, Path]) -> None:
+    """G2 S2.6a (NH-D23): the stores the build acquires on the warm-up's first day have no potential row — every row
+    is an interval under an id of its own — and a prolong across those days renders `lifecycle_phase` byte for byte
+    as the straight build does."""
+    prolonged = _copy(early[0], tmp_path)
+    prolong(prolonged, DAY, EARLY, STORIES)
+    first = EARLY.history.warm_up_from
+    world = Checkpoint.load(early[1]).restore()
+    gained = {
+        str(c.customer_id) for c in world.customers.values() if c.since == first and c.episodes[0].phase == "potential"
+    }
+    assert gained  # the build's own, not forced
+    assert (prolonged / "lifecycle_phase.csv").read_bytes() == (early[1] / "lifecycle_phase.csv").read_bytes()
+    with (early[1] / "lifecycle_phase.csv").open(encoding="utf-8") as source:
+        rows = list(csv.DictReader(source))
+    assert len({r["lifecycle_phase_id"] for r in rows}) == len(rows)
+    assert all(r["valid_from"] <= r["valid_to"] for r in rows)
+    assert {(r["phase"], r["valid_from"]) for r in rows if r["customer_id"] in gained} == {
+        ("occasional", first.isoformat())
+    }
+
+
 def test_a_prolong_refuses_a_run_of_another_build_id(tmp_path: Path, early: tuple[Path, Path]) -> None:
     """⚑R221-A: the inventory, the reference files, the version and the revision are in `build_id`, not in the three
     hashes."""
