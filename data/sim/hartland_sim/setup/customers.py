@@ -472,13 +472,17 @@ def kam_duties(customers: Sequence[Customer], org: Org, geography: Geography) ->
 
 def phases(customers: Iterable[Customer]) -> list[Row]:
     """The `lifecycle_phase` rows of the phased channels' customers, from their episodes: each valid until the day
-    before the next one starts, the last one open."""
+    before the next one starts, the last one open. A store acquired on the warm-up's first day was never a potential
+    customer: its opening `potential` episode starts the day its first one does, and is no row (G2 S2.6a, NH-D23)."""
     rows = []
     for customer in customers:
         if customer.channel not in PHASED_CHANNELS:
             continue
-        ends = [episode.valid_from - timedelta(days=1) for episode in customer.episodes[1:]] + [OPEN]
-        for episode, valid_to in zip(customer.episodes, ends, strict=True):
+        episodes = customer.episodes
+        if len(episodes) > 1 and episodes[0].phase == "potential" and episodes[1].valid_from == episodes[0].valid_from:
+            episodes = episodes[1:]
+        ends = [episode.valid_from - timedelta(days=1) for episode in episodes[1:]] + [OPEN]
+        for episode, valid_to in zip(episodes, ends, strict=True):
             rows.append(
                 row(
                     "lifecycle_phase",
