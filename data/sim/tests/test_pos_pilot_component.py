@@ -89,3 +89,5 @@ def test_a_pilot_run_with_a_cancellation_loads_and_its_keys_hold(
         "SELECT count(*) FROM hartland.lifecycle_phase WHERE valid_to < valid_from"
     ).fetchone() or (0,)
     assert inverted == 0
+    products = hartland_db.execute("SELECT count(*), count(DISTINCT competitor_id) FROM hartland.competitor_product")
+    assert products.fetchone() == (40, 4)  # setup's competitor references, in a pilot too (G2 S2.6b, NH-D24)
