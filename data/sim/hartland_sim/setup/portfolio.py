@@ -1,6 +1,7 @@
 """Setup step 4 (`05` §2): the portfolio — `business`, `brand`, `product_line`, `product`, `sku` from the catalogue
 (`brand.csv`, `product_line.csv`, `product.csv`, `catalogue.csv`; launches and delistings dated there), what each
-channel may buy (`channel_listing`), the lines' seasonal exclusions and the factories' terms (`supplier_terms`).
+channel may buy (`channel_listing`), the lines' seasonal exclusions and the factories' terms (`supplier_terms`); the
+competitors and their products (`competitor`, `competitor_product`, G2 S2.6b).
 
 **Listings** (`world.yaml channels.listings`, R-7): a channel lists the retail packs of its `retail` lines and the
 Professional packs of its `professional` lines (`all` = every line), each SKU from its launch to the day before its
@@ -144,6 +145,7 @@ def build(out: Tables, world: WorldConfig, stories: StoriesConfig, root: Path = 
                 delist_document_id=None,
             )
         )
+    competitors(out, root)
     portfolio = Portfolio(tuple(skus), {line["code"]: line for line in lines})
     out["channel_listing"] += listings(world, stories, portfolio)
     for code, months in world.policies.seasonal_exclusion.items():
@@ -153,6 +155,35 @@ def build(out: Tables, world: WorldConfig, stories: StoriesConfig, root: Path = 
         ]
     out["supplier_terms"] += supplier_terms(world, portfolio)
     return portfolio
+
+
+def competitors(out: Tables, root: Path = REFERENCE_DIR) -> None:
+    """`competitor` and `competitor_product` from their reference files (G2 S2.6b, NH-D24): each row under its code's
+    id, the one a sighting names (`loop.field`); a product's competitor and Hartland equivalent by their codes."""
+    for competitor in read("competitor", root):
+        out["competitor"].append(
+            row(
+                "competitor",
+                competitor_id=row_id("competitor", code=competitor["code"]),
+                code=competitor["code"],
+                name=competitor["name"],
+                business=competitor["business"],
+            )
+        )
+    for product in read("competitor_product", root):
+        out["competitor_product"].append(
+            row(
+                "competitor_product",
+                competitor_product_id=row_id("competitor_product", code=product["code"]),
+                competitor_id=row_id("competitor", code=product["competitor"]),
+                code=product["code"],
+                name=product["name"],
+                equivalent_product_id=row_id("product", code=product["equivalent_product"]),
+                strengths=product["strengths"],
+                weaknesses=product["weaknesses"],
+                typical_price=product["typical_price"],
+            )
+        )
 
 
 def listed(listing: Listing, sku: Sku) -> bool:
