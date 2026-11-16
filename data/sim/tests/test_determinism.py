@@ -144,6 +144,28 @@ def test_a_prolong_renders_the_straight_build_s_phases_one_row_an_id(tmp_path: P
     }
 
 
+def test_a_prolong_keeps_the_competitors_and_the_sightings(tmp_path: Path, early: tuple[Path, Path]) -> None:
+    """G2 S2.6b (NH-D24): setup writes the competitor references once; a prolong holds them and the sightings byte for
+    byte as the straight build does, none of the three empty."""
+    prolonged = _copy(early[0], tmp_path)
+    prolong(prolonged, DAY, EARLY, STORIES)
+    for name in ("competitor.csv", "competitor_product.csv", "competitor_sighting.csv"):
+        held = (prolonged / name).read_bytes()
+        assert held == (early[1] / name).read_bytes() and held.count(b"\n") > 1, name
+
+
+def test_the_competitor_export_moves_no_other_file(
+    tmp_path: Path, early: tuple[Path, Path], osm_market: Market, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G2 S2.6b (NH-D24): rendering the references draws nothing and moves no other row — a build without it differs
+    from the straight build by those two files alone, `_sim_meta` and the checkpoint included."""
+    monkeypatch.setattr("hartland_sim.setup.portfolio.competitors", lambda out, root: None)
+    without = hashes(build(tmp_path / "run", DAY, EARLY, STORIES, market=osm_market).run)
+    straight, exported = hashes(early[1]), {"competitor.csv", "competitor_product.csv"}
+    assert exported <= set(straight)
+    assert {name: sha for name, sha in straight.items() if name not in exported} == without
+
+
 def test_a_prolong_refuses_a_run_of_another_build_id(tmp_path: Path, early: tuple[Path, Path]) -> None:
     """⚑R221-A: the inventory, the reference files, the version and the revision are in `build_id`, not in the three
     hashes."""

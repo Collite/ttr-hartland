@@ -3,10 +3,12 @@ the discount budgets, PoS materials and assets, carriers and vehicles."""
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 from collections import Counter, defaultdict
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +16,7 @@ import pytest
 from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.config import Channel, StoriesConfig, WorldConfig
 from hartland_sim.ids import row_id
+from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.io.reference import read
 from hartland_sim.setup.policies import budget_row, budgets
 from hartland_sim.setup.portfolio import CHANNELS, listed
@@ -44,6 +47,32 @@ def test_the_hierarchy_is_the_catalogue(setup: Setup) -> None:
     assert launched and all(sku["launched_on"] <= date(2026, 10, 31) for sku in launched)
     lines = {line["code"]: line["max_agreed_discount_pct"] for line in _rows(setup, "product_line")}
     assert lines == dict(WORLD.pricing.max_agreed_discount_pct)
+
+
+def _csv(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as source:
+        return list(csv.DictReader(source))
+
+
+def test_the_competitors_are_their_reference_files_under_their_codes_ids(
+    setup: Setup, ref: Path, tmp_path: Path
+) -> None:
+    """G2 S2.6b T1 (NH-D24): `competitor` and `competitor_product` are their reference files row for row, each under
+    its code's id (the one a sighting names), a product's competitor and Hartland equivalent the rows of their codes;
+    written, the Czech text and the prices are the files' to the character."""
+    tables = ("competitor", "competitor_product")
+    ids = {table: {r["code"]: r[f"{table}_id"] for r in _rows(setup, table)} for table in ("product", *tables)}
+    assert [len(ids[table]) for table in tables] == [4, 40]
+    assert all(ids[table] == {code: row_id(table, code=code) for code in ids[table]} for table in tables)
+    for found, held in zip(_rows(setup, "competitor_product"), read("competitor_product", ref), strict=True):
+        assert found["competitor_id"] == ids["competitor"][held["competitor"]]
+        assert found["equivalent_product_id"] == ids["product"][held["equivalent_product"]]
+    with CsvWriter(tmp_path) as writer:
+        writer.write_all({table: _rows(setup, table) for table in tables})
+    for table in tables:
+        source, written = _csv(ref / f"{table}.csv"), _csv(tmp_path / f"{table}.csv")
+        shared = [column for column in written[0] if column in source[0]]  # code, name, … typical_price
+        assert [[r[c] for c in shared] for r in source] == [[r[c] for c in shared] for r in written]
 
 
 def test_names_read_as_czech(setup: Setup) -> None:
