@@ -8,7 +8,9 @@ both its twin and its SQL read (G1 S1.5 T1), with each way it leaves its agreeme
 from __future__ import annotations
 
 import csv
+import hashlib
 import itertools
+import json
 import os
 import secrets
 from collections.abc import Callable, Iterator, Mapping
@@ -165,6 +167,159 @@ class S6Case:
                 writer.writeheader()
                 for row in rows:
                     writer.writerow({k: _cell(v) for k, v in row.items()})
+
+
+S5_REGIONS = ("PHA", "JMV", "SJC", "ZSC", "VCH", "SMS")  # s5.yaml's, in its skill order
+PILOT_FIRST, PILOT_LAST = date(2024, 1, 1), date(2025, 12, 31)  # the protocol's W
+
+
+@dataclass
+class PilotCase:
+    """`pilot_case(...)`: G2 S2.7's hand-built pilot (no build run), the rows the S5 pilot twin and its SQL read, and
+    the `_sim_meta` and `build.json` of a complete story pilot build of this protocol.
+
+    Six regions (s5.yaml's), each an area with `pairs` pairs of small-retail customers; customer `100 × r + n` (its
+    store and delivery point the same id) of region r, pair k its customers 2k − 1 (programme) and 2k (holdout). Each
+    stores a baseline of 5 600.00 × k CZK over 56 days (100.00 × k a day: W's 731 days expect 73 100.00 × k) and orders
+    twice in W, on its first and on its last day — the second with a fractional quantity, a discount, and a line of
+    10.10 × 0.250 = 2.525, which `sales_pl` rounds half away from zero to 2.53 — so its whole Customer Margin is exactly
+    73 100.00 × k + `drift`, plus `effects[region]` at the programme customer. Each programme customer borrows one
+    display, an asset of 10 944.00 CZK (10.00 a day over 36 × 30.4 days), from W's first day back on 2025-01-01 (366
+    days in W: 3 660.00), and gets one give-away of 340.00 at a visit on 2024-06-03: 4 000.00 in all. So a region's
+    gain is `pairs × effect` and its gain ÷ cost `effect ÷ 4 000`. `quarters` is the manifest of the rows as made."""
+
+    rows: Rows
+    meta: dict[str, str]
+    quarters: dict[str, dict[str, int]]
+
+    def customer(self, region: str, n: int) -> int:
+        return 100 * (S5_REGIONS.index(region) + 1) + n
+
+    def write(self, run: Path) -> None:
+        """The rows as a CSV build's files, each under its table's whole header in the inventory's order (a cell not
+        given empty, as a NULL), its `_sim_meta.csv` and its `build.json`."""
+        run.mkdir(parents=True, exist_ok=True)
+        inventory = InventoryConfig.load()
+        for table, found in self.rows.items():
+            names = [column.name for column in inventory.table(table).columns]
+            unknown = {key for row in found for key in row} - set(names)
+            assert not unknown, f"{table} has no {sorted(unknown)}"
+            with (run / f"{table}.csv").open("w", encoding="utf-8", newline="") as out:
+                writer = csv.DictWriter(out, fieldnames=names, lineterminator="\n")
+                writer.writeheader()
+                for row in found:
+                    writer.writerow({name: _cell(row.get(name)) for name in names})
+        with (run / "_sim_meta.csv").open("w", encoding="utf-8", newline="") as out:
+            pairs = csv.writer(out, lineterminator="\n")
+            pairs.writerow(["key", "value"])
+            pairs.writerows(self.meta.items())
+        held = {"master_seed": int(self.meta["master_seed"]), "git_sha": "0" * 40, "git_dirty": False}
+        (run / "build.json").write_text(json.dumps(held | {"quarters": self.quarters}), encoding="utf-8")
+
+
+def pilot_case(effects: Mapping[str, float], pairs: int = 2, drift: float = 1000.0, mode: str = "story") -> PilotCase:
+    """`pilot_case` (PilotCase's docstring): the effects by region code, the pairs of each region, the common drift."""
+    from hartland_sim.config import WORLD_FILE
+    from hartland_sim.protocol import META_KEYS, PROTOCOL_FILE, Protocol
+
+    protocol = Protocol.load()
+    rows: Rows = {
+        "okres": [{"okres_id": 1}],
+        "product_line": [{"product_line_id": 1, "code": "L1"}],
+        "product": [{"product_id": 1, "product_line_id": 1}],
+        "sku": [{"sku_id": 1, "product_id": 1}],
+    }
+    tables = ("region", "area", "store", "customer", "delivery_point", "pos_pilot_assignment", "sales_order")
+    for table in (*tables, "sales_order_line", "sales_order_line_discount", "pos_asset", "pos_loan", "visit"):
+        rows[table] = []
+    for table in ("pos_handout", "rep_prompt", "discount_budget", "asset_register", "pos_placement_decision"):
+        rows[table] = []  # written empty: tables a replay is compared on
+    ids = itertools.count(1)
+    for r, code in enumerate(S5_REGIONS, start=1):
+        rows["region"].append({"region_id": r, "code": code})
+        rows["area"].append({"area_id": r, "region_id": r, "code": f"{code}-01"})
+        for n in range(1, 2 * pairs + 1):
+            c, k, programme = 100 * r + n, (n + 1) // 2, n % 2 == 1
+            rows["store"].append({"store_id": c, "area_id": r})
+            rows["customer"].append(
+                {"customer_id": c, "channel": "small_retail", "since": date(2023, 1, 1), "until": None}
+            )
+            rows["delivery_point"].append({"delivery_point_id": c, "customer_id": c, "store_id": c, "okres_id": 1})
+            rows["pos_pilot_assignment"].append(
+                {"pos_pilot_assignment_id": c, "pilot_revision": protocol.pilot_revision, "customer_id": c}
+                | {"region_id": r, "pair_id": 1000 * r + k, "arm": "programme" if programme else "holdout"}
+                | {"outside_reason": None, "portfolio_key": "-", "assigned_on": protocol.assigned_on}
+                | {"baseline_from": protocol.baseline_from, "baseline_until": protocol.pos_free_until}
+                | {"window_from": protocol.window_from, "window_until": protocol.window_until}
+                | {"baseline_customer_margin": 5600.0 * k, "baseline_days": protocol.baseline_days}
+                | {"assignment_digest": "-"}
+            )
+            total = round(73100.0 * k + drift + (effects[code] if programme else 0.0), 2)
+            first, last = next(ids), next(ids)
+            for order, day in ((first, PILOT_FIRST), (last, PILOT_LAST)):
+                rows["sales_order"].append(
+                    {"sales_order_id": order, "customer_id": c, "delivery_point_id": c, "channel": "small_retail"}
+                    | {"ordered_on": day}
+                )
+            lines = (
+                (first, 1.0, round(total - 2402.53, 2), None),  # the rest of the total
+                (last, 2.5, 1000.0, 100.0),  # 2 500.00 less 100.00 off
+                (last, 0.25, 10.10, None),  # 2.525 → 2.53
+            )
+            for line_no, (order, cases, price, off) in enumerate(lines, start=1):
+                line = 10 * order + line_no
+                rows["sales_order_line"].append(
+                    {"sales_order_line_id": line, "sales_order_id": order, "line_no": line_no, "sku_id": 1}
+                    | {"qty_cases": cases, "list_price_case": price, "is_free_goods": False}
+                    | {"delivery_cost_case": None, "warehouse_cost_case": None}
+                )
+                if off is not None:
+                    rows["sales_order_line_discount"].append(
+                        {"sales_order_line_id": line, "seq": 1, "kind": "volume", "amount_line": off}
+                    )
+            if programme:
+                rows["pos_asset"].append({"pos_asset_id": c, "region_id": r, "cost": 10944.0})
+                rows["pos_loan"].append(
+                    {"pos_loan_id": c, "pos_asset_id": c, "customer_id": c, "store_id": c}
+                    | {"lent_on": PILOT_FIRST, "returned_on": date(2025, 1, 1)}
+                )
+                rows["visit"].append({"visit_id": c, "customer_id": c, "store_id": c, "day": date(2024, 6, 3)})
+                rows["pos_handout"].append({"pos_handout_id": c, "visit_id": c, "cost": 340.0})
+    quarters: dict[str, dict[str, int]] = {}
+    day_of = {o["sales_order_id"]: o["ordered_on"] for o in rows["sales_order"]}
+    for name, table, key in (
+        ("orders", "sales_order", "sales_order_id"),
+        ("lines", "sales_order_line", "sales_order_id"),
+    ):
+        for row in rows[table]:
+            day = day_of[row[key]]
+            held = quarters.setdefault(f"{day.year}-Q{(day.month - 1) // 3 + 1}", {"orders": 0, "lines": 0})
+            held[name] += 1
+    pilot = {
+        "pilot_mode": mode,
+        "pilot_design": protocol.design,
+        "pilot_revision": protocol.pilot_revision,
+        "policy_revision": protocol.policy_revision,
+        "pilot_protocol_sha256": hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest(),
+        "pilot_window": f"{protocol.window_from.isoformat()}/{protocol.window_until.isoformat()}",
+        "pilot_term_days": "1461/8",
+        "assignment_digest": "-",
+        "s5_status": "NOT_CERTIFIED",
+    }
+    meta = {
+        "master_seed": "31102026",
+        "stories_sha256": "-",
+        "world_sha256": hashlib.sha256(WORLD_FILE.read_bytes()).hexdigest(),
+        "last_day_done": PILOT_LAST.isoformat(),
+        "build_id": "-",
+    } | {key: pilot[key] for key in META_KEYS}
+    return PilotCase(rows, meta, quarters)
+
+
+@pytest.fixture(scope="session")
+def pilot_rows() -> Callable[..., PilotCase]:
+    """`pilot_case`, for the unit and the component tier alike (the tests are not a package)."""
+    return pilot_case
 
 
 def _cell(value: Any) -> str:
