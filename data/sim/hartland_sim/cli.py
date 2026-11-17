@@ -128,26 +128,27 @@ def build_world(args: argparse.Namespace) -> int:
     from hartland_sim.config import WorldConfig
     from hartland_sim.loop.build import PilotRefused, build
     from hartland_sim.loop.day import quarter
-    from hartland_sim.protocol import Protocol
+    from hartland_sim.protocol import Protocol, SeedRefused
 
     world = WorldConfig.load()
     until = args.until or (Protocol.load().window_until if args.pilot else world.history.until)
     name = f"pilot-{args.pilot}" if args.pilot else "null" if args.null else "world"
     run = _run_dir(args.run or f"{name}-{until.isoformat()}")
     try:
-        built = build(run, until, world, null=args.null, pilot=args.pilot)
+        built = build(run, until, world, null=args.null, pilot=args.pilot, seed=args.seed)
     except FileExistsError as error:
         print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
         return 1
-    except PilotRefused as error:  # refused before any work; any other failure keeps its traceback
+    except (PilotRefused, SeedRefused) as error:  # refused before any work; any other failure keeps its traceback
         print(f"hartland-sim build-world: {error}", file=sys.stderr)
         return 1
     first = world.history.first_day  # a quarter's first day: the quarters from its own are the written ones
     written = sum(q["orders"] for name, q in built.report.quarters.items() if name >= quarter(first))
     pilot = f", pilot {args.pilot} NOT_CERTIFIED" if args.pilot else ""
+    seed = f", seed {built.meta.master_seed}" if args.seed is not None else ""
     print(
         f"hartland-sim build-world: {run} — {written} orders written, {first} to {until},"
-        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id}{pilot})"
+        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id}{seed}{pilot})"
     )
     return 0
 
@@ -162,6 +163,12 @@ def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
         "--pilot",
         choices=MODES,
         help="S5's opt-in pilot in this mode (design08 §8), NOT_CERTIFIED; not with --null (its mode is full-null)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        metavar="N",
+        help="the master seed in place of world.yaml's (S5's development seeds); never a certification seed",
     )
     parser.add_argument(
         "--run", metavar="NAME", help="the folder under data/build/ (default: world-<until>), or a path"

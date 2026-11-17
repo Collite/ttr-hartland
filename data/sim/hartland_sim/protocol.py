@@ -5,7 +5,8 @@ It is committed before any pilot-mode build runs and never edited: a change is a
 `pilot_revision` of its own. It holds the pilot's revisions, the PoS-free months and the assignment day after them,
 the baseline's days, the window W, the share of the display budgets the pilot places, the five modes, the acceptance
 bars S2.7–S2.8 apply, and the seeds: the development three, the ten certification seeds — each `seed(label, i)` — and
-the master seeds built before the manifest, which a certification seed may not be.
+the master seeds built before the manifest, which a certification seed may not be. `admit` is the guard of the
+build's seed override (G2 S2.7).
 """
 
 from __future__ import annotations
@@ -40,6 +41,25 @@ def seed(label: str, i: int) -> int:
     """design08 §8's `seed(label, i)`: a master seed in [1, 2**31 − 2] from the design's label and the index."""
     digest = hashlib.sha256(f"NH-D21-B/v1/{label}/{i}".encode()).digest()
     return 1 + int.from_bytes(digest[:8], "big") % (2**31 - 2)
+
+
+class SeedRefused(ValueError):
+    """A master seed the build's seed override may not take (`admit`)."""
+
+
+def admit(master_seed: int, protocol: Protocol, certifying: bool = False) -> None:
+    """The seed override's guard (G2 S2.7 T4; design08 §§8–9, review-295 P1): a certification seed, or one built
+    before the manifest that is no development seed, is refused unless S2.8's `just s5-certify` builds it
+    (`certifying`); `SeedRefused` names the rule. Any other seed is admitted."""
+    if certifying:
+        return
+    if master_seed in protocol.certification:
+        i = protocol.certification.index(master_seed) + 1
+        raise SeedRefused(
+            f"seed {master_seed} is certification seed {i}: only `just s5-certify` builds it (design08 §8)"
+        )
+    if master_seed in protocol.built_before and master_seed not in protocol.development:
+        raise SeedRefused(f"seed {master_seed} was built before the manifest and is no development seed (design08 §8)")
 
 
 @dataclass(frozen=True)
