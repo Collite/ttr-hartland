@@ -5,15 +5,17 @@ to the assignment's effective day: setup, the PoS-free months, the first month-e
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 
 import pytest
 
+from hartland_sim import evaluation
 from hartland_sim.checks.stories import check, report
 from hartland_sim.cli import main
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.loop.build import Built, PilotRefused, build, prolong
+from hartland_sim.loop.build import Built, PilotRefused, audit, build, prolong
 from hartland_sim.loop.pilot import stories_of
 from hartland_sim.protocol import META_KEYS, MODES, PROTOCOL_FILE, Protocol
 from hartland_sim.setup import opening
@@ -58,6 +60,17 @@ def test_a_pilot_build_carries_its_metadata_and_s5_is_not_certified(story: Built
     s5 = [v for v in check(story.run, STORIES) if v.story == "S5"]
     assert s5 and all((v.status, v.passed) == ("NOT_CERTIFIED", False) for v in s5)
     assert _rows(story.run / "pos_pilot_assignment.csv") == 8160 and _rows(story.run / "pos_placement_decision.csv")
+    assert {key: held[key] for key in evaluation.META_KEYS} == dict(evaluation.identity())  # G2 S2.9
+
+
+def test_a_pilot_build_writes_its_audit_manifest(story: Built) -> None:
+    """G2 S2.9 T3 (design09 §3): `build.json` holds the audit tables' rows, file sha256 and decisions by day, as
+    rendered — every decision, before any evaluation filter."""
+    held = json.loads((story.run / "build.json").read_text(encoding="utf-8"))["audit"]
+    assert held == audit(story.run)
+    decided = held["pos_placement_decision"]
+    assert decided["rows"] == _rows(story.run / "pos_placement_decision.csv") == sum(decided["days"].values())
+    assert list(decided["days"]) == ["2023-02-28"] and held["pos_pilot_assignment"]["rows"] == 8160
 
 
 def test_stories_check_counts_not_certified_apart_and_refuses_the_wrong_direction(
@@ -86,7 +99,7 @@ def test_the_protocol_is_an_input_of_a_pilot_build_only(tmp_path: Path, monkeypa
 def test_meta_reads_the_pilots_keys_only(story: Built, tmp_path: Path) -> None:
     """review-295 N7: an unknown `_sim_meta` key is not a pilot key."""
     held = Meta.load(story.run)
-    assert [key for key, _ in held.pilot] == list(META_KEYS)
+    assert [key for key, _ in held.pilot] == [*META_KEYS, *evaluation.META_KEYS]
     lines = (story.run / "_sim_meta.csv").read_text(encoding="utf-8") + "some_later_key,1\n"
     (tmp_path / "_sim_meta.csv").write_text(lines, encoding="utf-8")
     assert Meta.load(tmp_path).pilot == held.pilot

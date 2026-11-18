@@ -1,0 +1,29 @@
+# S5's evaluation (NH-D25 revision 1: design09 §§2–6), read by `hartland_sim.evaluation.Evaluation`: the claim, its
+# measure's window and rounds, the support every region needs, the acceptance bars and the seeds. `s5_protocol.yaml`
+# stays the generator's and the assignment's contract; this file is the evaluator's. A change is a new revision with
+# a `revision` of its own, never an edit of this one.
+revision: NH-D25/v1
+claim: placement_decision_quality # the managers' choices against their own forecasts: not a measured gain or payback
+pilot_revision: s5-pilot-v1 # the decisions it evaluates: s5_protocol.yaml's revisions, unchanged
+policy_revision: nh-d21-b-r1
+window: { from: 2024-01-01, until: 2025-12-31 } # W: a round counts when its decision day + 1 is in it
+rounds: 24 # per region: the month-ends 2023-12-31 … 2025-11-30, reported empty or not
+support: { comparable_rounds: 12, chosen: 100, unchosen: 100 } # each region's, over its comparable rounds
+acceptance:
+  rank: 0.8 # the six regions' Q against s5.yaml's skills
+  q_high: 0.70 # the high group's mean Q
+  difference: 0.10 # Q_H − Q_L, a fraction: ten percentage points
+  high: [PHA, JMV]
+  low: [ZSC, VCH, SMS]
+labels:
+  title_cs: Kvalita výběru umístění stojanů
+  disclosure_cs: Podle předpovědi před rozhodnutím; nejde o prokázaný přírůstek marže.
+  forecast_cs: Předpověď před rozhodnutím
+  observed_cs: Skutečnost v období, nepřiřazená programu
+  unavailable_cs: Přírůstek marže a návratnost stojanů nejsou změřeny.
+seeds:
+  # cert(i) = 1 + int.from_bytes(SHA256("NH-D25/v1/cert/" + str(i)).digest()[:8], "big") % (2**31 - 2), i = 1…10;
+  # s5_protocol.yaml's certification seeds are retired, never built or read
+  development: [31102026, 1797428728, 285672490] # s5_protocol.yaml's: development data only, never held-out
+  certification:
+    [895899358, 415492059, 825635122, 1696596641, 185226040, 1446297034, 695446812, 797865691, 1653856169, 1139534158]

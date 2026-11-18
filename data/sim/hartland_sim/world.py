@@ -39,6 +39,7 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hartland_sim import evaluation
 from hartland_sim.protocol import META_KEYS
 
 if TYPE_CHECKING:
@@ -528,7 +529,8 @@ class Meta:
     world_sha256: str
     last_day_done: date
     build_id: str
-    pilot: tuple[tuple[str, str], ...] = ()  # a pilot-mode build's (G2 S2.6, `protocol.META_KEYS`); none otherwise
+    # a pilot-mode build's (G2 S2.6, `protocol.META_KEYS`; G2 S2.9, then `evaluation.META_KEYS`); none otherwise
+    pilot: tuple[tuple[str, str], ...] = ()
 
     @property
     def pilot_mode(self) -> str | None:
@@ -565,7 +567,7 @@ class Meta:
             values["world_sha256"],
             date.fromisoformat(values["last_day_done"]),
             values["build_id"],
-            tuple((key, values[key]) for key in META_KEYS if key in values),
+            tuple((key, values[key]) for key in (*META_KEYS, *evaluation.META_KEYS) if key in values),
         )
 
 

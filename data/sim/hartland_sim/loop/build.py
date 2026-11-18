@@ -11,7 +11,8 @@ day loop from the warm-up to the last day, the state at the end.
   - the checkpoint of the last day, beside the warm-up's last day's (and a prolong's first day's, below);
   - `_sim_meta`, its `last_day_done` the last day;
   - `build.json`: the seed, the stories' hash, the git sha, the timings, and what the run did by quarter (orders,
-    grants, refusals and holds by reason).
+    grants, refusals and holds by reason); a pilot-mode build's also its audit tables' export manifest (`audit`, G2
+    S2.9, design09 §3): each table's rows and the sha256 of its file as rendered, and the decisions by day.
 - **The null world** (`null`): every story and planted case off (`StoriesConfig.null`), with a stories hash of its
   own; `world_sha256` and `build_id` hash the files on disk.
 - **A pilot mode** (`pilot`, G2 S2.6, `loop.pilot`): one of the protocol's five — `story`, `skill-neutral`,
@@ -44,6 +45,7 @@ The database's side (`load-world` appends, the world reacts) is G5 S5.3's.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import subprocess
@@ -341,6 +343,7 @@ def _report(
         "git_dirty": dirty,
         "timings_s": {name: round(seconds, 1) for name, seconds in timings.items()},
         **({"recovered_from": recovered.isoformat()} if recovered else {}),
+        **({"audit": audit(run)} if meta.pilot else {}),
         "quarters": {
             quarter: {key: round(n, 1) if isinstance(n, float) else n for key, n in sorted(counts.items())}
             for quarter, counts in report.quarters.items()
@@ -352,3 +355,24 @@ def _report(
         held.setdefault("prolongs", []).append(entry)
         entry = held
     path.write_text(json.dumps(entry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+AUDITED = ("pos_pilot_assignment", "pos_placement_decision")  # a pilot's audit tables, rendered at the end
+
+
+def audit(run: Path) -> dict[str, dict[str, Any]]:
+    """The export manifest of `run`'s audit tables as rendered (module docstring): each one's rows and its file's
+    sha256, and the decisions' rows by `decision_day` — every row, before any evaluation filters one out."""
+    out: dict[str, dict[str, Any]] = {}
+    for name in AUDITED:
+        path = run / f"{name}.csv"
+        with path.open(encoding="utf-8", newline="") as source:
+            reader = csv.DictReader(source)
+            rows = list(reader)
+        out[name] = {"rows": len(rows), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        if name == "pos_placement_decision":
+            days: dict[str, int] = {}
+            for row in rows:
+                days[row["decision_day"]] = days.get(row["decision_day"], 0) + 1
+            out[name]["days"] = dict(sorted(days.items()))
+    return out

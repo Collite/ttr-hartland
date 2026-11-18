@@ -17,6 +17,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from hartland_sim.checks import s5_decision
+from hartland_sim.checks.stories import Build
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import pilot, pos
@@ -272,6 +274,17 @@ def test_each_score_is_the_declared_one_from_its_snapshot(world: World) -> None:
         assert (d.gain, d.cost) == (gain, cost)
         assert d.score == (round(gain / cost, 8) if gain > 0 else 0.0)
         assert d.outcome != "nonpositive_score" or d.prior56_line <= 0
+
+
+def test_every_decision_row_is_sound_to_the_decision_audit(world: World, tmp_path: Path) -> None:
+    """G2 S2.9 T2: the rows the generator writes pass `checks.s5_decision`'s field and rounding rules — each outcome's
+    fields, the score against its stored gain ÷ cost and these against their stored inputs."""
+    _, decisions = pilot.state_rows(world.pilot)
+    with CsvWriter(tmp_path) as writer:
+        writer.write_all({"pos_placement_decision": decisions})
+    held = s5_decision.decided(Build(tmp_path))
+    assert len(held) == len(decisions) and bool(held["sound"].all())
+    assert {"selected", "no_budget"} <= set(held["outcome"])
 
 
 def _line(world: World, d: pilot.Decision) -> str:

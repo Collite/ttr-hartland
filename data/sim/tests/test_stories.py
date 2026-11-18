@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 import yaml
 
-from hartland_sim.checks import s5_expected
+from hartland_sim.checks import s5_decision, s5_expected
 from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.checks.stories import a6_bars
 from hartland_sim.cli import main
@@ -69,6 +69,7 @@ def test_every_case_has_a_probe(stories: StoriesConfig) -> None:
 def test_every_sql_file_is_one_read_only_select(stories: StoriesConfig) -> None:
     files = [detector.sql for story in stories.stories for detector in story.detectors]
     files += [anomaly.probe.sql for anomaly in stories.anomalies]
+    files += list(s5_decision.SQL)  # the pilot's decision quality, s5.sql and s5_best_worst.sql from S2.11 (G2 S2.9)
     on_disk = sorted(f"{path.parent.name}/{path.name}" for path in STORIES_DIR.glob("*/*.sql"))
     assert sorted(files) == on_disk
     for name in files:

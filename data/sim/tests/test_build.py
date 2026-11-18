@@ -68,6 +68,7 @@ def test_the_end_renders_the_state_tables_meta_the_checkpoint_and_build_json(ear
     report = json.loads((early / BUILD_JSON).read_text(encoding="utf-8"))
     assert {"master_seed", "stories_sha256", "git_sha", "timings_s", "quarters", "build_id"} <= set(report)
     assert report["quarters"]["2023-Q1"]["orders"] == len(_rows(early, "sales_order"))
+    assert "audit" not in report  # a pilot-mode build's only (G2 S2.9)
     assert report["build_id"] == meta.build_id and report["null"] is False
 
 
