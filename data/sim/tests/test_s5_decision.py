@@ -227,6 +227,27 @@ def test_a_build_without_its_audit_manifest_is_inconclusive(decision_rows: Decis
     assert judged.status == "INCONCLUSIVE" and judged.reasons == ("no audit manifest in build.json",)
 
 
+def test_a_build_without_build_json_is_inconclusive(decision_rows: DecisionRows, tmp_path: Path) -> None:
+    """An interrupted build or a copied run without its `build.json`: a status, named once, never a traceback."""
+    run = _run(decision_rows(_graded), tmp_path)
+    (run / "build.json").unlink()
+    judged = s5_decision.judge(run)
+    assert judged.status == "INCONCLUSIVE" and judged.reasons == ("no build.json",)
+
+
+def test_an_assignment_twice_fails_closed(decision_rows: DecisionRows, tmp_path: Path) -> None:
+    """design09 §3's duplicate business key on the assignment: a programme customer's row copied under a new id, which
+    the disclosure would count twice. A build fault, so every region names it."""
+    case = decision_rows(_graded)
+    held = next(a for a in case.rows["pos_pilot_assignment"] if a["customer_id"] == case.customer("PHA", 1))
+    case.rows["pos_pilot_assignment"].append(held | {"pos_pilot_assignment_id": 900_101})
+    judged = s5_decision.judge(_run(case, tmp_path))
+    assert judged.status == "INCONCLUSIVE" and sorted(judged.reasons) == sorted(f"{r}: duplicate" for r in REGIONS)
+    assert judged.frame is not None  # the customer counted once all the same
+    pha = judged.frame.loc["PHA"]
+    assert (pha["programme_customers"], pha["observed_margin"]) == (13, 24000.0)
+
+
 def _spoiled(case: Any, change: Callable[[Any], None]) -> Any:
     change(case)
     return case

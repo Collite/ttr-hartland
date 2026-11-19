@@ -180,7 +180,8 @@ def margins(build: Build) -> Frame:
 @dataclass(frozen=True)
 class Scope:
     """The block's `w`, `as_of` and `programme`: whether the revision's assignments have W as their one window, the
-    assignment day, the last order day, the revision's assignment rows and its programme customers' region."""
+    assignment day, the last order day, the revision's assignment rows and its programme customers' region, each
+    customer once (one assigned twice is a `duplicate` fault)."""
 
     one: bool
     assigned_on: pd.Timestamp
@@ -199,7 +200,7 @@ def scope(build: Build) -> Scope:
         and a["window_until"].min() == LAST
     )
     as_of = build.narrow("sales_order", ("sales_order_id", "customer_id", "ordered_on"))["ordered_on"].max()
-    programme = a.loc[a["arm"] == "programme", ["customer_id", "region_id"]]
+    programme = a.loc[a["arm"] == "programme", ["customer_id", "region_id"]].drop_duplicates()
     return Scope(one, a["assigned_on"].min(), as_of, a, programme)
 
 
@@ -348,6 +349,8 @@ def _faults(build: Build) -> dict[str, int]:
         + (keyed > 1).sum()
         + d["loan_id"].notna().sum()
         - d["loan_id"].nunique()
+        + len(s.assigned)
+        - s.assigned["customer_id"].nunique()
     )
     out["outcome"] = int((~d["outcome"].isin(OUTCOMES)).sum())
     out["fields"] = int((~d["sound"]).sum())
@@ -697,8 +700,12 @@ def _short(value: Any) -> str:
 
 
 def _manifest(build: Build, orders: Frame, lines: Frame, first_day: date) -> list[str]:
-    """`build.json`'s written orders and lines by quarter (a prolong's added) against the CSVs' (#22's check)."""
-    held = json.loads((build.run / BUILD_JSON).read_text(encoding="utf-8"))
+    """`build.json`'s written orders and lines by quarter (a prolong's added) against the CSVs' (#22's check); none
+    without `build.json`, which `_audited` names."""
+    path = build.run / BUILD_JSON
+    if not path.is_file():
+        return []
+    held = json.loads(path.read_text(encoding="utf-8"))
     counted: dict[str, dict[str, int]] = {}
     for entry in [held, *held.get("prolongs", [])]:
         for name, counts in entry.get("quarters", {}).items():

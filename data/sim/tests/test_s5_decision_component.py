@@ -206,6 +206,12 @@ def _out_twice(case: Any) -> None:
     case.rows["pos_loan"].append(loan | {"pos_loan_id": 900_003, "lent_on": date(2022, 6, 1)})
 
 
+def _assignment_twice(case: Any) -> None:
+    """A programme customer's assignment copied under a new id: design09 §3's duplicate key, never counted twice."""
+    held = next(a for a in case.rows["pos_pilot_assignment"] if a["customer_id"] == case.customer("PHA", 1))
+    case.rows["pos_pilot_assignment"].append(held | {"pos_pilot_assignment_id": 900_101})
+
+
 def _unsupported(case: Any) -> None:
     """SMS's last 13 rounds without an unchosen candidate: 11 comparable rounds."""
     for day in DAYS[11:]:
@@ -227,6 +233,7 @@ def _unsupported(case: Any) -> None:
         (_visit_missing, "visit"),
         (_out_twice, "overlap"),
         (_unsupported, "support"),
+        (_assignment_twice, "duplicate"),
     ],
 )
 def test_the_sql_fails_closed_as_the_twin_does(

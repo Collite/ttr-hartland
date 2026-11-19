@@ -19,19 +19,19 @@ WITH skill (region, pos_skill) AS (
 -- a chosen or an unchosen one; a region's Q is the mean q of its comparable rounds, its chosen and unchosen counted
 -- over those rounds. The score is the stored one, checked against its stored gain ÷ cost and theirs against their
 -- stored inputs (each within half its last digit: the generator rounds floats). No skill, uplift or replay is read.
--- The disclosure, per region of the programme customers' assignment, in W to the last order day (`as_of`): their
--- whole Customer Margin, observed and unattributed (`sales_pl`); their displays' use — each loan's asset cost over
--- `life_days` for its days from lent_on to the day before it came back (a warm-up loan's from W's first day, a loan
--- pending past the last day none); every give-away handed to them; the customers without an order line and their
--- cost; the fleet — every asset of the region, carried from acquisition to the day before its write-off — its cost,
--- the part no loan used and the assets never lent in W.
+-- The disclosure, per region of the programme customers' assignment (each customer once), in W to the last order day
+-- (`as_of`): their whole Customer Margin, observed and unattributed (`sales_pl`); their displays' use — each loan's
+-- asset cost over `life_days` for its days from lent_on to the day before it came back (a warm-up loan's from W's first
+-- day, a loan pending past the last day none); every give-away handed to them; the customers without an order line and
+-- their cost; the fleet — every asset of the region, carried from acquisition to the day before its write-off — its
+-- cost, the part no loan used and the assets never lent in W.
 -- `integrity` is the first failure, the build's before the region's: W not the assignment's one window, a build short
--- of W, a row of another revision, a duplicate decision key or id or a loan chosen twice, an unknown outcome, an
--- impossible decision (fields, rounding, a day not a month-end), a decision not linked to its programme customer,
--- region, delivery point, manager, material or loan, a loan since the assignment without its selection or a
--- cancellation with a loan, a cost of a missing or non-programme small-retail customer, a loan without its asset, a
--- give-away without its visit, an asset out twice on one day, a loan of another region's asset, a region without
--- programme customers; then a region short of `least_rounds` comparable rounds or of `least_chosen` and
+-- of W, a row of another revision, a customer assigned twice, a duplicate decision key or id or a loan chosen twice, an
+-- unknown outcome, an impossible decision (fields, rounding, a day not a month-end), a decision not linked to its
+-- programme customer, region, delivery point, manager, material or loan, a loan since the assignment without its
+-- selection or a cancellation with a loan, a cost of a missing or non-programme small-retail customer, a loan without
+-- its asset, a give-away without its visit, an asset out twice on one day, a loan of another region's asset, a region
+-- without programme customers; then a region short of `least_rounds` comparable rounds or of `least_chosen` and
 -- `least_unchosen` decisions over them; else valid.
 evaluation (
     pilot_revision, policy_revision, first_day, last_day, baseline_days, term_days, forecast_days, life_days,
@@ -56,7 +56,7 @@ w AS (
     CROSS JOIN evaluation e
 ),
 programme AS (
-    SELECT customer_id, region_id FROM assigned WHERE arm = 'programme'
+    SELECT DISTINCT customer_id, region_id FROM assigned WHERE arm = 'programme'
 ),
 decided AS (
     SELECT
@@ -228,7 +228,8 @@ fault AS (
                     HAVING COUNT(*) > 1
                 ) twice
             )
-            + (SELECT COUNT(loan_id) - COUNT(DISTINCT loan_id) FROM decided) AS duplicate,
+            + (SELECT COUNT(loan_id) - COUNT(DISTINCT loan_id) FROM decided)
+            + (SELECT COUNT(*) - COUNT(DISTINCT customer_id) FROM assigned) AS duplicate,
         (
             SELECT COUNT(*)
             FROM decided
@@ -327,9 +328,8 @@ outcomes AS (
 sold AS (
     SELECT s.customer_id, SUM(s.customer_margin) AS margin, COUNT(*) AS lines
     FROM sales_pl s
-    JOIN programme p ON p.customer_id = s.customer_id
     CROSS JOIN evaluation e
-    WHERE s.ordered_on BETWEEN e.first_day AND e.last_day
+    WHERE s.customer_id IN (SELECT customer_id FROM programme) AND s.ordered_on BETWEEN e.first_day AND e.last_day
     GROUP BY s.customer_id
 ),
 lent AS (
