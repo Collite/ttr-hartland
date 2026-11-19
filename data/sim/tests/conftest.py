@@ -2,17 +2,20 @@
 opening world setup builds from the committed inputs (`osm_market`, `opening`, one run per session); for the build
 tier (`-m build`), the story and the null world built to 2025 (`story_world`, `null_world`, once a session); and, for
 the component tier (`-m component`), a fresh, empty Postgres 16 database from `pg_dsn`, the same with data/ddl/ applied
-(`hartland_db`), and `put`, which writes one hand-built row into it; and S6's hand-built case (`s6_case`), the rows
-both its twin and its SQL read (G1 S1.5 T1), with each way it leaves its agreement out (`s6_left_out`, a parameter)."""
+(`hartland_db`), and `put`, which writes one hand-built row into it; S6's hand-built case (`s6_case`), the rows
+both its twin and its SQL read (G1 S1.5 T1), with each way it leaves its agreement out (`s6_left_out`, a parameter);
+and S5's hand-built pilot decisions (`decision_rows`, G2 S2.9), the rows the decision-quality twin and SQL read."""
 
 from __future__ import annotations
 
 import csv
+import hashlib
 import itertools
+import json
 import os
 import secrets
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
@@ -269,6 +272,225 @@ WriteRows = Callable[..., None]  # `write_rows`
 def a6_rows() -> tuple[A6Case, WriteRows]:
     """`a6_case` and `write_rows`, for the CSV and the component tier alike (the tests are not a package)."""
     return a6_case, write_rows
+
+
+S5_REGIONS = ("PHA", "JMV", "SJC", "ZSC", "VCH", "SMS")  # s5.yaml's, in its skill order
+W_FIRST, W_LAST = date(2024, 1, 1), date(2025, 12, 31)  # the evaluation's W
+ROUND_DAYS = tuple(date(2024 + m // 12, m % 12 + 1, 1) - timedelta(days=1) for m in range(24))  # its 24 month-ends
+Pool = Callable[[str, int], list[tuple[int, str]]]  # (region, round) → the pool's (score, outcome), customer 1, 2, …
+
+
+def _top_five(region: str, k: int) -> list[tuple[int, str]]:
+    return [(s, "selected" if s >= 6 else "no_budget") for s in range(1, 11)]
+
+
+@dataclass
+class DecisionCase:
+    """`decision_case(...)`: G2 S2.9's hand-built pilot (no build run), the rows the decision-quality twin and its SQL
+    read, and the `_sim_meta` and `build.json` of a complete story pilot build of this protocol and evaluation.
+
+    Six regions (s5.yaml's), each an area, a manager (employee 900 + r) and 13 programme customers `100 × r + i` (its
+    store and delivery point the same id) with 13 holdouts `100 × r + 50 + i`. In each of W's 24 rounds (`ROUND_DAYS`)
+    customers 1, 2, … hold the pool `pool(region, round)` gives — by default scores 1…10, the five best selected, the
+    rest no_budget, so q = 1 — and customers 11, 12, 13 an initial no_asset, a nonpositive_score and an ineligible
+    decision (an asset of 0.00 CZK). A score s is exact: gain 365.25 × s ÷ cost 365.25 (an asset of 2 188.80 CZK, 2.00
+    a day over 36 × 30.4 days, over H = 182.625 days; 56 days' line margin 112.00 × s, fit 1). A selected decision
+    lends the region's next free asset from the day after its decision until the next round's effective day (the last
+    to the end of W: a loan's days fill W once per slot). Outside the rounds, customer 1's 2023-11-30 selection is a
+    warm-up loan back on 2024-02-01 (31 days in W, 62.00) and customer 2's 2025-12-31 selection a loan lent after the
+    last order day (none). Each customer but 12 orders 1 000.00 on 2024-06-03 and on 2025-12-31; each gets one 50.00
+    give-away at a visit on 2024-06-03 (customer 13 never has a display; customer 12 never orders). So a region with the
+    default pool has 13 programme customers, observed margin 24 000.00, asset use 7 372.00, give-aways 650.00, one
+    customer without sales costing 50.00, a fleet of eight assets carried all W (11 696.00), 4 324.00 of it idle and
+    two assets never lent in W. `quarters` is the manifest of the orders as made; `write` adds the audit manifest of
+    the files it writes."""
+
+    rows: Rows
+    meta: dict[str, str]
+    quarters: dict[str, dict[str, int]]
+
+    def customer(self, region: str, i: int) -> int:
+        return 100 * (S5_REGIONS.index(region) + 1) + i
+
+    def decisions(self, region: str, day: date) -> list[dict[str, Any]]:
+        r = S5_REGIONS.index(region) + 1
+        return [d for d in self.rows["pos_placement_decision"] if d["region_id"] == r and d["decision_day"] == day]
+
+    def write(self, run: Path, audited: bool = True) -> None:
+        """The rows as a CSV build's files, each under its table's whole header in the inventory's order (a cell not
+        given empty, as a NULL), its `_sim_meta.csv` and its `build.json` with the audit manifest of these files (none
+        when not `audited`) — #22's `PilotCase.write`, the manifest added."""
+        from hartland_sim.loop.build import audit
+
+        run.mkdir(parents=True, exist_ok=True)
+        inventory = InventoryConfig.load()
+        for table, found in self.rows.items():
+            names = [column.name for column in inventory.table(table).columns]
+            unknown = {key for row in found for key in row} - set(names)
+            assert not unknown, f"{table} has no {sorted(unknown)}"
+            with (run / f"{table}.csv").open("w", encoding="utf-8", newline="") as out:
+                writer = csv.DictWriter(out, fieldnames=names, lineterminator="\n")
+                writer.writeheader()
+                for row in found:
+                    writer.writerow({name: _cell(row.get(name)) for name in names})
+        with (run / "_sim_meta.csv").open("w", encoding="utf-8", newline="") as out:
+            pairs = csv.writer(out, lineterminator="\n")
+            pairs.writerow(["key", "value"])
+            pairs.writerows(self.meta.items())
+        held: dict[str, Any] = {"master_seed": int(self.meta["master_seed"]), "git_sha": "0" * 40, "git_dirty": False}
+        held |= {"audit": audit(run)} if audited else {}
+        (run / "build.json").write_text(json.dumps(held | {"quarters": self.quarters}), encoding="utf-8")
+
+
+@dataclass
+class _Placing:
+    """A region's assets and placement decisions in `decision_case` (DecisionCase's docstring)."""
+
+    rows: Rows
+    ids: Iterator[int]
+    protocol: Any
+    r: int
+    code: str
+    assets: list[int] = field(default_factory=list)
+
+    def asset(self, slot: int) -> int:
+        a = 1000 * self.r + slot
+        if a not in self.assets:
+            self.assets.append(a)
+            self.rows["pos_asset"].append(
+                {"pos_asset_id": a, "pos_material_id": 1, "asset_no": f"{self.code}-{slot}", "region_id": self.r}
+                | {"acquired_on": date(2023, 1, 1), "cost": 2188.80, "condition": "new"}
+            )
+        return a
+
+    def decide(self, day: date, i: int, score: int, outcome: str, back: date | None, slot: int) -> None:
+        """Customer i's decision of `day`: score s exact; a selection lends the asset of `slot` until `back`."""
+        c, loan, p = 100 * self.r + i, None, self.protocol
+        if outcome == "selected":
+            loan = next(self.ids)
+            self.rows["pos_loan"].append(
+                {"pos_loan_id": loan, "pos_asset_id": self.asset(slot), "customer_id": c, "store_id": c}
+                | {"lent_on": day + timedelta(days=1), "returned_on": back}
+            )
+        self.rows["pos_placement_decision"].append(
+            {"pos_placement_decision_id": next(self.ids), "pilot_revision": p.pilot_revision}
+            | {"policy_revision": p.policy_revision, "decision_day": day, "customer_id": c}
+            | {"delivery_point_id": c, "region_id": self.r, "manager_id": 900 + self.r, "forecast_material_id": 1}
+            | {"outcome": outcome, "prior56_line_margin": 112.0 * score, "prior56_handout_cost": 0.0}
+            | {"asset_cost": 2188.80, "forecast_gain": 365.25 * score, "forecast_cost": 365.25}
+            | {"catalogue_fit": 1.0, "score": float(score), "forecast_days": 183, "loan_id": loan}
+        )
+
+
+def decision_case(pool: Pool = _top_five) -> DecisionCase:
+    """`decision_case` (DecisionCase's docstring): `pool` gives each round's pool."""
+    from hartland_sim import evaluation
+    from hartland_sim.config import WORLD_FILE
+    from hartland_sim.protocol import PROTOCOL_FILE, Protocol
+
+    protocol = Protocol.load()
+    rows: Rows = {
+        "okres": [{"okres_id": 1}],
+        "product_line": [{"product_line_id": 1, "code": "L1"}],
+        "product": [{"product_id": 1, "product_line_id": 1}],
+        "sku": [{"sku_id": 1, "product_id": 1}],
+        "pos_material": [{"pos_material_id": 1, "code": "STO-X", "kind": "asset"}],
+    }
+    tables = ("region", "area", "employee", "store", "customer", "delivery_point", "pos_pilot_assignment")
+    for table in (*tables, "pos_placement_decision", "pos_asset", "pos_loan", "visit", "pos_handout"):
+        rows[table] = []
+    for table in ("sales_order", "sales_order_line", "sales_order_line_discount"):
+        rows[table] = []
+    ids = itertools.count(1)
+    effective = [*(day + timedelta(days=1) for day in ROUND_DAYS), None]
+    for r, code in enumerate(S5_REGIONS, start=1):
+        manager = 900 + r
+        rows["region"].append({"region_id": r, "code": code, "area_manager_employee_id": manager})
+        rows["area"].append({"area_id": r, "region_id": r, "code": f"{code}-01"})
+        rows["employee"].append({"employee_id": manager, "role": "area_manager"})
+        for i in (*range(1, 14), *range(51, 64)):
+            c = 100 * r + i
+            rows["store"].append({"store_id": c, "area_id": r})
+            rows["customer"].append({"customer_id": c, "channel": "small_retail", "since": date(2023, 1, 1)})
+            rows["delivery_point"].append({"delivery_point_id": c, "customer_id": c, "store_id": c, "okres_id": 1})
+            rows["pos_pilot_assignment"].append(
+                {"pos_pilot_assignment_id": c, "pilot_revision": protocol.pilot_revision, "customer_id": c}
+                | {"region_id": r, "pair_id": 1000 * r + i % 50, "arm": "programme" if i < 50 else "holdout"}
+                | {"portfolio_key": "-", "assigned_on": protocol.assigned_on, "baseline_from": protocol.baseline_from}
+                | {"baseline_until": protocol.pos_free_until, "window_from": protocol.window_from}
+                | {"window_until": protocol.window_until, "baseline_customer_margin": 0.0}
+                | {"baseline_days": protocol.baseline_days, "assignment_digest": "-"}
+            )
+        place = _Placing(rows, ids, protocol, r, code)
+
+        for k, day in enumerate(ROUND_DAYS):
+            slots = itertools.count()
+            for i, (score, outcome) in enumerate(pool(code, k), start=1):
+                place.decide(day, i, score, outcome, effective[k + 1], next(slots) if outcome == "selected" else -1)
+            for i, outcome in ((11, "no_asset"), (12, "nonpositive_score"), (13, "ineligible")):
+                rows["pos_placement_decision"].append(
+                    {"pos_placement_decision_id": next(ids), "pilot_revision": protocol.pilot_revision}
+                    | {"policy_revision": protocol.policy_revision, "decision_day": day, "customer_id": 100 * r + i}
+                    | {"delivery_point_id": 100 * r + i, "region_id": r, "manager_id": manager, "outcome": outcome}
+                    | {"prior56_handout_cost": 0.0, "catalogue_fit": 1.0, "score": 0.0, "forecast_days": 183}
+                    | (
+                        {"prior56_line_margin": 0.0}
+                        if i == 11
+                        else {"forecast_material_id": 1, "forecast_cost": 365.25 if i == 12 else 0.0}
+                        | {"asset_cost": 2188.80 if i == 12 else 0.0, "prior56_line_margin": 0.0 if i == 12 else 112.0}
+                        | {"forecast_gain": 0.0 if i == 12 else 365.25}
+                    )
+                )
+        place.decide(date(2023, 11, 30), 1, 10, "selected", date(2024, 2, 1), 90)
+        place.decide(date(2025, 12, 31), 2, 10, "selected", None, 91)
+        place.asset(99)  # never lent
+        for i in range(1, 14):
+            c = 100 * r + i
+            rows["visit"].append({"visit_id": c, "customer_id": c, "store_id": c, "day": date(2024, 6, 3)})
+            rows["pos_handout"].append({"pos_handout_id": c, "visit_id": c, "pos_material_id": 1, "cost": 50.0})
+            if i == 12:
+                continue
+            for day in (date(2024, 6, 3), W_LAST):
+                order = next(ids)
+                rows["sales_order"].append(
+                    {"sales_order_id": order, "customer_id": c, "delivery_point_id": c, "channel": "small_retail"}
+                    | {"ordered_on": day}
+                )
+                rows["sales_order_line"].append(
+                    {"sales_order_line_id": order, "sales_order_id": order, "line_no": 1, "sku_id": 1}
+                    | {"qty_cases": 1.0, "list_price_case": 1000.0, "is_free_goods": False}
+                )
+    quarters: dict[str, dict[str, int]] = {}
+    for made in rows["sales_order"]:
+        day = made["ordered_on"]
+        held = quarters.setdefault(f"{day.year}-Q{(day.month - 1) // 3 + 1}", {"orders": 0, "lines": 0})
+        held["orders"] += 1
+        held["lines"] += 1
+    pilot = {
+        "pilot_mode": "story",
+        "pilot_design": protocol.design,
+        "pilot_revision": protocol.pilot_revision,
+        "policy_revision": protocol.policy_revision,
+        "pilot_protocol_sha256": hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest(),
+        "pilot_window": f"{protocol.window_from.isoformat()}/{protocol.window_until.isoformat()}",
+        "pilot_term_days": "1461/8",
+        "assignment_digest": "-",
+        "s5_status": "NOT_CERTIFIED",
+    } | dict(evaluation.identity())
+    meta = {
+        "master_seed": "31102026",
+        "stories_sha256": "-",
+        "world_sha256": hashlib.sha256(WORLD_FILE.read_bytes()).hexdigest(),
+        "last_day_done": W_LAST.isoformat(),
+        "build_id": "-",
+    } | pilot
+    return DecisionCase(rows, meta, quarters)
+
+
+@pytest.fixture(scope="session")
+def decision_rows() -> Callable[..., DecisionCase]:
+    """`decision_case`, for the unit and the component tier alike (the tests are not a package)."""
+    return decision_case
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

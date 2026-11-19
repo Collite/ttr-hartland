@@ -70,6 +70,7 @@ from typing import Any
 
 import numpy as np
 
+from hartland_sim import evaluation
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.ids import SEPARATOR, business_id, row_id
 from hartland_sim.loop import pos
@@ -574,7 +575,8 @@ def stories_of(mode: str, stories: StoriesConfig) -> StoriesConfig:
 
 def metadata(pilot: Pilot, config: WorldConfig) -> tuple[tuple[str, str], ...]:
     """A pilot-mode build's `_sim_meta` keys: its design, mode and revisions, the protocol file's sha256, the window,
-    `H` exact, the assignment's digest (`-` before the assignment day), and S5's status, never certified here."""
+    `H` exact, the assignment's digest (`-` before the assignment day), and S5's status, never certified here; then
+    the evaluation's revision, sha256 and claim (`evaluation.identity`, G2 S2.9: no input of the build's id)."""
     p, h = pilot.protocol, term_days(config)
     values = (
         pilot.mode,
@@ -587,4 +589,4 @@ def metadata(pilot: Pilot, config: WorldConfig) -> tuple[tuple[str, str], ...]:
         pilot.digest or "-",
         "NOT_CERTIFIED",
     )
-    return tuple(zip(META_KEYS, values, strict=True))
+    return (*zip(META_KEYS, values, strict=True), *evaluation.identity())

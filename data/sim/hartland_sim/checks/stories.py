@@ -95,20 +95,33 @@ class Build:
         return self._joined[name]
 
     def __getitem__(self, table: str) -> Frame:
+        return self._read(table, None)
+
+    def narrow(self, table: str, columns: tuple[str, ...]) -> Frame:
+        """`table`'s `columns` only, read once (a twin over a large table that needs few of them, G2 S2.7); the
+        whole table's when it was read already."""
+        if self._frames is not None and table in self._frames:
+            return self._frames[table][list(columns)]
+        return self._read(table, columns)
+
+    def _read(self, table: str, columns: tuple[str, ...] | None) -> Frame:
         if self._frames is None:
             self._frames = {}
-        if table not in self._frames:
+        key = table if columns is None else f"{table}[{','.join(columns)}]"
+        if key not in self._frames:
             path = self.run / f"{table}.csv"
             if not path.is_file():
                 raise Missing(f"no {table}.csv ({WRITERS.get(table, 'its stage')} writes it)")
-            self._frames[table] = read(path, table)
-        return self._frames[table]
+            self._frames[key] = read(path, table, columns)
+        return self._frames[key]
 
 
-def read(path: Path, table: str) -> Frame:
-    """`path` as `table`'s rows (the CSV writer's format: ISO dates, `true`/`false`, empty = NULL)."""
+def read(path: Path, table: str, only: tuple[str, ...] | None = None) -> Frame:
+    """`path` as `table`'s rows (the CSV writer's format: ISO dates, `true`/`false`, empty = NULL), its `only`
+    columns when given."""
     columns = {column.name: column.type for column in inventory().table(table).columns}
-    frame = pd.read_csv(path, keep_default_na=False, na_values=[""], dtype=str)
+    usecols = list(only) if only is not None else None
+    frame = pd.read_csv(path, keep_default_na=False, na_values=[""], dtype=str, usecols=usecols)
     for name in frame.columns:
         kind = columns.get(name, "text")
         if kind in ("bigint", "integer"):  # parsed as integers: a float would round a 19-digit id
