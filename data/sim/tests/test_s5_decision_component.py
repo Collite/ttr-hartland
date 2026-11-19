@@ -212,6 +212,17 @@ def _assignment_twice(case: Any) -> None:
     case.rows["pos_pilot_assignment"].append(held | {"pos_pilot_assignment_id": 900_101})
 
 
+def _zero_cost(case: Any) -> None:
+    """A positive score at a forecast cost of 0: an impossible decision, never a division by zero."""
+    held = next(d for d in case.decisions("JMV", date(2024, 5, 31)) if d["outcome"] == "no_budget")
+    held["forecast_cost"] = 0.0
+
+
+def _region_renamed(case: Any) -> None:
+    """A region not among the six codes, every integrity valid: neither metric is made of a partial group."""
+    next(r for r in case.rows["region"] if r["code"] == "SMS")["code"] = "XYZ"
+
+
 def _unsupported(case: Any) -> None:
     """SMS's last 13 rounds without an unchosen candidate: 11 comparable rounds."""
     for day in DAYS[11:]:
@@ -234,6 +245,8 @@ def _unsupported(case: Any) -> None:
         (_out_twice, "overlap"),
         (_unsupported, "support"),
         (_assignment_twice, "duplicate"),
+        (_zero_cost, "fields"),
+        (_region_renamed, "valid"),
     ],
 )
 def test_the_sql_fails_closed_as_the_twin_does(

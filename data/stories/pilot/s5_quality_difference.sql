@@ -1,8 +1,9 @@
 -- S5 in the pilot, the group difference (G2 S2.9; NH-D25 design09 §§3, 5): the high-skill regions' mean decision
 -- quality Q (PHA, JMV) less the weak-skill ones' (ZSC, VCH, SMS), equal weights, the groups fixed before any build: a
--- fraction, 0.10 is ten percentage points — a difference, never design08's ratio. NULL unless every region is valid
--- (the block's `integrity`). Forecast-based placement quality only: no measured gain or payback. The block below is
--- s5_quality_rank.sql's, byte for byte (a test keeps it so). S2.11 makes this s5_best_worst.sql (design09 §7).
+-- fraction, 0.10 is ten percentage points — a difference, never design08's ratio. NULL unless the regions are the six
+-- of s5.yaml, each valid (the block's `integrity`): a group is never averaged over part of itself. Forecast-based
+-- placement quality only: no measured gain or payback. The block below is s5_quality_rank.sql's, byte for byte (a test
+-- keeps it so). S2.11 makes this s5_best_worst.sql (design09 §7).
 WITH
 -- region quality: begin
 -- The observed quality of the pilot's placement decisions and its economic disclosure (design09 §§3–4), its twin
@@ -89,7 +90,11 @@ decided AS (
             AND (d.forecast_gain IS NULL) = (d.forecast_cost IS NULL)
             AND (d.forecast_cost IS NULL) = (d.asset_cost IS NULL)
             AND d.score >= 0
-            AND (d.score = 0 OR ABS(d.score - d.forecast_gain / d.forecast_cost) <= 0.0000000050001)
+            AND CASE  -- a positive score at a cost of 0 is impossible, never a division by zero
+                WHEN d.score = 0 THEN true
+                WHEN d.forecast_cost > 0 THEN ABS(d.score - d.forecast_gain / d.forecast_cost) <= 0.0000000050001
+                ELSE false
+            END
             AND (
                 d.forecast_material_id IS NULL
                 OR ABS(d.forecast_gain - GREATEST(d.prior56_line_margin / e.baseline_days, 0) * d.catalogue_fit * e.term_days)
@@ -458,7 +463,9 @@ region_quality AS (
 SELECT CASE WHEN valid THEN q_high - q_low END AS metric
 FROM (
     SELECT
-        COUNT(*) = 6 AND BOOL_AND(integrity = 'valid') AS valid,
+        COUNT(*) = 6
+            AND COUNT(DISTINCT region) FILTER (WHERE region IN ('PHA', 'JMV', 'SJC', 'ZSC', 'VCH', 'SMS')) = 6
+            AND BOOL_AND(integrity = 'valid') AS valid,
         AVG(quality) FILTER (WHERE region IN ('PHA', 'JMV')) AS q_high,
         AVG(quality) FILTER (WHERE region IN ('ZSC', 'VCH', 'SMS')) AS q_low
     FROM region_quality

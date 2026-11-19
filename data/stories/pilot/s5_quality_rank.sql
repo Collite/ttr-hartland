@@ -92,7 +92,11 @@ decided AS (
             AND (d.forecast_gain IS NULL) = (d.forecast_cost IS NULL)
             AND (d.forecast_cost IS NULL) = (d.asset_cost IS NULL)
             AND d.score >= 0
-            AND (d.score = 0 OR ABS(d.score - d.forecast_gain / d.forecast_cost) <= 0.0000000050001)
+            AND CASE  -- a positive score at a cost of 0 is impossible, never a division by zero
+                WHEN d.score = 0 THEN true
+                WHEN d.forecast_cost > 0 THEN ABS(d.score - d.forecast_gain / d.forecast_cost) <= 0.0000000050001
+                ELSE false
+            END
             AND (
                 d.forecast_material_id IS NULL
                 OR ABS(d.forecast_gain - GREATEST(d.prior56_line_margin / e.baseline_days, 0) * d.catalogue_fit * e.term_days)

@@ -27,10 +27,15 @@ rejection a control world must show — a control that is merely not a PASS has 
 **The judge** (`judge`): NOT_CERTIFIED for no pilot build of this protocol in a scored mode (`SCORED`), a stale one
 (the protocol's design, revision, window or file, or world.yaml, differs), one of another evaluation (its
 `_sim_meta` revision, sha256 or claim is not `evaluation.identity`'s) or one short of W; INCONCLUSIVE when a source
-check fails — a table the twin reads missing; `build.json`'s audit manifest absent or not the audit tables' rows,
-sha256 and decisions by day; its written orders or lines of a quarter not the CSVs'; an order line without its order,
-an order without its customer — or a region is not valid; else the verdict's PASS or REJECTED. A PASS here is one
-development build's claim, never S5's certification (S2.11's protocol).
+check fails — a table the twin reads missing; `build.json` or its audit manifest absent, or that manifest not the
+audit tables' rows, sha256 and decisions by day; its written orders or lines of a quarter not the CSVs'; a row
+`sales_pl` would drop (an order line without its order or sku, an order without its customer or delivery point, a
+delivery point without its okres, a sku without its product, a product without its line) — or a region is not valid;
+else the verdict's PASS or REJECTED. The SQL alone sees neither `build.json` nor the rows `sales_pl` drops: only these
+source checks do. The judge does not check the build's source either: its git sha, its `stories_sha256` (s5.yaml) and
+its `build_id` (the generator's revision) are not compared with the checkout's, so a build is the frozen head's only
+when its runner built it there (G2 S2.10's manifest-driven runner checks them). A PASS here is one development build's
+claim, never S5's certification (S2.11's protocol).
 """
 
 from __future__ import annotations
@@ -84,13 +89,17 @@ FAULTS = (  # the build's failures, in the order `integrity` names the first
     "overlap",
     "astray",
 )
-TABLES = (  # the observed tables the twin reads; `sales_pl`'s parents through `margins`
+TABLES = (  # the observed tables the twin reads, and the parents `sales_pl` joins that `margins` does not
     "pos_pilot_assignment",
     "pos_placement_decision",
     "region",
     "area",
     "store",
     "delivery_point",
+    "okres",
+    "sku",
+    "product",
+    "product_line",
     "employee",
     "pos_material",
     "customer",
@@ -101,6 +110,16 @@ TABLES = (  # the observed tables the twin reads; `sales_pl`'s parents through `
     "pos_asset",
     "pos_handout",
     "visit",
+)
+ORDERS = ("sales_order_id", "customer_id", "delivery_point_id", "ordered_on")  # the columns read, each file parsed once
+LINES = (
+    "sales_order_line_id",
+    "sales_order_id",
+    "sku_id",
+    "qty_cases",
+    "list_price_case",
+    "warehouse_cost_case",
+    "delivery_cost_case",
 )
 ROUND_COLUMNS = ("decisions", "viable", "chosen", "unchosen", "q")  # `round_quality`'s but its keys
 COLUMNS = (  # `region_quality`'s but its index
@@ -151,17 +170,7 @@ def margins(build: Build) -> Frame:
     """Every order line's Customer Margin in haléře as `sales_pl` makes it — list × cases, less its discounts, its
     delivery and its warehouse cost, each rounded half away from zero (#22's twin) — with its order's customer and
     day."""
-    lines = build.narrow(
-        "sales_order_line",
-        (
-            "sales_order_line_id",
-            "sales_order_id",
-            "qty_cases",
-            "list_price_case",
-            "warehouse_cost_case",
-            "delivery_cost_case",
-        ),
-    )
+    lines = build.narrow("sales_order_line", LINES)
     cases = np.asarray(np.round(lines["qty_cases"].astype(float).to_numpy() * 1000), dtype=np.int64)
     gross = _rounded(_haler(lines["list_price_case"]), cases)
     costs = _rounded(_haler(lines["delivery_cost_case"]), cases) + _rounded(_haler(lines["warehouse_cost_case"]), cases)
@@ -173,8 +182,8 @@ def margins(build: Build) -> Frame:
     )
     taken = lines["sales_order_line_id"].map(off).fillna(0).to_numpy(dtype=np.int64)
     out = pd.DataFrame({"sales_order_id": lines["sales_order_id"], "margin": gross - taken - costs})
-    orders = build.narrow("sales_order", ("sales_order_id", "customer_id", "ordered_on"))
-    return out.merge(orders, on="sales_order_id")
+    orders = build.narrow("sales_order", ORDERS)
+    return out.merge(orders[["sales_order_id", "customer_id", "ordered_on"]], on="sales_order_id")
 
 
 @dataclass(frozen=True)
@@ -199,7 +208,7 @@ def scope(build: Build) -> Scope:
         and a["window_from"].min() == FIRST
         and a["window_until"].min() == LAST
     )
-    as_of = build.narrow("sales_order", ("sales_order_id", "customer_id", "ordered_on"))["ordered_on"].max()
+    as_of = build.narrow("sales_order", ORDERS)["ordered_on"].max()
     programme = a.loc[a["arm"] == "programme", ["customer_id", "region_id"]].drop_duplicates()
     return Scope(one, a["assigned_on"].min(), as_of, a, programme)
 
@@ -254,7 +263,7 @@ def _decided(build: Build) -> Frame:
         & (gain.notna() == cost.notna())
         & (cost.notna() == asset_cost.notna())
         & (score >= 0)
-        & (zero | ((score - gain / cost).abs() <= SCORE_SLACK))
+        & (zero | ((cost > 0) & ((score - gain / cost).abs() <= SCORE_SLACK)))
         & rounded
         & (d["forecast_days"] == FORECAST_DAYS).fillna(False).astype(bool)
         & (effective.dt.day == 1)
@@ -626,7 +635,8 @@ def identity(run: Path) -> dict[str, Any]:
 
 def stale(run: Path, protocol: Protocol) -> list[str]:
     """Why `run` is no complete scored pilot build of this protocol and evaluation (module docstring); empty when it
-    is one."""
+    is one. Its source — git sha, `stories_sha256`, `build_id` — is not compared here, but by its runner (module
+    docstring)."""
     if not (run / META_FILE).is_file():
         return ["no _sim_meta.csv"]
     meta = Meta.load(run)
@@ -659,15 +669,21 @@ def sources(build: Build, first_day: date) -> list[str]:
         for table in TABLES:
             if table not in ("sales_order", "sales_order_line", "sales_order_line_discount"):
                 build[table]
-        orders = build.narrow("sales_order", ("sales_order_id", "customer_id", "ordered_on"))
-        lines = build.narrow("sales_order_line", ("sales_order_line_id", "sales_order_id"))
+        orders = build.narrow("sales_order", ORDERS)
+        lines = build.narrow("sales_order_line", LINES)
         build.narrow("sales_order_line_discount", ("sales_order_line_id", "amount_line"))
     except Missing as error:
         return [str(error)]
+    points, skus, products = build["delivery_point"], build["sku"], build["product"]
     out = []
-    for what, ids, among in (
+    for what, ids, among in (  # `sales_pl` inner-joins each: an orphan would leave the SQL's margin, not the twin's
         ("an order line without its order", lines["sales_order_id"], orders["sales_order_id"]),
         ("an order without its customer", orders["customer_id"], build["customer"]["customer_id"]),
+        ("an order without its delivery point", orders["delivery_point_id"], points["delivery_point_id"]),
+        ("a delivery point without its okres", points["okres_id"], build["okres"]["okres_id"]),
+        ("an order line without its sku", lines["sku_id"], skus["sku_id"]),
+        ("a sku without its product", skus["product_id"], products["product_id"]),
+        ("a product without its line", products["product_line_id"], build["product_line"]["product_line_id"]),
     ):
         missing = int((~ids.isin(among)).sum())
         if missing:

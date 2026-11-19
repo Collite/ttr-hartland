@@ -248,6 +248,26 @@ def test_an_assignment_twice_fails_closed(decision_rows: DecisionRows, tmp_path:
     assert (pha["programme_customers"], pha["observed_margin"]) == (13, 24000.0)
 
 
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        (lambda c: c.rows["sales_order"][0].update(delivery_point_id=987_654), "an order without its delivery point"),
+        (lambda c: c.rows["delivery_point"][0].update(okres_id=987_654), "a delivery point without its okres"),
+        (lambda c: c.rows["sales_order_line"][0].update(sku_id=987_654), "an order line without its sku"),
+        (lambda c: c.rows["sku"][0].update(product_id=987_654), "a sku without its product"),
+        (lambda c: c.rows["product"][0].update(product_line_id=987_654), "a product without its line"),
+    ],
+    ids=["delivery point", "okres", "sku", "product", "product line"],
+)
+def test_a_row_sales_pl_drops_is_inconclusive(
+    decision_rows: DecisionRows, tmp_path: Path, change: Callable[[Any], None], reason: str
+) -> None:
+    """`sales_pl` inner-joins each order line's sku, product and line and its order's delivery point and okres: an
+    orphan would leave the SQL's observed margin silently, not the twin's."""
+    judged = s5_decision.judge(_run(_spoiled(decision_rows(_graded), change), tmp_path))
+    assert judged.status == "INCONCLUSIVE" and judged.reasons == (f"{reason} (1)",)
+
+
 def _spoiled(case: Any, change: Callable[[Any], None]) -> Any:
     change(case)
     return case
@@ -391,6 +411,8 @@ def test_the_twin_s_constants_are_the_evaluation_s_and_the_sql_s() -> None:
     assert row in _block(s5_decision.SQL[0])
     skills = re.findall(r"\('(\w+)', ([\d.]+)\)", (STORIES_DIR / s5_decision.SQL[0]).read_text(encoding="utf-8"))
     assert {code: float(v) for code, v in skills} == s5_decision.SKILL
+    codes = "', '".join(s5_decision.SKILL)  # the difference's validity: the six regions, not any six
+    assert f"region IN ('{codes}')" in (STORIES_DIR / s5_decision.SQL[1]).read_text(encoding="utf-8")
 
 
 # ── the verdicts ─────────────────────────────────────────────────────────────
