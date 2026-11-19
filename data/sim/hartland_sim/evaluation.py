@@ -48,10 +48,12 @@ class Evaluation:
     labels: dict[str, str]
     development: tuple[int, ...]
     certification: tuple[int, ...]
+    sha256: str  # the file's
 
     @classmethod
     def load(cls, path: Path = EVALUATION_FILE) -> Evaluation:
-        held = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_bytes()
+        held = yaml.safe_load(text.decode("utf-8"))
         seeds = held["seeds"]
         return cls(
             held["revision"],
@@ -66,12 +68,14 @@ class Evaluation:
             {name: str(text) for name, text in held["labels"].items()},
             tuple(int(s) for s in seeds["development"]),
             tuple(int(s) for s in seeds["certification"]),
+            hashlib.sha256(text).hexdigest(),
         )
+
+    def identity(self) -> tuple[tuple[str, str], ...]:
+        """Its `_sim_meta` keys of `META_KEYS`: its revision, its file's sha256, its claim."""
+        return tuple(zip(META_KEYS, (self.revision, self.sha256, self.claim), strict=True))
 
 
 def identity(path: Path = EVALUATION_FILE) -> tuple[tuple[str, str], ...]:
-    """The `_sim_meta` keys of `META_KEYS` for the evaluation file at `path`: its revision, its sha256, its claim."""
-    held = Evaluation.load(path)
-    return tuple(
-        zip(META_KEYS, (held.revision, hashlib.sha256(path.read_bytes()).hexdigest(), held.claim), strict=True)
-    )
+    """The `_sim_meta` keys of `META_KEYS` for the evaluation file at `path` (`Evaluation.identity`)."""
+    return Evaluation.load(path).identity()

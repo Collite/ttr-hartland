@@ -24,10 +24,10 @@ group's mean Q (`HIGH`), the weak group's (`LOW`) and their difference D. NaN un
 below them, INCONCLUSIVE for an invalid one; `control_rejects` when a valid frame has rank < 0.8 AND D < 0.10, the
 rejection a control world must show — a control that is merely not a PASS has not rejected.
 
-**The judge** (`judge`): NOT_CERTIFIED for no pilot build of this protocol in a scored mode (`SCORED`), a stale one
-(the protocol's design, revision, window or file, or world.yaml, differs), one of another evaluation (its
-`_sim_meta` revision, sha256 or claim is not `evaluation.identity`'s) or one short of W; INCONCLUSIVE when a source
-check fails — a table the twin reads missing; `build.json` or its audit manifest absent, or that manifest not the
+**The judge** (`judge`): NOT_CERTIFIED for no pilot build of this protocol in a scored mode (`SCORED`), a stale one (the
+protocol's design, revision, window or file, or world.yaml, differs), one of another evaluation (its `_sim_meta`
+revision, sha256 or claim is not the judging evaluation's) or one short of W; INCONCLUSIVE when a source check fails — a
+table the twin reads missing, or a column of it; `build.json` or its audit manifest absent, or that manifest not the
 audit tables' rows, sha256 and decisions by day; its written orders or lines of a quarter not the CSVs'; a row
 `sales_pl` would drop (an order line without its order or sku, an order without its customer or delivery point, a
 delivery point without its okres, a sku without its product, a product without its line) — or a region is not valid;
@@ -40,6 +40,7 @@ claim, never S5's certification (S2.11's protocol).
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import math
@@ -51,9 +52,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from hartland_sim import evaluation
 from hartland_sim.checks.stories import Build, Missing
-from hartland_sim.config import WORLD_FILE, WorldConfig
+from hartland_sim.config import WORLD_FILE, WorldConfig, inventory
 from hartland_sim.dates import quarter_start
 from hartland_sim.evaluation import Evaluation
 from hartland_sim.loop.build import AUDITED, BUILD_JSON, audit
@@ -74,7 +74,6 @@ SCORE_SLACK, MONEY_SLACK = 0.0000000050001, 0.005000001  # half the stored last 
 SKILL = {"PHA": 1.4, "JMV": 1.3, "SJC": 1.0, "ZSC": 0.6, "VCH": 0.5, "SMS": 0.5}  # s5_quality_rank.sql's: s5.yaml's
 HIGH, LOW = ("PHA", "JMV"), ("ZSC", "VCH", "SMS")  # s5_quality_difference.sql's: the evaluation's high and low
 SCORED = ("story", "skill-neutral", "full-null")  # the modes judged; the no-PoS ones lend nothing
-STATUSES = ("PASS", "REJECTED", "INCONCLUSIVE", "NOT_CERTIFIED")
 OUTCOMES = ("selected", "no_budget", "no_asset", "nonpositive_score", "ineligible", "cancelled")
 FAULTS = (  # the build's failures, in the order `integrity` names the first
     "revision",
@@ -336,6 +335,11 @@ def _handed(build: Build) -> Frame:
     return handed
 
 
+def _spending(build: Build) -> tuple[Frame, Frame]:
+    """`_used` and `_handed`, made once for the faults and the disclosure."""
+    return build.joined("s5_decision_used", lambda b: _used(b, scope(b))), build.joined("s5_decision_handed", _handed)
+
+
 def faults(build: Build) -> dict[str, int]:
     """The block's `fault`: each failure's count (module docstring); all 0 for a sound build."""
     held = build.joined("s5_decision_faults", lambda b: pd.DataFrame([_faults(b)]))
@@ -344,7 +348,7 @@ def faults(build: Build) -> dict[str, int]:
 
 def _faults(build: Build) -> dict[str, int]:
     s, d = scope(build), decided(build)
-    used, handed = _used(build, s), _handed(build)
+    used, handed = _spending(build)
     out: dict[str, int] = {}
     assignments = build["pos_pilot_assignment"]
     out["revision"] = int(
@@ -442,7 +446,7 @@ def regions(build: Build) -> Frame:
 
 def _regions(build: Build) -> Frame:
     s, d, r = scope(build), decided(build), rounds(build)
-    used, handed = _used(build, s), _handed(build)
+    used, handed = _spending(build)
     comparable = r["q"].notna()
     by = r["region_id"]
     sums = pd.DataFrame(
@@ -633,7 +637,7 @@ def identity(run: Path) -> dict[str, Any]:
     return out
 
 
-def stale(run: Path, protocol: Protocol) -> list[str]:
+def stale(run: Path, protocol: Protocol, judged_by: Evaluation | None = None) -> list[str]:
     """Why `run` is no complete scored pilot build of this protocol and evaluation (module docstring); empty when it
     is one. Its source — git sha, `stories_sha256`, `build_id` — is not compared here, but by its runner (module
     docstring)."""
@@ -653,7 +657,7 @@ def stale(run: Path, protocol: Protocol) -> list[str]:
         "policy_revision": protocol.policy_revision,
         "pilot_window": window,
         "pilot_protocol_sha256": hashlib.sha256(PROTOCOL_FILE.read_bytes()).hexdigest(),
-        **dict(evaluation.identity()),
+        **dict((judged_by or Evaluation.load()).identity()),
     }
     out = [f"stale {key}" if key in held else f"no {key}" for key, value in expected.items() if held.get(key) != value]
     if meta.world_sha256 != hashlib.sha256(WORLD_FILE.read_bytes()).hexdigest():
@@ -665,6 +669,9 @@ def stale(run: Path, protocol: Protocol) -> list[str]:
 
 def sources(build: Build, first_day: date) -> list[str]:
     """The source checks (module docstring); empty when they hold."""
+    lacking = _headers(build)
+    if lacking:
+        return lacking
     try:
         for table in TABLES:
             if table not in ("sales_order", "sales_order_line", "sales_order_line_discount"):
@@ -689,6 +696,21 @@ def sources(build: Build, first_day: date) -> list[str]:
         if missing:
             out.append(f"{what} ({missing})")
     return out + _audited(build) + _manifest(build, orders, lines, first_day)
+
+
+def _headers(build: Build) -> list[str]:
+    """Each table's CSV header against its inventory columns, before any read: a column missing would make a narrow
+    read or a twin's lookup raise, not name it."""
+    out = []
+    for table in TABLES:
+        path = build.run / f"{table}.csv"
+        if path.is_file():  # a file missing is named by the reads
+            with path.open(encoding="utf-8", newline="") as handle:
+                header = set(next(csv.reader(handle), []))
+            lacking = [column.name for column in inventory().table(table).columns if column.name not in header]
+            if lacking:
+                out.append(f"{table}.csv lacks {', '.join(lacking)}")
+    return out
 
 
 def _audited(build: Build) -> list[str]:
@@ -749,7 +771,7 @@ def judge(run: Path, protocol: Protocol | None = None, held: Evaluation | None =
     protocol, held = protocol or Protocol.load(), held or Evaluation.load()
     ident = identity(run)
     mode = ident.get("pilot_mode")
-    why = stale(run, protocol)
+    why = stale(run, protocol, held)
     if why:
         return Judged(run, mode, "NOT_CERTIFIED", tuple(why), None, None, None, ident)
     build = Build(run)

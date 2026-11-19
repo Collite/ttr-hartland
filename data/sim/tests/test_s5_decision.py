@@ -6,6 +6,7 @@ economic disclosure, the verdicts with the controls' rejection, the evaluation's
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import json
 import math
@@ -268,6 +269,16 @@ def test_a_row_sales_pl_drops_is_inconclusive(
     assert judged.status == "INCONCLUSIVE" and judged.reasons == (f"{reason} (1)",)
 
 
+@pytest.mark.parametrize(("table", "column"), [("sales_order_line", "qty_cases"), ("pos_loan", "returned_on")])
+def test_a_table_without_a_column_is_inconclusive(
+    decision_rows: DecisionRows, tmp_path: Path, table: str, column: str
+) -> None:
+    run = _run(decision_rows(_graded), tmp_path)
+    _edit(run / f"{table}.csv", f",{column},", ",renamed,")
+    judged = s5_decision.judge(run)
+    assert judged.status == "INCONCLUSIVE" and judged.reasons == (f"{table}.csv lacks {column}",)
+
+
 def _spoiled(case: Any, change: Callable[[Any], None]) -> Any:
     change(case)
     return case
@@ -404,6 +415,8 @@ def test_the_twin_s_constants_are_the_evaluation_s_and_the_sql_s() -> None:
     assert (held.pilot_revision, held.policy_revision) == (s5_decision.REVISION, s5_decision.POLICY)
     assert (held.window_from, held.window_until) == (s5_decision.FIRST.date(), s5_decision.LAST.date())
     assert held.support == {"comparable_rounds": 12, "chosen": 100, "unchosen": 100}
+    least = (s5_decision.LEAST_ROUNDS, s5_decision.LEAST_CHOSEN, s5_decision.LEAST_UNCHOSEN)
+    assert tuple(held.support.values()) == least
     assert held.rounds == len(DAYS) == 24
     assert (held.acceptance["high"], held.acceptance["low"]) == (list(s5_decision.HIGH), list(s5_decision.LOW))
     row = "('s5-pilot-v1', 'nh-d21-b-r1', DATE '2024-01-01', DATE '2025-12-31', 56, 182.625, 183, 36 * 30.4, "
@@ -482,6 +495,16 @@ def test_a_build_of_another_evaluation_or_short_is_not_certified(
     judged = s5_decision.judge(_run(case, tmp_path))
     assert judged.status == "NOT_CERTIFIED" and judged.frame is None
     assert any(why in reason for reason in judged.reasons), judged.reasons
+
+
+def test_a_build_is_certified_against_the_evaluation_it_is_judged_by(
+    decision_rows: DecisionRows, tmp_path: Path
+) -> None:
+    run = _run(decision_rows(_graded), tmp_path)
+    assert s5_decision.judge(run, held=EVALUATION).status == "PASS"
+    other = dataclasses.replace(EVALUATION, revision="NH-D25/v0")
+    judged = s5_decision.judge(run, held=other)
+    assert judged.status == "NOT_CERTIFIED" and judged.reasons == ("stale s5_evaluation_revision",)
 
 
 def test_the_evaluation_identity_is_the_file_s() -> None:
