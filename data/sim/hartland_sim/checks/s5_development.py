@@ -219,17 +219,27 @@ def parity(dsn: str, run: Path, judged: s5_decision.Judged) -> Parity:
     return replace(found, seconds=round(time.perf_counter() - started, 1))
 
 
-def _sql(conn: psycopg.Connection, name: str) -> tuple[Any, dict[str, dict[str, Any]], dict[tuple[str, date], Any]]:
-    """The file's metric, its `region_quality` rows by region and its `round_quality` rows by (region, day)."""
+def _sql_parts(name: str) -> tuple[str, str]:
     text = (STORIES_DIR / name).read_text(encoding="utf-8")
     final = re.search(r"^SELECT", text, re.M)  # the final SELECT starts its line; the CTEs' bodies are indented
     if final is None:
         raise ValueError(f"{name} has no final SELECT")
-    row = conn.execute(text).fetchone()
+    return text[: final.start()], text[final.start() :]
+
+
+def monthly_sql() -> str:
+    base, _ = _sql_parts(s5_decision.SQL[0])
+    return base + ",\n" + (STORIES_DIR / "pilot/s5_monthly.sql").read_text(encoding="utf-8")
+
+
+def _sql(conn: psycopg.Connection, name: str) -> tuple[Any, dict[str, dict[str, Any]], dict[tuple[str, date], Any]]:
+    """The file's metric, its `region_quality` rows by region and its `round_quality` rows by (region, day)."""
+    base, final = _sql_parts(name)
+    row = conn.execute(base + final).fetchone()
     metric = row[0] if row is not None else None
     out = []
     for relation in ("region_quality", "round_quality"):
-        cursor = conn.execute(text[: final.start()] + f"SELECT * FROM {relation}")
+        cursor = conn.execute(base + f"SELECT * FROM {relation}")
         names = [column.name for column in cursor.description or ()]
         out.append([dict(zip(names, values, strict=True)) for values in cursor.fetchall()])
     return metric, {r["region"]: r for r in out[0]}, {(r["region"], r["decision_day"]): r for r in out[1]}
