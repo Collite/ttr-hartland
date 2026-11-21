@@ -15,6 +15,7 @@ import yaml
 
 from hartland_sim.checks import s5_decision, s5_expected
 from hartland_sim.checks.czech import assert_czech_all
+from hartland_sim.checks.s5_development import monthly_sql
 from hartland_sim.checks.stories import a6_bars
 from hartland_sim.cli import main
 from hartland_sim.config import OPPOSITE, STORIES_DIR, ConfigError, InventoryConfig, StoriesConfig, WorldConfig
@@ -27,6 +28,8 @@ STREAMS = set(
     "supply route event shop weather letter scan".split()
 )
 
+MONTHLY_FRAGMENT = "pilot/s5_monthly.sql"
+
 WRITES = re.compile(r"\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy)\b", re.I)
 
 
@@ -37,6 +40,11 @@ def stories() -> StoriesConfig:
 
 def _sql(path: str) -> str:
     return (STORIES_DIR / path).read_text(encoding="utf-8")
+
+
+def _statement(name: str) -> str:
+    text = monthly_sql() if name == MONTHLY_FRAGMENT else _sql(name)
+    return "\n".join(line for line in text.splitlines() if not line.startswith("--"))
 
 
 def _values(sql: str, cte: str) -> list[tuple[str, ...]]:
@@ -70,10 +78,11 @@ def test_every_sql_file_is_one_read_only_select(stories: StoriesConfig) -> None:
     files = [detector.sql for story in stories.stories for detector in story.detectors]
     files += [anomaly.probe.sql for anomaly in stories.anomalies]
     files += list(s5_decision.SQL)  # the pilot's decision quality, s5.sql and s5_best_worst.sql from S2.11 (G2 S2.9)
+    files.append(MONTHLY_FRAGMENT)
     on_disk = sorted(f"{path.parent.name}/{path.name}" for path in STORIES_DIR.glob("*/*.sql"))
     assert sorted(files) == on_disk
     for name in files:
-        code = "\n".join(line for line in _sql(name).splitlines() if not line.startswith("--"))
+        code = _statement(name)
         assert re.match(r"\s*(WITH|SELECT)\b", code), name
         assert ";" not in code, name
         assert not WRITES.search(code), name
@@ -85,8 +94,8 @@ def test_the_sql_reads_only_the_inventory(stories: StoriesConfig) -> None:
     inventory = InventoryConfig.load()
     known = {table.name for table in inventory.tables} | {view.name for view in inventory.views}
     for path in sorted(STORIES_DIR.glob("*/*.sql")):
-        code = "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if not line.startswith("--"))
-        ctes = set(re.findall(r"(?:WITH|,)\s*(\w+)(?: \([^)]*\))? AS \(", code))
+        code = _statement(path.relative_to(STORIES_DIR).as_posix())
+        ctes = set(re.findall(r"(?:WITH(?:\s+RECURSIVE)?|,)\s*(\w+)(?:\s*\([^)]*\))?\s+AS\s+\(", code))
         named = set(re.findall(r"\b(?:FROM|JOIN)\s+(\w+)\b(?!\.|\()", code, re.I)) - {"LATERAL"}
         assert named - ctes <= known, f"{path.name}: {sorted(named - ctes - known)}"
 
