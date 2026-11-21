@@ -6,7 +6,7 @@ policy_revision: nh-d21-b-r1
 window: { from: 2024-01-01, until: 2025-12-31 } # W: a round counts when its decision day + 1 is in it
 rounds: 24 # per region: the month-ends 2023-12-31 … 2025-11-30, reported empty or not
 support: { chosen_per_month: 2, unchosen_per_month: 2, unchosen: 100 }
-omissions: [1, 2] # common effective calendar months
+# Common effective-calendar omissions of size one and two are part of the executable rule.
 acceptance:
   rank: 0.8 # the six regions' Q against s5.yaml's skills
   q_high: 0.70 # the high group's mean Q

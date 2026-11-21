@@ -59,9 +59,10 @@ import pandas as pd
 import psycopg
 from psycopg import sql
 
-from hartland_sim.checks import s5_decision
+from hartland_sim.checks import s5_decision, s5_monthly
+from hartland_sim.checks.s5_monthly import BASE_REVISION, MONTHLY_FILE, MONTHLY_REVISION
 from hartland_sim.config import DDL_DIR, STORIES_DIR, StoriesConfig, WorldConfig
-from hartland_sim.evaluation import BASE_REVISION, MONTHLY_FILE, MONTHLY_REVISION, Evaluation
+from hartland_sim.evaluation import Evaluation
 from hartland_sim.evaluation import seed as cert_seed
 from hartland_sim.io.ddl import DOCWH, OWNER, READONLY
 from hartland_sim.loop import pilot as pilots
@@ -100,13 +101,13 @@ def manifest(held: Evaluation, protocol: Protocol) -> tuple[tuple[int, str], ...
     """The nine worlds, (seed, mode) in order (module docstring); `Refused` names the rule a seed breaks."""
     if held.revision == MONTHLY_REVISION:
         base = Evaluation.load()
-        if replace(held, revision=base.revision, support=base.support, omissions=(), sha256=base.sha256) != base:
+        if replace(held, revision=base.revision, support=base.support, sha256=base.sha256) != base:
             raise Refused("monthly evaluation changes the registered NH-D25 window, bars, labels or seeds")
         if held.certification != tuple(cert_seed(i) for i in range(1, 11)):
             raise Refused("monthly evaluation changes design09's held-out seed derivation")
         support = {"chosen_per_month": 2, "unchosen_per_month": 2, "unchosen": 100}
-        if held.support != support or held.omissions != (1, 2):
-            raise Refused("monthly evaluation changes design10's support or omissions")
+        if held.support != support:
+            raise Refused("monthly evaluation changes design10's support")
     if held.development != protocol.development:
         raise Refused(f"development seeds {held.development} are not the protocol's {protocol.development}")
     taken = sorted(set(held.development) & {*held.certification, *protocol.certification})
@@ -208,14 +209,16 @@ def load(conn: psycopg.Connection, run: Path) -> None:
     conn.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
 
 
-def parity(dsn: str, run: Path, judged: s5_decision.Judged) -> Parity:
+def parity(
+    dsn: str, run: Path, judged: s5_decision.Judged, monthly: tuple[s5_monthly.Case, ...] | None = None
+) -> Parity:
     """`run` loaded in a transaction that rolls back, and its SQL against `judged`'s frames (module docstring)."""
     started = time.perf_counter()
     with psycopg.connect(dsn, autocommit=True) as conn, conn.transaction(force_rollback=True):
         conn.execute("SET LOCAL search_path TO hartland")
         conn.execute("SET LOCAL work_mem = '256MB'")
         load(conn, run)
-        found = compare(conn, judged)
+        found = compare(conn, judged, monthly)
     return replace(found, seconds=round(time.perf_counter() - started, 1))
 
 
@@ -229,7 +232,8 @@ def _sql_parts(name: str) -> tuple[str, str]:
 
 def monthly_sql() -> str:
     base, _ = _sql_parts(s5_decision.SQL[0])
-    return base + ",\n" + (STORIES_DIR / "pilot/s5_monthly.sql").read_text(encoding="utf-8")
+    monthly = (STORIES_DIR / "pilot/s5_monthly.sql").read_text(encoding="utf-8")
+    return base.replace("\nWITH ", "\nWITH RECURSIVE ", 1) + ",\n" + monthly
 
 
 def _sql(conn: psycopg.Connection, name: str) -> tuple[Any, dict[str, dict[str, Any]], dict[tuple[str, date], Any]]:
@@ -249,12 +253,13 @@ def _number(value: Any) -> float:
     return float(Decimal(value)) if isinstance(value, Decimal) else float(value)
 
 
-def compare(conn: psycopg.Connection, judged: s5_decision.Judged) -> Parity:
+def compare(
+    conn: psycopg.Connection, judged: s5_decision.Judged, monthly: tuple[s5_monthly.Case, ...] | None = None
+) -> Parity:
     """Both SQL files on the loaded rows against `judged`'s frames and metrics (module docstring)."""
     frame, rounds, v = judged.frame, judged.rounds, judged.verdict
     if frame is None or rounds is None or v is None:
         return Parity((f"no twin frames: {judged.status}",), math.nan, math.nan, math.nan, 0.0)
-    (rank, regions, by_round), (difference, again, by_round_again) = (_sql(conn, n) for n in s5_decision.SQL)
     out: list[str] = []
     worst = {"money": 0.0, "quality": 0.0, "metric": 0.0}
 
@@ -268,8 +273,43 @@ def compare(conn: psycopg.Connection, judged: s5_decision.Judged) -> Parity:
         if gap > slack:
             out.append(f"{what}: SQL {found}, twin {twin}")
 
-    if (regions, by_round) != (again, by_round_again):
-        out.append("the two files' region and round frames differ")
+    if monthly is None:
+        (rank, regions, by_round), (difference, again, by_round_again) = (_sql(conn, n) for n in s5_decision.SQL)
+        if (regions, by_round) != (again, by_round_again):
+            out.append("the two files' region and round frames differ")
+        close("rank", "metric", rank, v.rank, METRIC_SLACK)
+        close("difference", "metric", difference, v.difference, METRIC_SLACK)
+    else:
+        result = conn.execute(monthly_sql(), (judged.mode,)).fetchone()
+        assert result is not None
+        region_rows, round_rows, case_rows, inconclusive = result
+        regions = {r["region"]: r for r in region_rows or []}
+        by_round = {(r["region"], date.fromisoformat(r["decision_day"])): r for r in round_rows or []}
+        if len(by_round) != len(round_rows or []) or len(regions) != len(region_rows or []):
+            out.append("SQL returned duplicate region or round keys")
+        found_cases = {tuple(r["omitted"]): r for r in case_rows or []}
+        wanted_cases = {tuple(d.isoformat() for d in case.omitted): case for case in monthly}
+        if len(found_cases) != len(case_rows or []) or set(found_cases) != set(wanted_cases):
+            out.append("SQL and twin omission dates differ")
+        for key in found_cases.keys() & wanted_cases.keys():
+            found, wanted = found_cases[key], wanted_cases[key]
+            what = ", ".join(key) or "full window"
+            for name in ("status", "rank_holds", "q_high_holds", "difference_holds", "control_rejects"):
+                if found[name] != getattr(wanted.verdict, name):
+                    out.append(f"{what} {name}: SQL {found[name]}, twin {getattr(wanted.verdict, name)}")
+            if found["failure"] != wanted.failure:
+                out.append(f"{what} failure: SQL {found['failure']}, twin {wanted.failure}")
+            for name in ("rank", "q_high", "q_low", "difference"):
+                close(f"{what} {name}", "metric", found[name], getattr(wanted.verdict, name), METRIC_SLACK)
+            if found["regions"].keys() != wanted.regions.keys():
+                out.append(f"{what} region keys differ")
+            for region in found["regions"].keys() & wanted.regions.keys():
+                close(f"{what} {region} Q", "quality", found["regions"][region], wanted.regions[region], METRIC_SLACK)
+        if not monthly:
+            if inconclusive["status"] != v.status or v.control_rejects:
+                out.append("full-window inconclusive verdict differs")
+            for name in ("rank", "q_high", "q_low", "difference"):
+                close(f"full window {name}", "metric", inconclusive.get(name), getattr(v, name), METRIC_SLACK)
     if sorted(regions) != sorted(frame.index):
         out.append(f"regions: SQL {sorted(regions)}, twin {sorted(frame.index)}")
     for region, row in regions.items():
@@ -293,8 +333,6 @@ def compare(conn: psycopg.Connection, judged: s5_decision.Judged) -> Parity:
             if int(row[name]) != int(mine[name]):
                 out.append(f"{region} {day} {name}: SQL {row[name]}, twin {mine[name]}")
         close(f"{region} {day} q", "quality", row["q"], float(mine["q"]), METRIC_SLACK)
-    close("rank", "metric", rank, v.rank, METRIC_SLACK)
-    close("difference", "metric", difference, v.difference, METRIC_SLACK)
     return Parity(tuple(out), worst["money"], worst["quality"], worst["metric"], 0.0)
 
 

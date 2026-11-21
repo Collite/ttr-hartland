@@ -23,9 +23,6 @@ from hartland_sim.config import DATA_DIR
 from hartland_sim.protocol import Protocol
 
 EVALUATION_FILE = DATA_DIR / "s5_evaluation.yaml"
-MONTHLY_FILE = DATA_DIR / "s5_evaluation_monthly.yaml"
-BASE_REVISION = "NH-D25/v1"
-MONTHLY_REVISION = "NH-D26/v1"
 CLAIM = "placement_decision_quality"
 # the `_sim_meta` keys a pilot-mode build adds after the protocol's (`loop.pilot.metadata`), in its order
 META_KEYS = ("s5_evaluation_revision", "s5_evaluation_sha256", "s5_claim")
@@ -54,7 +51,6 @@ class Evaluation:
     development: tuple[int, ...]
     certification: tuple[int, ...]
     sha256: str  # the file's
-    omissions: tuple[int, ...] = ()
 
     @classmethod
     def load(cls, path: Path = EVALUATION_FILE) -> Evaluation:
@@ -75,7 +71,6 @@ class Evaluation:
             tuple(int(s) for s in seeds["development"]),
             tuple(int(s) for s in seeds["certification"]),
             hashlib.sha256(text).hexdigest(),
-            tuple(int(n) for n in held.get("omissions", ())),
         )
 
     def identity(self) -> tuple[tuple[str, str], ...]:

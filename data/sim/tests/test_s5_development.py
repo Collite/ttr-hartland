@@ -20,8 +20,9 @@ import pytest
 from hartland_sim.checks import s5_decision
 from hartland_sim.checks import s5_development as dev
 from hartland_sim.checks.s5_development import Parity, Refused, World
+from hartland_sim.checks.s5_monthly import MONTHLY_FILE, MONTHLY_REVISION
 from hartland_sim.config import StoriesConfig, WorldConfig
-from hartland_sim.evaluation import MONTHLY_FILE, MONTHLY_REVISION, Evaluation
+from hartland_sim.evaluation import Evaluation
 from hartland_sim.protocol import Protocol
 from hartland_sim.world import Meta
 
