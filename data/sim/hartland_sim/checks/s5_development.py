@@ -576,7 +576,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     building = parser.add_mutually_exclusive_group()
     building.add_argument("--build", action="store_true", help="build the missing worlds first, in turn")
     building.add_argument("--build-only", action="store_true", help="build the missing worlds and stop: none judged")
+    sealing = parser.add_mutually_exclusive_group()
+    sealing.add_argument("--prepare-freeze", action="store_true", help="authenticate and print the NH-D26 receipt hash")
+    sealing.add_argument("--freeze-sha256", help="NH-D26 freeze receipt SHA-256 published before scoring")
+    parser.add_argument("--inputs", type=Path, help="NH-D26 input worlds; separate from the readout root")
+    parser.add_argument("--input-manifest", type=Path, help="original SHA-256 inventory of NH-D26 input worlds")
+    parser.add_argument("--input-sha256", help="original inventory SHA-256")
+    parser.add_argument("--source-head", help="commit on which the NH-D26 input worlds were built")
     args = parser.parse_args(argv)
+    if args.evaluation == MONTHLY_REVISION and args.build:
+        parser.error("NH-D26 builds require --build-only before a separate freeze and scoring run")
+    if args.evaluation != MONTHLY_REVISION and (
+        args.prepare_freeze or args.freeze_sha256 or args.inputs or args.input_manifest or args.input_sha256
+        or args.source_head
+    ):
+        parser.error("freeze and reuse options require --evaluation NH-D26/v1")
     held = Evaluation.load(MONTHLY_FILE) if args.evaluation == MONTHLY_REVISION else Evaluation.load()
     protocol = Protocol.load()
     try:
@@ -593,7 +607,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"s5-development: the nine worlds built at {head[:12]}; none judged")
         return 0
     if held.revision == MONTHLY_REVISION:
-        raise NotImplementedError("monthly judging is not connected")
+        from hartland_sim.checks import s5_monthly_development as monthly
+
+        if not all((args.inputs, args.input_manifest, args.input_sha256, args.source_head)):
+            parser.error("NH-D26 needs --inputs, --input-manifest, --input-sha256 and --source-head")
+        dsn = args.db or os.environ.get("HARTLAND_S5_PG")
+        if not (args.prepare_freeze or (args.freeze_sha256 and dsn)):
+            parser.error("NH-D26 needs --prepare-freeze or a published --freeze-sha256 and --db (or HARTLAND_S5_PG)")
+        inputs, root = args.inputs.resolve(), args.root.resolve()
+        if inputs.is_relative_to(root) or root.is_relative_to(inputs):
+            parser.error("NH-D26 inputs and readout must be in separate directories")
+        path = root / monthly.FREEZE
+        try:
+            receipt = monthly.freeze(
+                inputs, args.input_manifest, args.input_sha256, args.source_head, head, worlds, held, protocol
+            )
+            if args.prepare_freeze:
+                root.mkdir(parents=True, exist_ok=True)
+                if path.exists():
+                    raise Refused(f"freeze already exists at {path}; keep it and use a new readout root")
+                monthly.write_json(path, receipt)
+                print(f"NH-D26 freeze {path}: {monthly.sha256(path)} (nothing scored)")
+                return 0
+            if monthly.sha256(path) != args.freeze_sha256 or json.loads(path.read_text(encoding="utf-8")) != receipt:
+                raise Refused("freeze receipt differs from the published hash or authenticated inputs")
+            assert dsn is not None
+            decision = monthly.score(root, inputs, receipt, args.freeze_sha256, worlds, held, protocol, dsn)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"s5-development: {error}", file=sys.stderr)
+            return 2
+        print(f"s5-development: {decision} at {head[:12]}")
+        return 0 if decision == "GO" else 1
     found = develop(args.root, worlds, head, held, protocol, args.db)
     decision, reasons = gate(found, worlds)
     out = readout(found, decision, reasons, head, held, args.root)
