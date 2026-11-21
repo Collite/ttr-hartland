@@ -21,6 +21,10 @@ day loop from the warm-up to the last day, the state at the end.
   nowhere (`story_map`), on the same OSM market, and takes its map. `build_id` names the mode; `_sim_meta` carries the
   pilot's metadata, S5 NOT_CERTIFIED. A mode the protocol lacks, a pilot with `null`, or one past the window is
   refused (`PilotRefused`) before any work.
+- **Another master seed** (`seed`, G2 S2.10; ttr-hartland#22's `42b0d67`): the build under that seed in place of
+  `world.yaml`'s, which `_sim_meta`, `build.json` and `build_id` then carry. `evaluation.admit` refuses a certification
+  seed of either manifest, or one built before the protocol's manifest that is no development seed, before any work
+  (`SeedRefused`). Such a run is built again, never prolonged: its seed is not `world.yaml`'s.
 
 **Prolong** (`prolong`): the loop resumed from a run's last checkpoint to a later day, its rows appended to the run's
 files, then the same end — the state tables and the promotions rendered again, the checkpoint and `_sim_meta` moved.
@@ -51,13 +55,14 @@ import os
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.dates import quarter_start
+from hartland_sim.evaluation import admit
 from hartland_sim.io.csv_writer import CsvWriter
 from hartland_sim.loop import pilot as pilots
 from hartland_sim.loop.day import Loop, Report
@@ -99,13 +104,18 @@ def build(
     null: bool = False,
     market: Market | None = None,
     pilot: str | None = None,
+    seed: int | None = None,
 ) -> Built:
-    """Setup and the days from the warm-up to `until` into `run` (module docstring), in `pilot`'s mode when given;
-    `FileExistsError` when `run` already holds a build, `PilotRefused` for a mode the protocol lacks, a pilot with
+    """Setup and the days from the warm-up to `until` into `run` (module docstring), in `pilot`'s mode when given,
+    under `seed` in place of the world's master seed when given; `FileExistsError` when `run` already holds a build,
+    `SeedRefused` for a seed `evaluation.admit` refuses, `PilotRefused` for a mode the protocol lacks, a pilot with
     `null` or past its window. `market` saves rebuilding the OSM market (tests)."""
     if run.exists() and any(run.glob("*.csv")):
         raise FileExistsError(f"{run} already holds a build")
     world = world or WorldConfig.load()
+    if seed is not None:
+        admit(seed)
+        world = replace(world, master_seed=seed)
     stories = stories or StoriesConfig.load()
     protocol = Protocol.load() if pilot is not None else None
     if protocol is not None:
