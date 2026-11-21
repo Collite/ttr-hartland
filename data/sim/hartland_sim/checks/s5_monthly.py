@@ -70,9 +70,7 @@ class Case:
     failure: str | None
 
 
-def _metric_case(
-    q: dict[str, Fraction], omitted: tuple[date, ...], mode: str | None, held: Evaluation
-) -> Case:
+def _metric_case(q: dict[str, Fraction], omitted: tuple[date, ...], mode: str | None, held: Evaluation) -> Case:
     # The ranks are integers or half-integers. Compare the squared correlation exactly for the positive bar.
     ordered = {value: rank for rank, value in enumerate(sorted(set(q.values())))}
     quality_ranks = pd.Series([ordered[value] for value in q.values()]).rank(method="average")
@@ -94,8 +92,15 @@ def _metric_case(
     story = rank_holds and high_holds and difference_holds
     control = not rank_holds and not difference_holds
     verdict = s5_decision.Verdict(
-        "PASS" if story else "REJECTED", rank, float(high), float(low), float(difference),
-        rank_holds, high_holds, difference_holds, control,
+        "PASS" if story else "REJECTED",
+        rank,
+        float(high),
+        float(low),
+        float(difference),
+        rank_holds,
+        high_holds,
+        difference_holds,
+        control,
     )
     conditions = (
         (("rank", rank_holds), ("q_high", high_holds), ("difference", difference_holds))

@@ -137,7 +137,7 @@ def sensitivity_fixture(scenario: str, mode: str = "story") -> s5_decision.Judge
                     score = 1.0
                 if scenario == "full failure" and i == 1:
                     score = 0.4
-            rows.append((region, pd.Timestamp(month - timedelta(days=1)), 2, 250, score))
+            rows.append((region, pd.Timestamp(month - timedelta(days=1)), 2, 250 * (i + 1), score))
     rounds = pd.DataFrame(rows, columns=["region", "decision_day", "chosen", "unchosen", "q"])
     rounds = rounds.set_index(["region", "decision_day"])
     frame = pd.DataFrame({"integrity": "valid", "quality": rounds["q"].groupby("region").mean()})
@@ -181,10 +181,14 @@ def test_unsupported_control_cannot_count_as_a_rejection() -> None:
 
 @pytest.mark.component
 @pytest.mark.parametrize(
-    ("scenario", "mode"), [
-        ("equality", "story"), ("equality", "full-null"), ("one decisive", "story"),
-        ("pair decisive", "story"), ("full failure", "story"),
-    ]
+    ("scenario", "mode"),
+    [
+        ("equality", "story"),
+        ("equality", "full-null"),
+        ("one decisive", "story"),
+        ("pair decisive", "story"),
+        ("full failure", "story"),
+    ],
 )
 def test_sql_sensitivity_matches_the_twin_for_each_omission(scenario: str, mode: str, pg_dsn: str) -> None:
     twin = sensitivity_fixture(scenario, mode)

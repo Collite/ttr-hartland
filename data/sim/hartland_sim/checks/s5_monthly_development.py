@@ -207,9 +207,7 @@ def score(
     return decision
 
 
-def markdown(
-    receipt: dict[str, Any], sha: str, worlds: list[dict[str, Any]], decision: str, reasons: list[str]
-) -> str:
+def markdown(receipt: dict[str, Any], sha: str, worlds: list[dict[str, Any]], decision: str, reasons: list[str]) -> str:
     lines = [
         f"# NH-D26/v1 development: {decision}",
         "",
@@ -223,9 +221,11 @@ def markdown(
         parity = world.get("parity")
         values = [dev._f(verdict.get(name)) for name in ("rank", "q_high", "difference")]
         lines.append(
-            f"| {world['seed']}/{world['mode']} | {world['claim']} | " + " | ".join(values)
+            f"| {world['seed']}/{world['mode']} | {world['claim']} | "
+            + " | ".join(values)
             + f" | {sens['count']} | {len(sens['failures'])} | "
-            + ("–" if parity is None else "PASS" if not parity["differences"] else "FAIL") + " |"
+            + ("–" if parity is None else "PASS" if not parity["differences"] else "FAIL")
+            + " |"
         )
     lines += ["", *[f"- {reason}" for reason in reasons]]
     for world in worlds:

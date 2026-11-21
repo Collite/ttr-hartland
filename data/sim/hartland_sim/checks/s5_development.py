@@ -587,7 +587,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.evaluation == MONTHLY_REVISION and args.build:
         parser.error("NH-D26 builds require --build-only before a separate freeze and scoring run")
     if args.evaluation != MONTHLY_REVISION and (
-        args.prepare_freeze or args.freeze_sha256 or args.inputs or args.input_manifest or args.input_sha256
+        args.prepare_freeze
+        or args.freeze_sha256
+        or args.inputs
+        or args.input_manifest
+        or args.input_sha256
         or args.source_head
     ):
         parser.error("freeze and reuse options require --evaluation NH-D26/v1")
