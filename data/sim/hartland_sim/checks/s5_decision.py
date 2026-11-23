@@ -766,12 +766,18 @@ def _manifest(build: Build, orders: Frame, lines: Frame, first_day: date) -> lis
     return out
 
 
-def judge(run: Path, protocol: Protocol | None = None, held: Evaluation | None = None) -> Judged:
+def judge(
+    run: Path,
+    protocol: Protocol | None = None,
+    held: Evaluation | None = None,
+    *,
+    source_evaluation: Evaluation | None = None,
+) -> Judged:
     """`run`'s status (module docstring)."""
     protocol, held = protocol or Protocol.load(), held or Evaluation.load()
     ident = identity(run)
     mode = ident.get("pilot_mode")
-    why = stale(run, protocol, held)
+    why = stale(run, protocol, source_evaluation or held)
     if why:
         return Judged(run, mode, "NOT_CERTIFIED", tuple(why), None, None, None, ident)
     build = Build(run)
