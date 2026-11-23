@@ -59,7 +59,11 @@ def judge(base: s5_decision.Judged, held: Evaluation) -> s5_decision.Judged:
         ("valid" if covered.get(str(region), False) else "support") if state in {"valid", "support"} else state
         for region, state in frame["integrity"].items()
     ]
-    verdict = s5_decision.verdict(frame, held)
+    if held.revision == GROUP_REVISION:
+        high, low, _ = s5_decision.quality(frame)
+        verdict = s5_decision.Verdict("INCONCLUSIVE", math.nan, high, low, math.nan, False, False, False, False)
+    else:
+        verdict = s5_decision.verdict(frame, held)
     reasons = tuple(f"{region}: {state}" for region, state in frame["integrity"].items() if state != "valid")
     return replace(base, frame=frame, verdict=verdict, status=verdict.status, reasons=reasons)
 
@@ -69,7 +73,7 @@ class Case:
     omitted: tuple[date, ...]
     regions: dict[str, float]
     verdict: s5_decision.Verdict
-    failure: str | None
+    failure: str | tuple[str, ...] | None
 
 
 def _metric_case(q: dict[str, Fraction], omitted: tuple[date, ...], mode: str | None, held: Evaluation) -> Case:
@@ -113,6 +117,34 @@ def _metric_case(q: dict[str, Fraction], omitted: tuple[date, ...], mode: str | 
     return Case(omitted, {region: float(value) for region, value in q.items()}, verdict, failure)
 
 
+def _group_case(q: dict[str, Fraction], omitted: tuple[date, ...], mode: str | None, held: Evaluation) -> Case:
+    high = sum((q[r] for r in s5_decision.HIGH), Fraction()) / len(s5_decision.HIGH)
+    low = sum((q[r] for r in s5_decision.LOW), Fraction()) / len(s5_decision.LOW)
+    difference = high - low
+    high_holds = high >= Fraction(str(held.acceptance["q_high"]))
+    difference_holds = difference >= Fraction(str(held.acceptance["difference"]))
+    control_rejects = mode in s5_decision.SCORED and mode != "story" and not difference_holds
+    if mode == "story":
+        checks = (("q_high", high_holds), ("difference", difference_holds))
+        failed = tuple(name for name, holds in checks if not holds)
+        status = "REJECTED" if failed else "PASS"
+    else:
+        failed = () if control_rejects else ("difference",)
+        status = "REJECTED" if control_rejects else "FAIL"
+    verdict = s5_decision.Verdict(
+        status,
+        math.nan,
+        float(high),
+        float(low),
+        float(difference),
+        False,
+        high_holds,
+        difference_holds,
+        control_rejects,
+    )
+    return Case(omitted, {region: float(value) for region, value in q.items()}, verdict, failed or None)
+
+
 def cases(judged: s5_decision.Judged, held: Evaluation) -> tuple[Case, ...]:
     """Full window first, then each common calendar omission, once the full window has support."""
     if judged.frame is None or judged.rounds is None or not s5_decision._valid(judged.frame):
@@ -127,8 +159,9 @@ def cases(judged: s5_decision.Judged, held: Evaluation) -> tuple[Case, ...]:
         monthly[region][effective_month(day.date())] = Fraction(win_credit, pairs_twice)
     dates = months(held)
     totals = {region: sum(values.values(), Fraction()) for region, values in monthly.items()}
+    metrics = _group_case if held.revision == GROUP_REVISION else _metric_case
     return tuple(
-        _metric_case(
+        metrics(
             {
                 region: (totals[region] - sum((values[month] for month in omitted), Fraction()))
                 / (len(dates) - len(omitted))
@@ -143,13 +176,22 @@ def cases(judged: s5_decision.Judged, held: Evaluation) -> tuple[Case, ...]:
     )
 
 
-def assessment(found: tuple[Case, ...]) -> dict[str, Any]:
+def evaluate(base: s5_decision.Judged, held: Evaluation) -> tuple[s5_decision.Judged, tuple[Case, ...]]:
+    """Apply monthly support, then make the full-window verdict available alongside every omission."""
+    judged = judge(base, held)
+    found = cases(judged, held)
+    if found:
+        judged = replace(judged, verdict=found[0].verdict, status=found[0].verdict.status)
+    return judged, found
+
+
+def assessment(found: tuple[Case, ...], revision: str = MONTHLY_REVISION) -> dict[str, Any]:
     """Keep the original full-window judgement even when a subset would cross back over its bar."""
     if not found:
         return {"failure_type": "inconclusive", "full_failure": None, "count": 0, "failures": []}
     full, *omitted = found
     failures = [{"omitted": case.omitted, "condition": case.failure} for case in omitted if case.failure]
-    categories = ("rank", "q_high", "difference")
+    categories = ("q_high", "q_low", "difference") if revision == GROUP_REVISION else ("rank", "q_high", "difference")
     values = {name: [getattr(case.verdict, name) for case in omitted] for name in categories}
     values |= {region: [case.regions[region] for case in omitted] for region in full.regions}
     failure_type = "full_window" if full.failure else "sensitivity" if failures else None

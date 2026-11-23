@@ -215,7 +215,12 @@ def load(conn: psycopg.Connection, run: Path) -> None:
 
 
 def parity(
-    dsn: str, run: Path, judged: s5_decision.Judged, monthly: tuple[s5_monthly.Case, ...] | None = None
+    dsn: str,
+    run: Path,
+    judged: s5_decision.Judged,
+    monthly: tuple[s5_monthly.Case, ...] | None = None,
+    *,
+    revision: str = MONTHLY_REVISION,
 ) -> Parity:
     """`run` loaded in a transaction that rolls back, and its SQL against `judged`'s frames (module docstring)."""
     started = time.perf_counter()
@@ -223,7 +228,7 @@ def parity(
         conn.execute("SET LOCAL search_path TO hartland")
         conn.execute("SET LOCAL work_mem = '256MB'")
         load(conn, run)
-        found = compare(conn, judged, monthly)
+        found = compare(conn, judged, monthly, revision=revision)
     return replace(found, seconds=round(time.perf_counter() - started, 1))
 
 
@@ -235,9 +240,13 @@ def _sql_parts(name: str) -> tuple[str, str]:
     return text[: final.start()], text[final.start() :]
 
 
-def monthly_sql() -> str:
+def monthly_sql(revision: str = MONTHLY_REVISION) -> str:
     base, _ = _sql_parts(s5_decision.SQL[0])
     monthly = (STORIES_DIR / "pilot/s5_monthly.sql").read_text(encoding="utf-8")
+    if revision == GROUP_REVISION:
+        group = (STORIES_DIR / "pilot/s5_group.sql").read_text(encoding="utf-8").rstrip()
+        _, _, projection = monthly.partition("\nSELECT\n")
+        monthly = monthly[: monthly.index("ranks AS (")] + group + "\nSELECT\n" + projection
     return base.replace("\nWITH ", "\nWITH RECURSIVE ", 1) + ",\n" + monthly
 
 
@@ -259,7 +268,11 @@ def _number(value: Any) -> float:
 
 
 def compare(
-    conn: psycopg.Connection, judged: s5_decision.Judged, monthly: tuple[s5_monthly.Case, ...] | None = None
+    conn: psycopg.Connection,
+    judged: s5_decision.Judged,
+    monthly: tuple[s5_monthly.Case, ...] | None = None,
+    *,
+    revision: str = MONTHLY_REVISION,
 ) -> Parity:
     """Both SQL files on the loaded rows against `judged`'s frames and metrics (module docstring)."""
     frame, rounds, v = judged.frame, judged.rounds, judged.verdict
@@ -285,7 +298,13 @@ def compare(
         close("rank", "metric", rank, v.rank, METRIC_SLACK)
         close("difference", "metric", difference, v.difference, METRIC_SLACK)
     else:
-        result = conn.execute(monthly_sql(), (judged.mode,)).fetchone()
+        group = revision == GROUP_REVISION
+        metrics: tuple[str, ...] = ("q_high", "q_low", "difference")
+        flags: tuple[str, ...] = ("status", "q_high_holds", "difference_holds", "control_rejects")
+        if not group:
+            metrics = ("rank", *metrics)
+            flags = (*flags, "rank_holds")
+        result = conn.execute(monthly_sql(revision), (judged.mode,)).fetchone()
         assert result is not None
         region_rows, round_rows, case_rows, inconclusive = result
         regions = {r["region"]: r for r in region_rows or []}
@@ -299,12 +318,13 @@ def compare(
         for key in found_cases.keys() & wanted_cases.keys():
             found, wanted = found_cases[key], wanted_cases[key]
             what = ", ".join(key) or "full window"
-            for name in ("status", "rank_holds", "q_high_holds", "difference_holds", "control_rejects"):
+            for name in flags:
                 if found[name] != getattr(wanted.verdict, name):
                     out.append(f"{what} {name}: SQL {found[name]}, twin {getattr(wanted.verdict, name)}")
-            if found["failure"] != wanted.failure:
-                out.append(f"{what} failure: SQL {found['failure']}, twin {wanted.failure}")
-            for name in ("rank", "q_high", "q_low", "difference"):
+            failure = (tuple(found["failures"]) or None) if group else found["failure"]
+            if failure != wanted.failure:
+                out.append(f"{what} failure: SQL {failure}, twin {wanted.failure}")
+            for name in metrics:
                 close(f"{what} {name}", "metric", found[name], getattr(wanted.verdict, name), METRIC_SLACK)
             if found["regions"].keys() != wanted.regions.keys():
                 out.append(f"{what} region keys differ")
@@ -313,7 +333,7 @@ def compare(
         if not monthly:
             if inconclusive["status"] != v.status or v.control_rejects:
                 out.append("full-window inconclusive verdict differs")
-            for name in ("rank", "q_high", "q_low", "difference"):
+            for name in metrics:
                 close(f"full window {name}", "metric", inconclusive.get(name), getattr(v, name), METRIC_SLACK)
     if sorted(regions) != sorted(frame.index):
         out.append(f"regions: SQL {sorted(regions)}, twin {sorted(frame.index)}")
@@ -357,13 +377,15 @@ class World:
     parity: Parity | None
 
 
-def _metrics(v: s5_decision.Verdict | None) -> str:
+def _metrics(v: s5_decision.Verdict | None, *, group: bool = False) -> str:
     if v is None:
         return "no metrics"
+    if group:
+        return f"Q_H {v.q_high:.4f}, Q_L {v.q_low:.4f}, D {v.difference:.4f}"
     return f"rank {v.rank:.4f}, Q_H {v.q_high:.4f}, D {v.difference:.4f}"
 
 
-def failures(world: World) -> list[str]:
+def failures(world: World, *, group: bool = False) -> list[str]:
     """Why `world` fails the gate (module docstring); empty when it holds."""
     name = f"{world.seed}/{world.mode}"
     if world.source:
@@ -374,9 +396,9 @@ def failures(world: World) -> list[str]:
     v = judged.verdict
     out = []
     if world.mode == "story" and judged.status != "PASS":
-        out.append(f"{name}: story {judged.status} ({_metrics(v)}){_why(judged)}")
+        out.append(f"{name}: story {judged.status} ({_metrics(v, group=group)}){_why(judged)}")
     if world.mode != "story" and not (judged.status == "REJECTED" and v is not None and v.control_rejects):
-        out.append(f"{name}: control {judged.status}, no rejection ({_metrics(v)}){_why(judged)}")
+        out.append(f"{name}: control {judged.status}, no rejection ({_metrics(v, group=group)}){_why(judged)}")
     if world.parity is None:
         out.append(f"{name}: parity not run")
     else:
@@ -487,10 +509,10 @@ def _plain(value: Any) -> Any:
     return value
 
 
-def _world(world: World) -> dict[str, Any]:
+def _world(world: World, *, group: bool = False) -> dict[str, Any]:
     judged, out = world.judged, {"seed": world.seed, "mode": world.mode, "source": list(world.source)}
     out["certification"] = "NOT_CERTIFIED"  # development data (module docstring)
-    out["gate"] = failures(world)
+    out["gate"] = failures(world, group=group)
     if (world.run / BUILD_JSON).is_file():
         report = json.loads((world.run / BUILD_JSON).read_text(encoding="utf-8"))
         out["audit"] = {name: {"rows": a["rows"], "sha256": a["sha256"]} for name, a in report.get("audit", {}).items()}
@@ -592,9 +614,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--input-sha256", help="original inventory SHA-256")
     parser.add_argument("--source-head", help="original build commit of the development worlds")
+    parser.add_argument("--regression-reference", type=Path, help="published NH-D26 JSON, read after NH-D28 scoring")
     args = parser.parse_args(argv)
     if args.evaluation == MONTHLY_REVISION and args.build:
         parser.error("NH-D26 builds require --build-only before a separate freeze and scoring run")
+    if args.regression_reference and args.evaluation != GROUP_REVISION:
+        parser.error("--regression-reference requires --evaluation NH-D28/v1")
     if args.evaluation == GROUP_REVISION and (args.build or args.build_only):
         parser.error("NH-D28 uses only the original authenticated development worlds")
     if args.evaluation not in FROZEN_EVALUATIONS and (
@@ -635,6 +660,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         inputs, root = args.inputs.resolve(), args.root.resolve()
         if inputs.is_relative_to(root) or root.is_relative_to(inputs):
             parser.error(f"{held.revision} inputs and readout must be in separate directories")
+        if held.revision == GROUP_REVISION and not args.prepare_freeze and not args.regression_reference:
+            parser.error("NH-D28 scoring requires --regression-reference")
         path = root / monthly.FREEZE
         try:
             receipt = monthly.freeze(
@@ -650,7 +677,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             if monthly.sha256(path) != args.freeze_sha256 or json.loads(path.read_text(encoding="utf-8")) != receipt:
                 raise Refused("freeze receipt differs from the published hash or authenticated inputs")
             assert dsn is not None
-            decision = monthly.score(root, inputs, receipt, args.freeze_sha256, worlds, held, protocol, dsn)
+            decision = monthly.score(
+                root,
+                inputs,
+                receipt,
+                args.freeze_sha256,
+                worlds,
+                held,
+                protocol,
+                dsn,
+                reference=args.regression_reference,
+            )
         except (OSError, ValueError, subprocess.CalledProcessError) as error:
             print(f"s5-development: {error}", file=sys.stderr)
             return 2
