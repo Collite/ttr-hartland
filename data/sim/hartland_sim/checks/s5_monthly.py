@@ -19,6 +19,8 @@ from hartland_sim.evaluation import Evaluation
 MONTHLY_FILE = DATA_DIR / "s5_evaluation_monthly.yaml"
 BASE_REVISION = "NH-D25/v1"
 MONTHLY_REVISION = "NH-D26/v1"
+GROUP_FILE = DATA_DIR / "s5_evaluation_group.yaml"
+GROUP_REVISION = "NH-D28/v1"
 OMISSIONS = (1, 2)
 ONE_DAY = timedelta(days=1)
 

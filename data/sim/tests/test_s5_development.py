@@ -20,7 +20,7 @@ import pytest
 from hartland_sim.checks import s5_decision
 from hartland_sim.checks import s5_development as dev
 from hartland_sim.checks.s5_development import Parity, Refused, World
-from hartland_sim.checks.s5_monthly import MONTHLY_FILE, MONTHLY_REVISION
+from hartland_sim.checks.s5_monthly import GROUP_FILE, GROUP_REVISION, MONTHLY_FILE, MONTHLY_REVISION
 from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.evaluation import Evaluation
 from hartland_sim.protocol import Protocol
@@ -168,6 +168,27 @@ def test_monthly_manifest_preserves_seeds_and_is_explicit() -> None:
     assert monthly.certification == EVALUATION.certification
     with pytest.raises(Refused, match="registered"):
         dev.manifest(dataclasses.replace(monthly, development=monthly.certification[:3]), PROTOCOL)
+
+
+def test_group_manifest_preserves_build_identity_and_restricts_the_suite() -> None:
+    group = Evaluation.load(GROUP_FILE)
+    assert group.revision == GROUP_REVISION and group.sha256 != EVALUATION.sha256
+    assert group.certification == EVALUATION.certification
+    assert dev.manifest(group, PROTOCOL) == WORLDS
+    seeds = (group.certification[0], *group.development[1:])
+    with pytest.raises(Refused, match="three registered"):
+        dev.manifest(dataclasses.replace(group, development=seeds), dataclasses.replace(PROTOCOL, development=seeds))
+
+
+@pytest.mark.parametrize("build_flag", ["--build", "--build-only"])
+def test_group_runner_requires_the_original_development_worlds(
+    build_flag: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(dev, "build_missing", lambda *_: pytest.fail("built"))
+    with pytest.raises(SystemExit) as stopped:
+        dev.main([str(tmp_path), "--evaluation", GROUP_REVISION, build_flag])
+    assert stopped.value.code == 2
+    assert "original authenticated development worlds" in capsys.readouterr().err
 
 
 # ── the source (⚑R380-A) ─────────────────────────────────────────────────────

@@ -60,7 +60,7 @@ import psycopg
 from psycopg import sql
 
 from hartland_sim.checks import s5_decision, s5_monthly
-from hartland_sim.checks.s5_monthly import BASE_REVISION, MONTHLY_FILE, MONTHLY_REVISION
+from hartland_sim.checks.s5_monthly import BASE_REVISION, GROUP_FILE, GROUP_REVISION, MONTHLY_FILE, MONTHLY_REVISION
 from hartland_sim.config import DDL_DIR, STORIES_DIR, StoriesConfig, WorldConfig
 from hartland_sim.evaluation import Evaluation
 from hartland_sim.evaluation import seed as cert_seed
@@ -88,6 +88,7 @@ MONEY = (
 COUNTS = tuple(name for name in s5_decision.COLUMNS if name not in (*MONEY, "quality", "integrity"))
 MONEY_SLACK, METRIC_SLACK = 0.01, 1e-9  # design09 §5: CZK, and q, Q and the metrics
 LOCKS = ("uv.lock", "toolchain.lock")
+FROZEN_EVALUATIONS = {MONTHLY_REVISION: MONTHLY_FILE, GROUP_REVISION: GROUP_FILE}
 
 
 class Refused(ValueError):
@@ -99,10 +100,14 @@ class Refused(ValueError):
 
 def manifest(held: Evaluation, protocol: Protocol) -> tuple[tuple[int, str], ...]:
     """The nine worlds, (seed, mode) in order (module docstring); `Refused` names the rule a seed breaks."""
-    if held.revision == MONTHLY_REVISION:
+    if held.revision in FROZEN_EVALUATIONS:
         base = Evaluation.load()
+        if held.revision == GROUP_REVISION:
+            base = replace(base, acceptance={k: v for k, v in base.acceptance.items() if k != "rank"})
+            if held.development != (31102026, 1797428728, 285672490):
+                raise Refused("group evaluation requires the three registered development seeds")
         if replace(held, revision=base.revision, support=base.support, sha256=base.sha256) != base:
-            raise Refused("monthly evaluation changes the registered NH-D25 window, bars, labels or seeds")
+            raise Refused(f"{held.revision} changes the registered window, bars, labels or seeds")
         if held.certification != tuple(cert_seed(i) for i in range(1, 11)):
             raise Refused("monthly evaluation changes design09's held-out seed derivation")
         support = {"chosen_per_month": 2, "unchosen_per_month": 2, "unchosen": 100}
@@ -571,22 +576,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="python -m hartland_sim.checks.s5_development", description="S5's development gate (G2 S2.10)"
     )
     parser.add_argument("root", type=Path, help="the worlds' folder: ROOT/<seed>/<mode>/")
-    parser.add_argument("--evaluation", choices=(BASE_REVISION, MONTHLY_REVISION), default=BASE_REVISION)
+    parser.add_argument("--evaluation", choices=(BASE_REVISION, *FROZEN_EVALUATIONS), default=BASE_REVISION)
     parser.add_argument("--db", metavar="URL", help="a Postgres 16 server for SQL/twin parity (without: NO-GO)")
     building = parser.add_mutually_exclusive_group()
     building.add_argument("--build", action="store_true", help="build the missing worlds first, in turn")
     building.add_argument("--build-only", action="store_true", help="build the missing worlds and stop: none judged")
     sealing = parser.add_mutually_exclusive_group()
-    sealing.add_argument("--prepare-freeze", action="store_true", help="authenticate and print the NH-D26 receipt hash")
-    sealing.add_argument("--freeze-sha256", help="NH-D26 freeze receipt SHA-256 published before scoring")
-    parser.add_argument("--inputs", type=Path, help="NH-D26 input worlds; separate from the readout root")
-    parser.add_argument("--input-manifest", type=Path, help="original SHA-256 inventory of NH-D26 input worlds")
+    sealing.add_argument(
+        "--prepare-freeze", action="store_true", help="authenticate and print the evaluator receipt hash"
+    )
+    sealing.add_argument("--freeze-sha256", help="evaluator freeze receipt SHA-256 published before scoring")
+    parser.add_argument("--inputs", type=Path, help="authenticated development worlds; separate from the readout root")
+    parser.add_argument(
+        "--input-manifest", type=Path, help="original SHA-256 inventory of authenticated development worlds"
+    )
     parser.add_argument("--input-sha256", help="original inventory SHA-256")
-    parser.add_argument("--source-head", help="commit on which the NH-D26 input worlds were built")
+    parser.add_argument("--source-head", help="original build commit of the development worlds")
     args = parser.parse_args(argv)
     if args.evaluation == MONTHLY_REVISION and args.build:
         parser.error("NH-D26 builds require --build-only before a separate freeze and scoring run")
-    if args.evaluation != MONTHLY_REVISION and (
+    if args.evaluation == GROUP_REVISION and (args.build or args.build_only):
+        parser.error("NH-D28 uses only the original authenticated development worlds")
+    if args.evaluation not in FROZEN_EVALUATIONS and (
         args.prepare_freeze
         or args.freeze_sha256
         or args.inputs
@@ -594,8 +605,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         or args.input_sha256
         or args.source_head
     ):
-        parser.error("freeze and reuse options require --evaluation NH-D26/v1")
-    held = Evaluation.load(MONTHLY_FILE) if args.evaluation == MONTHLY_REVISION else Evaluation.load()
+        parser.error("freeze and reuse options require --evaluation NH-D26/v1 or NH-D28/v1")
+    selected_file = FROZEN_EVALUATIONS.get(args.evaluation)
+    held = Evaluation.load(selected_file) if selected_file else Evaluation.load()
     protocol = Protocol.load()
     try:
         if held.revision != args.evaluation:
@@ -610,17 +622,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.build_only:
         print(f"s5-development: the nine worlds built at {head[:12]}; none judged")
         return 0
-    if held.revision == MONTHLY_REVISION:
+    if held.revision in FROZEN_EVALUATIONS:
         from hartland_sim.checks import s5_monthly_development as monthly
 
         if not all((args.inputs, args.input_manifest, args.input_sha256, args.source_head)):
-            parser.error("NH-D26 needs --inputs, --input-manifest, --input-sha256 and --source-head")
+            parser.error(f"{held.revision} needs --inputs, --input-manifest, --input-sha256 and --source-head")
         dsn = args.db or os.environ.get("HARTLAND_S5_PG")
         if not (args.prepare_freeze or (args.freeze_sha256 and dsn)):
-            parser.error("NH-D26 needs --prepare-freeze or a published --freeze-sha256 and --db (or HARTLAND_S5_PG)")
+            parser.error(
+                f"{held.revision} needs --prepare-freeze or a published --freeze-sha256 and --db (or HARTLAND_S5_PG)"
+            )
         inputs, root = args.inputs.resolve(), args.root.resolve()
         if inputs.is_relative_to(root) or root.is_relative_to(inputs):
-            parser.error("NH-D26 inputs and readout must be in separate directories")
+            parser.error(f"{held.revision} inputs and readout must be in separate directories")
         path = root / monthly.FREEZE
         try:
             receipt = monthly.freeze(
@@ -631,7 +645,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if path.exists():
                     raise Refused(f"freeze already exists at {path}; keep it and use a new readout root")
                 monthly.write_json(path, receipt)
-                print(f"NH-D26 freeze {path}: {monthly.sha256(path)} (nothing scored)")
+                print(f"{held.revision} freeze {path}: {monthly.sha256(path)} (nothing scored)")
                 return 0
             if monthly.sha256(path) != args.freeze_sha256 or json.loads(path.read_text(encoding="utf-8")) != receipt:
                 raise Refused("freeze receipt differs from the published hash or authenticated inputs")

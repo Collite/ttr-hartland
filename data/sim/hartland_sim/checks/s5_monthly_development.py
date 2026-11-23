@@ -25,8 +25,11 @@ from hartland_sim.setup.opening import REPO_DIR
 from hartland_sim.world import Meta
 
 FREEZE = "freeze.json"
+ORIGINAL_HEAD = "b594dcee9f305e2ff4ab626d6218a2cf19046af4"
+ORIGINAL_INPUT_SHA256 = "c7c3bf12e0d36919d8d9e0bdbfcae73d595fb303924882f7201102e0bf1572fd"
 # Exhaustive generator equivalence check: these are the only changes admitted when reusing an earlier build.
 EVALUATOR_PATHS = {
+    "data/s5_evaluation_group.yaml",
     "data/s5_evaluation_monthly.yaml",
     "data/sim/hartland_sim/checks/s5_development.py",
     "data/sim/hartland_sim/checks/s5_monthly.py",
@@ -34,6 +37,7 @@ EVALUATOR_PATHS = {
     "data/sim/tests/test_s5_development.py",
     "data/sim/tests/test_s5_monthly.py",
     "data/sim/tests/test_s5_monthly_development.py",
+    "data/sim/tests/test_stories.py",
     "data/stories/pilot/s5_monthly.sql",
 }
 
@@ -90,6 +94,10 @@ def freeze(
 ) -> dict[str, Any]:
     """Verify source identity for every world before the evaluator is allowed to see any scores."""
     resolved_head = _git("rev-parse", "--verify", "--end-of-options", f"{source_head}^{{commit}}")
+    if held.revision == s5_monthly.GROUP_REVISION and (
+        resolved_head != ORIGINAL_HEAD or input_sha != ORIGINAL_INPUT_SHA256
+    ):
+        raise dev.Refused("NH-D28 requires the original build head and input receipt recorded in #24 and #25")
     equivalent(resolved_head, head)
     count = authenticate(inputs, manifest, input_sha)
     config, stories, baseline = WorldConfig.load(), StoriesConfig.load(), Evaluation.load()
@@ -170,6 +178,8 @@ def score(
     protocol: Protocol,
     dsn: str,
 ) -> str:
+    if held.revision == s5_monthly.GROUP_REVISION:
+        raise dev.Refused("group scoring is unavailable")
     baseline = Evaluation.load()
     reports = []
     checkpoints = root / "worlds"
