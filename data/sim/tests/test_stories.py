@@ -16,6 +16,7 @@ import yaml
 from hartland_sim.checks import s5_decision, s5_expected
 from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.checks.s5_development import monthly_sql
+from hartland_sim.checks.s5_monthly import GROUP_REVISION, MONTHLY_REVISION
 from hartland_sim.checks.stories import a6_bars
 from hartland_sim.cli import main
 from hartland_sim.config import OPPOSITE, STORIES_DIR, ConfigError, InventoryConfig, StoriesConfig, WorldConfig
@@ -28,7 +29,7 @@ STREAMS = set(
     "supply route event shop weather letter scan".split()
 )
 
-MONTHLY_FRAGMENT = "pilot/s5_monthly.sql"
+MONTHLY_FRAGMENTS = {"pilot/s5_monthly.sql": MONTHLY_REVISION, "pilot/s5_group.sql": GROUP_REVISION}
 
 WRITES = re.compile(r"\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy)\b", re.I)
 
@@ -43,7 +44,7 @@ def _sql(path: str) -> str:
 
 
 def _statement(name: str) -> str:
-    text = monthly_sql() if name == MONTHLY_FRAGMENT else _sql(name)
+    text = monthly_sql(MONTHLY_FRAGMENTS[name]) if name in MONTHLY_FRAGMENTS else _sql(name)
     return "\n".join(line for line in text.splitlines() if not line.startswith("--"))
 
 
@@ -78,7 +79,7 @@ def test_every_sql_file_is_one_read_only_select(stories: StoriesConfig) -> None:
     files = [detector.sql for story in stories.stories for detector in story.detectors]
     files += [anomaly.probe.sql for anomaly in stories.anomalies]
     files += list(s5_decision.SQL)  # the pilot's decision quality, s5.sql and s5_best_worst.sql from S2.11 (G2 S2.9)
-    files.append(MONTHLY_FRAGMENT)
+    files.extend(MONTHLY_FRAGMENTS)
     on_disk = sorted(f"{path.parent.name}/{path.name}" for path in STORIES_DIR.glob("*/*.sql"))
     assert sorted(files) == on_disk
     for name in files:
