@@ -8,6 +8,11 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      s5_freeze:
+        description: Published NH-D28 candidate SHA-256 for the full held-out protocol
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -103,9 +108,94 @@ jobs:
       - name: just stories-check --dry (the answer key)
         run: just stories-check --dry
 
+      # The short smoke must also leave S5 NOT_CERTIFIED.
       # `stories.md` is written only after every twin has run, into a fresh run folder, and ends with "N of M run checks
       # pass": the grep fails when the check crashed or no twin ran (M = 0, every table missing), whatever the verdicts.
       - name: just stories-check --csv ci-3-months (the twins over the build; one quarter judges nothing)
         run: |
           just stories-check --csv ci-3-months || true
           grep -qE '^[0-9]+ of [1-9][0-9]* run checks pass' data/build/ci-3-months/stories.md
+          grep -qE '1 NOT_CERTIFIED;' data/build/ci-3-months/stories.md
+
+  # Each seed waits for all three modes of the preceding seed to pass. This permits one
+  # sequential workflow even when the suite exceeds a hosted runner's per-job time limit.
+  s5-seed-1:
+    if: github.event_name == 'workflow_dispatch' && inputs.s5_freeze != ''
+    needs: [unit, component, build, build-world]
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 1
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-2:
+    needs: s5-seed-1
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 2
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-3:
+    needs: s5-seed-2
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 3
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-4:
+    needs: s5-seed-3
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 4
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-5:
+    needs: s5-seed-4
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 5
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-6:
+    needs: s5-seed-5
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 6
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-7:
+    needs: s5-seed-6
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 7
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-8:
+    needs: s5-seed-7
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 8
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-9:
+    needs: s5-seed-8
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 9
+      freeze: ${{ inputs.s5_freeze }}
+  s5-seed-10:
+    needs: s5-seed-9
+    uses: ./.github/workflows/s5-certification-seed.yml
+    with:
+      seed_index: 10
+      freeze: ${{ inputs.s5_freeze }}
+
+  s5-full-protocol:
+    if: github.event_name == 'workflow_dispatch' && inputs.s5_freeze != ''
+    needs: [s5-seed-1, s5-seed-2, s5-seed-3, s5-seed-4, s5-seed-5, s5-seed-6, s5-seed-7, s5-seed-8, s5-seed-9, s5-seed-10]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: seed-*
+          path: data/build/s5-certification
+      - name: Verify all thirty worlds against the published frozen candidate
+        env:
+          S5_FREEZE: ${{ inputs.s5_freeze }}
+        run: |
+          uv run --locked python -m hartland_sim.checks.s5_certify verify data/build/s5-certification \
+            --head "$GITHUB_SHA" --freeze "$S5_FREEZE"

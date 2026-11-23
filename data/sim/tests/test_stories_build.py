@@ -31,7 +31,7 @@ import pytest
 from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.checks.stories import S6_FROM, Build, Verdict, a6_arc, a6_bars, check, gains, s6_reps
 from hartland_sim.cli import main
-from hartland_sim.config import StoriesConfig, WorldConfig
+from hartland_sim.config import Detector, StoriesConfig, WorldConfig
 from hartland_sim.io.reference import read as read_reference
 from hartland_sim.loop.build import Built
 from hartland_sim.loop.field import PLANTED_SIGHTINGS
@@ -94,9 +94,9 @@ def test_the_null_world_fails_them(null_world: Built) -> None:
     found = _judged(check(null_world.run, StoriesConfig.load()))
     assert set(found) == set(JUDGED)
     assert not any(v.passed for v in found.values()), [(v.check, v.value) for v in found.values()]
-    # each gives the null world's side, but S5's spread (its strict xfail below, transferred to G2 S2.4)
+    # The legacy fixture still exercises every non-S5 story against its null world.
     verdicts = check(null_world.run, StoriesConfig.load(), null=True)
-    assert all(v.passed is not False for v in verdicts if v.check != "detectors/s5_best_worst.sql"), [
+    assert all(v.passed is not False for v in verdicts if v.story != "S5"), [
         (v.check, v.value) for v in verdicts if v.passed is False
     ]
 
@@ -303,7 +303,16 @@ def test_the_prompts_of_a_year_their_kinds_caps_and_czech(story_world: Built) ->
 
 
 def _s5(world: Built, null: bool = False) -> dict[str, Verdict]:
-    return {v.check: v for v in check(world.run, StoriesConfig.load(), null=null) if v.story == "S5"}
+    from hartland_sim.checks.stories import judge, s5, s5_best_worst
+
+    stories = StoriesConfig.load()
+    build = Build(world.run)
+    rank = Detector("detectors/s5.sql", "return_rank_vs_skill_rank", 0.8, ">=", "<")
+    spread = Detector("historical/s5_best_worst_ratio.sql", "best_over_worst_gain_per_cost", 1.35, ">=", "<")
+    return {
+        rank.sql: judge("S5", rank, s5(build, stories), null),
+        spread.sql: judge("S5", spread, s5_best_worst(build, stories), null),
+    }
 
 
 def test_s5_s_rank_passes_on_the_story_world_and_not_on_the_null(story_world: Built, null_world: Built) -> None:
@@ -324,13 +333,13 @@ S5_SPREAD = (
 
 @pytest.mark.xfail(strict=True, reason=S5_SPREAD)
 def test_s5_s_spread_passes_on_the_story_world(story_world: Built) -> None:
-    found = _s5(story_world)["detectors/s5_best_worst.sql"]
+    found = _s5(story_world)["historical/s5_best_worst_ratio.sql"]
     assert found.passed, found.value
 
 
 @pytest.mark.xfail(strict=True, reason=S5_SPREAD)
 def test_s5_s_spread_fails_on_the_null_world(null_world: Built) -> None:
-    found = _s5(null_world, null=True)["detectors/s5_best_worst.sql"]
+    found = _s5(null_world, null=True)["historical/s5_best_worst_ratio.sql"]
     assert found.passed, found.value
 
 

@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 import yaml
 
-from hartland_sim.checks import s5_decision, s5_expected
+from hartland_sim.checks import s5_certify, s5_decision, s5_expected
 from hartland_sim.checks.czech import assert_czech_all
 from hartland_sim.checks.s5_development import monthly_sql
 from hartland_sim.checks.s5_monthly import GROUP_REVISION, MONTHLY_REVISION
@@ -28,6 +28,8 @@ STREAMS = set(
     "demand basket acquire churn visit note observe sighting prompt_outcome pos pricing_agree payment return complaint "
     "supply route event shop weather letter scan".split()
 )
+
+HISTORICAL_S5 = ("detectors/s5.sql", "historical/s5_best_worst_ratio.sql")
 
 MONTHLY_FRAGMENTS = {"pilot/s5_monthly.sql": MONTHLY_REVISION, "pilot/s5_group.sql": GROUP_REVISION}
 
@@ -66,7 +68,7 @@ def test_every_story_has_a_detector_and_a_null_world_direction(stories: StoriesC
     for story in stories.stories:
         for detector in story.detectors:
             assert detector.null_world == OPPOSITE[detector.direction], detector.sql
-    assert sum(len(story.detectors) for story in stories.stories) == 10
+    assert sum(len(story.detectors) for story in stories.stories) == 9
 
 
 def test_every_case_has_a_probe(stories: StoriesConfig) -> None:
@@ -78,7 +80,7 @@ def test_every_case_has_a_probe(stories: StoriesConfig) -> None:
 def test_every_sql_file_is_one_read_only_select(stories: StoriesConfig) -> None:
     files = [detector.sql for story in stories.stories for detector in story.detectors]
     files += [anomaly.probe.sql for anomaly in stories.anomalies]
-    files += list(s5_decision.SQL)  # the pilot's decision quality, s5.sql and s5_best_worst.sql from S2.11 (G2 S2.9)
+    files += list(s5_decision.SQL) + list(HISTORICAL_S5)
     files.extend(MONTHLY_FRAGMENTS)
     on_disk = sorted(f"{path.parent.name}/{path.name}" for path in STORIES_DIR.glob("*/*.sql"))
     assert sorted(files) == on_disk
@@ -161,34 +163,22 @@ def test_s5_names_the_managers_skills(stories: StoriesConfig) -> None:
     assert re.search(
         rf"FILTER \(WHERE region = '{best}'\)\n    / NULLIF\(GREATEST\(MAX\(gain / NULLIF\(cost, 0\)\)"
         rf" FILTER \(WHERE region = '{worst}'\)",
-        _sql("detectors/s5_best_worst.sql"),
+        _sql(HISTORICAL_S5[1]),
     )
 
 
-def test_s5s_spread_is_derived_from_the_mechanics(stories: StoriesConfig) -> None:
-    """The spread is gain ÷ cost, not 04's return; G2 S2.3 T6 derived its threshold from the mechanics before the
-    first build (`checks.s5_expected`, its test holds the threshold between the paper's null world and story): the
-    YAML, the SQL's header and the stories README say so — and, with `s5_expected`, that it is provisional until S2.4
-    corrects the gain and re-derives it (NH-D17, review-248 R11)."""
-    (spread,) = stories.story("S5").also
-    assert (spread.sql, spread.metric, spread.threshold, spread.direction) == (
-        "detectors/s5_best_worst.sql",
-        "best_over_worst_gain_per_cost",
-        1.35,
-        ">=",
-    )
-    sql, yaml, readme = (
-        " ".join(_sql(name).replace("-- ", "").split()) for name in (spread.sql, "s5.yaml", "README.md")
-    )
+def test_s5s_historical_spread_retains_the_original_evidence() -> None:
+    sql, readme = (" ".join(_sql(name).replace("-- ", "").split()) for name in (HISTORICAL_S5[1], "README.md"))
     paper = " ".join((s5_expected.__doc__ or "").split())
     assert "The threshold, 1.35, is derived from the mechanics (G2 S2.3 T6, before the first build" in sql
-    assert "Derived at G2 S2.3 T6 from the mechanics, before the first build" in yaml
-    assert "S5's spread (`s5_best_worst.sql`) was set that way at G2 S2.3 T6, before the first build" in readme
-    provisional = (
-        r"provisional — S2\.4 corrects the gain and re-derives (it|this threshold) \(NH-D17\); it is not certified"
-    )
-    for text in (sql, yaml, readme, paper):
-        assert re.search(provisional, text), text[:80]
+    assert "S5's historical spread (`historical/s5_best_worst_ratio.sql`) was set that way" in readme
+    assert all("provisional" in doc for doc in (sql, readme, paper))
+
+
+def test_s5s_canonical_sql_uses_the_same_audited_group_query(stories: StoriesConfig) -> None:
+    assert stories.story("S5").detector.sql == s5_certify.GROUP_SQL
+    assembled = monthly_sql(GROUP_REVISION)
+    assert s5_certify.sql().split("\nWITH RECURSIVE", 1)[1] == assembled.split("\nWITH RECURSIVE", 1)[1]
 
 
 def test_s5s_two_files_judge_one_return() -> None:
@@ -199,7 +189,7 @@ def test_s5s_two_files_judge_one_return() -> None:
         assert found
         return found.group(0)
 
-    assert block(_sql("detectors/s5.sql")) == block(_sql("detectors/s5_best_worst.sql"))
+    assert block(_sql("detectors/s5.sql")) == block(_sql(HISTORICAL_S5[1]))
     assert "giveaway AS (" in block(_sql("detectors/s5.sql"))
 
 
@@ -390,6 +380,6 @@ def test_a_story_without_its_detector_fails_with_the_path(stories_copy: Path) ->
 def test_dry_lists_the_key(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["stories-check", "--dry"]) == 0
     out = capsys.readouterr().out
-    assert "stories-check --dry: 6 stories, 10 detectors, 15 probes — nothing run" in out
+    assert "stories-check --dry: 6 stories, 9 detectors, 15 probes — nothing run" in out
     assert "      detectors/s1.sql             min_peak_over_trough >= 1.25 · null world <" in out
-    assert "      detectors/s5_best_worst.sql  best_over_worst_gain_per_cost >= 1.35 · null world <" in out
+    assert "      detectors/s5_best_worst.sql  placement_quality_group_gap >= 0.1 · null world <" in out

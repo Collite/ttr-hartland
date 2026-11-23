@@ -1,7 +1,7 @@
 # S5 — the area managers place PoS material with different efficiency (design 04 §S5). Every manager chooses the
 # stores ∝ uplift ^ (pos_skill × choice_exponent): the skilled sharply, the weak nearly at random (review-248 ⚑R248-A).
 story: S5
-title_cs: Oblastní manažeři využívají stojany s různou efektivitou
+title_cs: Kvalita výběru umístění stojanů podle skupin
 enabled: true
 seed_stream: pos
 parameters:
@@ -24,19 +24,8 @@ parameters:
   withdraw_below: 0.05
   skilled_giveaway_cut: 0.30
 detector:
-  sql: detectors/s5.sql
-  metric: return_rank_vs_skill_rank # Spearman's rho over the six regions
-  threshold: 0.8
+  sql: detectors/s5_best_worst.sql
+  metric: placement_quality_group_gap # Q_H − Q_L; 0.10 means ten percentage points
+  threshold: 0.10
   direction: ">="
   null_world: "<"
-also:
-  - sql: detectors/s5_best_worst.sql
-    metric: best_over_worst_gain_per_cost
-    # Derived at G2 S2.3 T6 from the mechanics, before the first build (review-199 R199-B/C; `checks.s5_expected`):
-    # over the opening market the story's expected gain ÷ cost is PHA 7.10 ÷ VCH 4.61 = 1.54, the null world's 3.82 ÷
-    # 3.15 = 1.21 — not 1.0: Prague's stores sell more, so its displays gain more whoever places them. The threshold is
-    # their geometric mean, to the 0.05 below: 1.35. G5 S5.2 does not retune it (stories README).
-    # It is provisional — S2.4 corrects the gain and re-derives this threshold (NH-D17); it is not certified.
-    threshold: 1.35
-    direction: ">="
-    null_world: "<"

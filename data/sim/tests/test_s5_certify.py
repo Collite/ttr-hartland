@@ -13,9 +13,11 @@ import pytest
 from hartland_sim.checks import s5_certify as cert
 from hartland_sim.checks import s5_development as dev
 from hartland_sim.checks.s5_monthly import GROUP_FILE
+from hartland_sim.checks.stories import check
 from hartland_sim.config import Detector, StoriesConfig, WorldConfig
 from hartland_sim.evaluation import Evaluation
 from hartland_sim.protocol import Protocol
+from hartland_sim.world import Meta
 
 HELD = Evaluation.load(GROUP_FILE)
 PROTOCOL = Protocol.load()
@@ -115,3 +117,17 @@ def test_valid_control_rejection_is_a_successful_world(
     assert assessed.judged.status == "REJECTED"
     assert len(assessed.cases) == 301
     assert not assessed.failures
+
+
+def test_ordinary_acceptance_reports_group_units_and_rejects_broken_sources(
+    export: Path, configs: tuple[WorldConfig, StoriesConfig], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cert, "git_sha", lambda: (HEAD, False))
+    stories = configs[1]
+    result = cert.check(export, stories.story("S5").detector, stories, Meta.load(export))
+    assert result.passed is True
+    assert "Q_H 100,00 %" in result.note and "D 0,00 procentních bodů" in result.note
+    assert "NOT_ESTABLISHED" in result.note and "nevyužito" in result.detail
+    (export / "pos_placement_decision.csv").unlink()
+    (failed,) = [result for result in check(export, stories) if result.story == "S5"]
+    assert failed.passed is False and "pos_placement_decision" in failed.note

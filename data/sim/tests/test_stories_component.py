@@ -8,6 +8,7 @@ from decimal import Decimal
 import psycopg
 import pytest
 
+from hartland_sim.checks.s5_certify import GROUP_SQL
 from hartland_sim.config import STORIES_DIR, InventoryConfig, StoriesConfig
 
 pytestmark = pytest.mark.component
@@ -17,6 +18,7 @@ FILES = sorted(
     {detector.sql for story in STORIES.stories for detector in story.detectors}
     | {anomaly.probe.sql for anomaly in STORIES.anomalies}
 )
+FILES.remove(GROUP_SQL)
 
 
 @pytest.fixture(scope="module")
@@ -38,3 +40,13 @@ def test_it_runs_on_the_schema_and_returns_one_number(db: psycopg.Connection, na
     assert len(rows) == 1, name
     (value,) = rows[0]
     assert value is None or isinstance(value, int | float | Decimal), name
+
+
+def test_s5_group_query_on_empty_schema_is_inconclusive(db: psycopg.Connection) -> None:
+    with db.transaction(force_rollback=True):
+        db.execute("SET LOCAL search_path TO hartland")
+        result = db.execute((STORIES_DIR / GROUP_SQL).read_text(encoding="utf-8"), ("story",)).fetchone()
+    assert result is not None
+    regions, _, cases, inconclusive = result
+    assert len(regions) == 6 and cases is None
+    assert inconclusive["status"] == "INCONCLUSIVE"

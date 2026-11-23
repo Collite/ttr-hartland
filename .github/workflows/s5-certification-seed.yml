@@ -1,0 +1,55 @@
+# A seed job called serially by data-gate on the frozen certification head.
+name: s5-certification-seed
+
+on:
+  workflow_call:
+    inputs:
+      seed_index:
+        required: true
+        type: number
+      freeze:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  certify-seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: hartland
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --memory=2g
+          --memory-swap=2g
+    env:
+      HARTLAND_S5_PG: postgresql://postgres:hartland@127.0.0.1:5432/postgres
+      S5_INDEX: ${{ inputs.seed_index }}
+      S5_FREEZE: ${{ inputs.freeze }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Build and validate each mode of the registered seed in sequence
+        run: |
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          sudo --preserve-env=HARTLAND_S5_PG systemd-run --scope -p MemoryMax=8G -p MemorySwapMax=0 \
+            sudo --preserve-env=HARTLAND_S5_PG -u "$(id -un)" \
+            .venv/bin/python -u -m hartland_sim.checks.s5_certify seed "data/build/seed-$S5_INDEX" \
+            --head "$GITHUB_SHA" --freeze "$S5_FREEZE" --index "$S5_INDEX"
+      - name: Keep attempted results, including the first failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-${{ inputs.seed_index }}
+          path: data/build/seed-${{ inputs.seed_index }}/*.json
+          if-no-files-found: warn

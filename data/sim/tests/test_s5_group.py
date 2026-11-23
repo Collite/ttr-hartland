@@ -10,7 +10,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from hartland_sim.checks import s5_decision, s5_monthly
+from hartland_sim.checks import s5_certify, s5_decision, s5_monthly
 from hartland_sim.checks import s5_development as dev
 from hartland_sim.checks.s5_monthly import GROUP_FILE, GROUP_REVISION, MONTHLY_FILE
 from hartland_sim.evaluation import Evaluation
@@ -140,5 +140,5 @@ def test_group_development_sql(
             for row in rows:
                 put(hartland_db, table, **row)
         hartland_db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
-        parity = dev.compare(hartland_db, judged, cases, revision=GROUP_REVISION)
+        parity = dev.compare(hartland_db, judged, cases, revision=GROUP_REVISION, statement=s5_certify.sql())
         assert not parity.differences

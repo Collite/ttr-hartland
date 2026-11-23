@@ -489,7 +489,7 @@ def _s5_in_sql(
             for row in found:
                 put(db, table, **row)
         db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
-        metrics = _one(db, "detectors/s5.sql"), _one(db, "detectors/s5_best_worst.sql")
+        metrics = _one(db, "detectors/s5.sql"), _one(db, "historical/s5_best_worst_ratio.sql")
     return (*metrics, *twins)
 
 

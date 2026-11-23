@@ -589,4 +589,4 @@ def metadata(pilot: Pilot, config: WorldConfig) -> tuple[tuple[str, str], ...]:
         pilot.digest or "-",
         "NOT_CERTIFIED",
     )
-    return (*zip(META_KEYS, values, strict=True), *evaluation.identity())
+    return (*zip(META_KEYS, values, strict=True), *evaluation.identity(evaluation.GROUP_FILE))

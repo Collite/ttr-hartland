@@ -23,6 +23,7 @@ from hartland_sim.config import DATA_DIR
 from hartland_sim.protocol import Protocol
 
 EVALUATION_FILE = DATA_DIR / "s5_evaluation.yaml"
+GROUP_FILE = DATA_DIR / "s5_evaluation_group.yaml"
 CLAIM = "placement_decision_quality"
 # the `_sim_meta` keys a pilot-mode build adds after the protocol's (`loop.pilot.metadata`), in its order
 META_KEYS = ("s5_evaluation_revision", "s5_evaluation_sha256", "s5_claim")
