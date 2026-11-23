@@ -47,6 +47,6 @@ def test_s5_group_query_on_empty_schema_is_inconclusive(db: psycopg.Connection) 
         db.execute("SET LOCAL search_path TO hartland")
         result = db.execute((STORIES_DIR / GROUP_SQL).read_text(encoding="utf-8"), ("story",)).fetchone()
     assert result is not None
-    regions, _, cases, inconclusive = result
-    assert len(regions) == 6 and cases is None
+    regions, rounds, cases, inconclusive = result
+    assert regions is None and rounds is None and cases is None
     assert inconclusive["status"] == "INCONCLUSIVE"

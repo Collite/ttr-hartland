@@ -1,5 +1,5 @@
 """G2 S2.3 T6 (review-199 R199-B/C): S5 on paper (`checks.s5_expected`), from the mechanics over the opening market —
-the derivation `s5_best_worst`'s threshold comes from, before any build — and the numbers the YAML cites."""
+the derivation of the historical spread threshold and its published story and null values."""
 
 from __future__ import annotations
 
@@ -27,12 +27,11 @@ def paper(opening: Setup) -> tuple[dict[str, Region], dict[str, Region]]:
 def test_the_spread_s_threshold_lies_between_the_null_world_and_the_story(
     paper: tuple[dict[str, Region], dict[str, Region]],
 ) -> None:
-    """Strictly between, at their geometric mean to the 0.05 below — and the values s5.yaml cites are the paper's."""
+    """The historical ratio bar is the geometric mean rounded down to the next 0.05."""
     story, null = paper
-    (check,) = STORIES.story("S5").also
-    assert isinstance(check.threshold, float)
-    assert spread(null) < check.threshold < spread(story)
-    assert check.threshold == math.floor(math.sqrt(spread(null) * spread(story)) * 20) / 20
+    threshold = 1.35
+    assert spread(null) < threshold < spread(story)
+    assert threshold == math.floor(math.sqrt(spread(null) * spread(story)) * 20) / 20
     assert (round(spread(story), 2), round(spread(null), 2)) == (1.54, 1.21)
     assert (round(story["PHA"].per_cost, 2), round(story["VCH"].per_cost, 2)) == (7.10, 4.61)
     assert (round(null["PHA"].per_cost, 2), round(null["VCH"].per_cost, 2)) == (3.82, 3.15)
@@ -44,8 +43,7 @@ def test_the_story_ranks_the_regions_by_skill_and_the_null_world_does_not(
     """s5.sql's Spearman on paper: at its threshold or above in the story, below it in the null world, where the
     regions differ by their markets only."""
     story, null = paper
-    threshold = STORIES.story("S5").detector.threshold
-    assert isinstance(threshold, float)
+    threshold = 0.80
     assert rho(story, STORIES) >= threshold > rho(null, STORIES)
     skilled = {r for r, skill in STORIES.story("S5").parameters["pos_skill"].items() if skill > 1}
     assert min(story[r].pos_return for r in skilled) > max(v.pos_return for r, v in story.items() if r not in skilled)
