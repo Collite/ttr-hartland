@@ -14,7 +14,7 @@ S2-affluence counts an order only where the promotion names its channel (ttr-har
 until the SQL takes it). **G1 S1.4:** S6 (`s6`, and `s6_targets` — not run until `promotion_result` exists), its
 measure re-cut in S1.5 (`measured`). **G2 S2.1:** the field's probes, A-6 (`a6`), A-7 (`a7`), A-8 (`a8`). **G2 S2.3:**
 S5 (`s5`, `s5_best_worst`, their shared region block `s5_regions`) and A-6's whole arc (`a6_arc`: the sightings, the
-facings, the dip). The others (S3, the other probes) arrive with their stages.
+facings, the dip). **G2 S2.12:** S3 (`s3`) counts the pinned composite placements with churn on the effective loss day.
 
 **The probes** (`anomalies.yaml`): a probe returns one count, judged by its `expect` (`>= n`, `= n`, or `rows` for
 any row at all); with `--null` it must not hold — with the anomaly off the probe finds nothing. A disabled anomaly's
@@ -44,6 +44,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from hartland_sim.checks.s3 import s3
 from hartland_sim.config import Detector, StoriesConfig, inventory
 from hartland_sim.ids import row_id
 from hartland_sim.world import META_FILE, Meta
@@ -800,6 +801,7 @@ TWINS: Mapping[str, Twin] = {
     "detectors/s1_weather.sql": s1_weather,
     "detectors/s2.sql": s2,
     "detectors/s2_affluence.sql": s2_affluence,
+    "detectors/s3.sql": s3,
     "detectors/s4.sql": s4,
     "detectors/s6.sql": s6,
     "detectors/s6_targets.sql": s6_targets,

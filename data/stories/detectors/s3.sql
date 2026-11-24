@@ -5,7 +5,8 @@
 --                 tourplans also reach the key-account chains' stations, whose orders come through the key account);
 --   acquisition = customers won in the rep's area while assigned ÷ the potential store-days there: the area's open
 --                 market stores × the days, less the days they were customers;
---   churn       = customers lost likewise ÷ the active customer-days there;
+--   churn       = customers lost on the effective loss day (the rep on duty the day after customer.until) ÷ the
+--                 active customer-days there; only customers marked lost contribute to the numerator;
 --   cross-sell  = customer × lines bought for the first time likewise ÷ the active customer-days. A line counts only
 --                 when it comes more than 90 days after the customer's start or the history's (2024-01-01), whichever
 --                 is later, so the first orders of the history are not "new" lines.
@@ -41,7 +42,8 @@ market AS (
     WHERE st.store_class <> 'horeca' AND NOT COALESCE(ch.is_key_account, false)
 ),
 patron AS (
-    SELECT c.customer_id, c.since, c.until, m.area_id
+    SELECT c.customer_id, c.since, c.until, m.area_id,
+           CASE WHEN c.status = 'lost' THEN c.until + 1 END AS lost_on
     FROM customer c
     JOIN market m ON m.store_id = c.store_id
     WHERE c.channel = 'small_retail' AND c.since IS NOT NULL
@@ -81,7 +83,7 @@ won AS (
 lost AS (
     SELECT d.employee_id, COUNT(*) AS n
     FROM patron p
-    JOIN duty d ON d.area_id = p.area_id AND p.until BETWEEN d.from_day AND d.to_day
+    JOIN duty d ON d.area_id = p.area_id AND p.lost_on BETWEEN d.from_day AND d.to_day
     GROUP BY d.employee_id
 ),
 first_line AS (
