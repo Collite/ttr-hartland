@@ -132,12 +132,17 @@ def check(run: Path, detector: Detector, stories: StoriesConfig, meta: Meta | No
     passed = not assessed.failures
     values = group_summary(found) if found is not None else ""
     notes = [values, *judged.reasons, "Kauzální návratnost: NOT_ESTABLISHED."]
+    failed_omissions = [case for case in assessed.cases[1:] if case.failure]
     if assessed.cases:
-        omissions = sum(bool(case.failure) for case in assessed.cases[1:])
-        notes.append(f"Nesplněné výpustky měsíců: {omissions} z 300.")
+        notes.append(f"Nesplněné výpustky měsíců: {len(failed_omissions)} z 300.")
         if mode == "story":
             guard = "splněn" if found and found.q_high_holds else "nesplněn"
-            notes.append(f"Práh Q_H 70 %: {guard}.")
+            notes.append(f"Práh Q_H 70 % za celé období: {guard}.")
+    detail = ""
+    if judged.frame is not None:
+        detail = s5_decision.markdown(judged, held, group_scores=values, overall_status="PASS" if passed else "FAIL")
+        if failed_omissions:
+            detail += _omission_details(failed_omissions, held, direction)
     return Verdict(
         *common,
         found.difference if found is not None else None,
@@ -146,8 +151,20 @@ def check(run: Path, detector: Detector, stories: StoriesConfig, meta: Meta | No
         passed,
         " ".join(note for note in notes if note),
         "NOT_CERTIFIED" if judged.status == "NOT_CERTIFIED" else "",
-        s5_decision.markdown(judged, held, group_scores=values) if judged.frame is not None else "",
+        detail,
     )
+
+
+def _omission_details(cases: Sequence[s5_monthly.Case], held: Evaluation, direction: str) -> str:
+    high = f"{held.acceptance['q_high']:.2f}".replace(".", ",")
+    gap = f"{held.acceptance['difference']:.2f}".replace(".", ",")
+    thresholds = {"q_high": f"Q_H ≥ {high}", "difference": f"D {'≥' if direction == '>=' else '<'} {gap}"}
+    lines = ["", "## Nesplněné výpustky měsíců", ""]
+    for case in cases:
+        dates = " a ".join(day.isoformat() for day in case.omitted)
+        conditions = (case.failure,) if isinstance(case.failure, str) else case.failure or ()
+        lines.append(f"- {dates} — {', '.join(thresholds[condition] for condition in conditions)}")
+    return "\n".join(lines) + "\n"
 
 
 def group_summary(found: s5_decision.Verdict) -> str:
