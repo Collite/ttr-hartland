@@ -260,6 +260,53 @@ def test_s1_weather_reads_the_stores_not_the_dcs(db: psycopg.Connection, put: Pu
 # ── S3: rates over their bases ───────────────────────────────────────────────
 
 
+@pytest.mark.parametrize(
+    ("status", "until", "expected_rep"),
+    [
+        pytest.param("lost", date(2024, 2, 14), 1, id="in-window"),
+        pytest.param("lost", date(2024, 2, 29), 2, id="transfer-day"),
+        pytest.param("lost", date(2023, 12, 31), 1, id="first-day"),
+        pytest.param("lost", date(2024, 3, 30), 2, id="last-day"),
+        pytest.param("lost", date(2024, 3, 31), None, id="after-cutoff"),
+        pytest.param("active", None, None, id="open-active-customer"),
+        pytest.param("active", date(2024, 3, 15), None, id="censored-active-customer"),
+    ],
+)
+def test_s3_attributes_only_effective_churn_in_the_window(
+    db: psycopg.Connection, put: Put, status: str, until: date | None, expected_rep: int | None
+) -> None:
+    with db.transaction(force_rollback=True):
+        put(db, "area", area_id=10)
+        for rep, start, end in (
+            (1, TENURE["valid_from"], date(2024, 2, 29)),
+            (2, date(2024, 3, 1), TENURE["valid_to"]),
+        ):
+            put(
+                db,
+                "assignment",
+                assignment_id=rep,
+                employee_id=rep,
+                kind="rep_area",
+                area_id=10,
+                valid_from=start,
+                valid_to=end,
+            )
+        put(db, "store", store_id=1, area_id=10, store_class="minimarket")
+        put(
+            db,
+            "customer",
+            customer_id=1,
+            channel="small_retail",
+            store_id=1,
+            since=date(2023, 6, 1),
+            until=until,
+            status=status,
+        )
+        _last_order_day(db, put, date(2024, 3, 31))
+        losses = _cte(db, "detectors/s3.sql", "lost")
+    assert {rep: row["n"] for rep, row in losses.items()} == ({} if expected_rep is None else {expected_rep: 1})
+
+
 def test_s3_acquisition_is_per_potential_store_not_per_day(db: psycopg.Connection, put: Put) -> None:
     """Two reps win one store in fifty: one in an area of 50 stores, one in an area of 200. Their acquisition rates
     are equal; per duty day they were 4× apart."""
