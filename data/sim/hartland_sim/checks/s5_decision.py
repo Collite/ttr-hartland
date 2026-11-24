@@ -766,12 +766,18 @@ def _manifest(build: Build, orders: Frame, lines: Frame, first_day: date) -> lis
     return out
 
 
-def judge(run: Path, protocol: Protocol | None = None, held: Evaluation | None = None) -> Judged:
+def judge(
+    run: Path,
+    protocol: Protocol | None = None,
+    held: Evaluation | None = None,
+    *,
+    source_evaluation: Evaluation | None = None,
+) -> Judged:
     """`run`'s status (module docstring)."""
     protocol, held = protocol or Protocol.load(), held or Evaluation.load()
     ident = identity(run)
     mode = ident.get("pilot_mode")
-    why = stale(run, protocol, held)
+    why = stale(run, protocol, source_evaluation or held)
     if why:
         return Judged(run, mode, "NOT_CERTIFIED", tuple(why), None, None, None, ident)
     build = Build(run)
@@ -787,18 +793,39 @@ def judge(run: Path, protocol: Protocol | None = None, held: Evaluation | None =
 # ── the readout ──────────────────────────────────────────────────────────────
 
 
-def markdown(judged: Judged, held: Evaluation | None = None) -> str:
+def markdown(
+    judged: Judged,
+    held: Evaluation | None = None,
+    *,
+    group_scores: str | None = None,
+    overall_status: str | None = None,
+) -> str:
     """The judgement in Czech, forecast and observed apart (design09 §§2, 4): the claim's label and its disclosure,
     each region's Q with its support, its observed economics unattributed, and the measures not made."""
     held = held or Evaluation.load()
     labels = held.labels
-    lines = [f"# {labels['title_cs']}: {judged.status}", "", f"_{labels['disclosure_cs']}_", ""]
+    title = labels["title_cs"] if group_scores is None else "Kvalita výběru umístění stojanů podle skupin"
+    if overall_status is None:
+        lines = [f"# {title}: {judged.status}"]
+    else:
+        lines = [
+            f"# {title}",
+            "",
+            f"- Celkový výsledek: {overall_status}",
+            f"- Výsledek za celé období: {judged.status}",
+        ]
+    lines += ["", f"_{labels['disclosure_cs']}_", ""]
     lines += [f"- {reason}" for reason in judged.reasons]
     v, frame = judged.verdict, judged.frame
     if v is not None and frame is not None:
         lines += [
             "",
-            f"Pořadí oblastí: {_fmt(v.rank)} · Q vyšší skupiny: {_fmt(v.q_high)} · rozdíl skupin: {_fmt(v.difference)}",
+            group_scores
+            if group_scores is not None
+            else (
+                f"Pořadí oblastí: {_fmt(v.rank)} · Q vyšší skupiny: {_fmt(v.q_high)} "
+                f"· rozdíl skupin: {_fmt(v.difference)}"
+            ),
             "",
             f"## {labels['forecast_cs']}",
             "",

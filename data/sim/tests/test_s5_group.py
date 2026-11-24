@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -10,10 +11,13 @@ from typing import Any
 import psycopg
 import pytest
 
-from hartland_sim.checks import s5_decision, s5_monthly
+from hartland_sim.checks import s5_certify, s5_decision, s5_monthly
 from hartland_sim.checks import s5_development as dev
 from hartland_sim.checks.s5_monthly import GROUP_FILE, GROUP_REVISION, MONTHLY_FILE
+from hartland_sim.cli import main
+from hartland_sim.config import StoriesConfig, WorldConfig
 from hartland_sim.evaluation import Evaluation
+from hartland_sim.protocol import Protocol
 
 HELD = Evaluation.load(GROUP_FILE)
 LEGACY = Evaluation.load(MONTHLY_FILE)
@@ -121,6 +125,49 @@ def test_group_development_twin(scenario: str, decision_rows: Callable[..., Any]
     _check(scenario, base, judged, cases)
 
 
+@pytest.mark.parametrize(
+    ("scenario", "full_status", "failed_count", "dates_and_conditions"),
+    [
+        ("decisive pair", "PASS", 1, "2024-02-01 a 2025-06-01 — Q_H ≥ 0,70"),
+        ("both story bars fail", "REJECTED", 300, "2024-01-01 — Q_H ≥ 0,70, D ≥ 0,10"),
+        ("control at gap with low high mean", "FAIL", 300, "2024-01-01 — D < 0,10"),
+    ],
+)
+def test_stories_check_reports_failed_omissions(
+    scenario: str,
+    full_status: str,
+    failed_count: int,
+    dates_and_conditions: str,
+    decision_rows: Callable[..., Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built = _world(scenario, decision_rows, tmp_path)
+    seed = int(built.meta["master_seed"])
+    world, stories = WorldConfig.load(), StoriesConfig.load()
+    mode = built.meta["pilot_mode"]
+    expected = dev.expected(seed, mode, world, stories, Protocol.load().window_until)
+    built.meta.update(dict(HELD.identity()), stories_sha256=expected.stories_sha256, build_id=expected.build_id)
+    built.write(tmp_path)
+    head = "1" * 40
+    path = tmp_path / "build.json"
+    build_report = json.loads(path.read_bytes())
+    build_report.update(git_sha=head, stories_sha256=expected.stories_sha256, build_id=expected.build_id)
+    path.write_text(json.dumps(build_report), encoding="utf-8")
+    monkeypatch.setattr(s5_certify, "git_sha", lambda: (head, False))
+
+    flags = ["--null"] if mode == "full-null" else []
+    assert main(["stories-check", "--csv", str(tmp_path), *flags]) == 1
+    text = (tmp_path / "stories.md").read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| S5 |"))
+    assert "| FAIL (" in row and f"{failed_count} z 300" in row
+    assert "Celkový výsledek: FAIL" in text
+    assert f"Výsledek za celé období: {full_status}" in text
+    assert f"- {dates_and_conditions}" in text
+    report = text.split("## Nesplněné výpustky měsíců", 1)[1]
+    assert sum(line.startswith("- ") for line in report.splitlines()) == failed_count
+
+
 @pytest.mark.component
 @pytest.mark.parametrize("scenario", SCENARIOS)
 def test_group_development_sql(
@@ -140,5 +187,5 @@ def test_group_development_sql(
             for row in rows:
                 put(hartland_db, table, **row)
         hartland_db.execute("REFRESH MATERIALIZED VIEW hartland.sales_pl")
-        parity = dev.compare(hartland_db, judged, cases, revision=GROUP_REVISION)
+        parity = dev.compare(hartland_db, judged, cases, revision=GROUP_REVISION, statement=s5_certify.sql())
         assert not parity.differences

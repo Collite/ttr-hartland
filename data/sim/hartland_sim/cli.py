@@ -132,11 +132,15 @@ def build_world(args: argparse.Namespace) -> int:
     from hartland_sim.protocol import Protocol
 
     world = WorldConfig.load()
-    until = args.until or (Protocol.load().window_until if args.pilot else world.history.until)
-    name = f"pilot-{args.pilot}" if args.pilot else "null" if args.null else "world"
+    pilot = args.pilot
+    if pilot is None and not args.legacy:
+        pilot = "full-null" if args.null else "story"
+    legacy_null = args.null and (args.pilot is not None or args.legacy)
+    until = args.until or (Protocol.load().window_until if pilot else world.history.until)
+    name = f"pilot-{pilot}" if pilot else "null" if legacy_null else "world"
     run = _run_dir(args.run or f"{name}-{until.isoformat()}")
     try:
-        built = build(run, until, world, null=args.null, pilot=args.pilot, seed=args.seed)
+        built = build(run, until, world, null=legacy_null, pilot=pilot, seed=args.seed)
     except FileExistsError as error:
         print(f"hartland-sim build-world: {error} (another --run, or remove it)", file=sys.stderr)
         return 1
@@ -145,11 +149,11 @@ def build_world(args: argparse.Namespace) -> int:
         return 1
     first = world.history.first_day  # a quarter's first day: the quarters from its own are the written ones
     written = sum(q["orders"] for name, q in built.report.quarters.items() if name >= quarter(first))
-    pilot = f", pilot {args.pilot} NOT_CERTIFIED" if args.pilot else ""
+    mode_note = f", pilot {pilot} NOT_CERTIFIED" if pilot else ""
     seed = f", seed {built.meta.master_seed}" if args.seed is not None else ""
     print(
         f"hartland-sim build-world: {run} — {written} orders written, {first} to {until},"
-        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id}{seed}{pilot})"
+        f" in {built.timings['total']:.0f} s (build id {built.meta.build_id}{seed}{mode_note})"
     )
     return 0
 
@@ -160,11 +164,13 @@ def _build_world_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--null", action="store_true", help="the null world: every story disabled (04 §9)")
     from hartland_sim.protocol import MODES
 
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
         "--pilot",
         choices=MODES,
-        help="S5's opt-in pilot in this mode (design08 §8), NOT_CERTIFIED; not with --null (its mode is full-null)",
+        help="S5 pilot mode (default: story, or full-null with --null)",
     )
+    selection.add_argument("--legacy", action="store_true", help="build the historical world without S5 pilot data")
     parser.add_argument(
         "--seed",
         type=int,

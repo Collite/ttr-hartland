@@ -25,8 +25,8 @@ the cases, the Customer Margin (gross revenue less every discount, the delivery 
 0; no COGS, contracts §4) and the agreed discount. Before G3/G4 write the costs, the Customer Margin is the net
 revenue.
 
-**A pilot run** (G2 S2.6, `_sim_meta.pilot_mode`): S5's checks are NOT_CERTIFIED, never run nor passed — design08 §8's
-protocol judges the pilot (S2.7–S2.8) — so the check exits 1 on it.
+**A pilot run** (G2 S2.11, `_sim_meta.pilot_mode`): S5 uses the audited group assessment on a complete export. Short
+and legacy exports report NOT_CERTIFIED. The full held-out protocol is a separate gate.
 
 The report goes to `build/<run>/stories.md`: story · check · metric · threshold · result, and a note where a twin
 has more to say (S1: each line's ratio, so the line that sets the margin shows).
@@ -801,8 +801,6 @@ TWINS: Mapping[str, Twin] = {
     "detectors/s2.sql": s2,
     "detectors/s2_affluence.sql": s2_affluence,
     "detectors/s4.sql": s4,
-    "detectors/s5.sql": s5,
-    "detectors/s5_best_worst.sql": s5_best_worst,
     "detectors/s6.sql": s6,
     "detectors/s6_targets.sql": s6_targets,
 }
@@ -819,7 +817,8 @@ class Verdict:
     threshold: float | tuple[float, float]
     passed: bool | None  # None: not run
     note: str = ""
-    status: str = ""  # a result other than pass/FAIL/not run: NOT_CERTIFIED (a pilot run's S5, G2 S2.6)
+    status: str = ""  # NOT_CERTIFIED for an S5 input that cannot be assessed
+    detail: str = ""
 
 
 def holds(value: float, direction: str, threshold: float | tuple[float, float]) -> bool:
@@ -854,18 +853,13 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
     """Every detector of every enabled story over the CSV build in `run` (module docstring), in the stories' order,
     and S4's k-means, reported; a disabled story's rows say so; then the probes (`probes`)."""
     build = Build(run)
-    mode = Meta.load(run).pilot_mode if (run / META_FILE).is_file() else None
+    from hartland_sim.checks import s5_certify
+
+    meta = Meta.load(run) if (run / META_FILE).is_file() else None
     out = []
     for story in stories.stories:
-        if mode is not None and story.story == "S5":  # never a pass: design08 §8's protocol judges it (S2.7–S2.8)
-            why = f"a {mode} pilot run: design08 §8's protocol judges S5"
-            for detector in story.detectors:
-                out.append(
-                    Verdict(
-                        "S5", detector.sql, detector.metric, None, detector.direction, detector.threshold, False, why,
-                        "NOT_CERTIFIED"
-                    )
-                )  # fmt: skip
+        if story.story == "S5" and story.enabled:
+            out.append(s5_certify.check(run, story.detector, stories, meta))
             continue
         if not story.enabled:
             for detector in story.detectors:
@@ -970,4 +964,5 @@ def report(verdicts: list[Verdict], run: Path, null: bool) -> str:
         + (f" {held} NOT_CERTIFIED;" if held else "")
         + f" {len(verdicts) - len(ran) - held} not run.\n"
     )
-    return head + "\n".join(rows) + tail
+    details = "\n".join(v.detail for v in verdicts if v.detail)
+    return head + "\n".join(rows) + ("\n\n" + details.rstrip() if details else "") + tail

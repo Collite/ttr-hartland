@@ -37,7 +37,7 @@ component tests run every file on the empty schema, and G5 S5.2 tunes the parame
 first full build.
 
 A threshold comes from the mechanics, never from a build: S2-affluence's 1.35 lies between the ≈ 1.68 that `s2.yaml`'s
-mechanics give over the real affluence quarters and the null world's 1.0. S5's spread (`s5_best_worst.sql`) was set
+mechanics give over the real affluence quarters and the null world's 1.0. S5's historical spread (`historical/s5_best_worst_ratio.sql`) was set
 that way at G2 S2.3 T6, before the first build (`hartland_sim/checks/s5_expected.py`): over the opening market the
 mechanics give PHA's gain ÷ cost over VCH's 1.54 in the story and 1.21 in the null world — Prague's stores sell more,
 so its displays gain more whoever places them — and the threshold, 1.35, lies between them. G5 S5.2 does not retune it.
@@ -53,3 +53,31 @@ repeats those codes, and a test keeps them equal to the YAML.
 The customers a case needs are pinned by a rule — the `rank`-th customer in OSM order matching a channel, an area, a
 chain or a store class — never by name: every store and café of the world is a real one from OpenStreetMap (⚑NH-2),
 and its behaviour here is invented.
+
+
+## S5 placement quality
+
+The canonical S5 detector is `detectors/s5_best_worst.sql`. Bind one of `story`, `skill-neutral` or `full-null`
+as its mode. Its result holds the audited regions, monthly rounds and all common calendar omission cases.
+The empty omission list is the full window. The case fields `q_high`, `q_low` and `difference` are fractions.
+The story requires `Q_H ≥ 0.70` and `D ≥ 0.10` on every date set. Each control must have `D < 0.10` throughout.
+The historical regional rank query (`detectors/s5.sql`) keeps its original meaning and plays no part in certification.
+
+`just stories-check --csv RUN` runs the source and audit-manifest judge before calculating the scores.
+The source checks authenticate the CSV build from the current checkout and reject incomplete exports.
+The full-protocol gate also compares those results to PostgreSQL on the same audited regional frame.
+The label **Kvalita výběru umístění stojanů podle skupin** describes pre-decision forecasts. Causal return is
+`NOT_ESTABLISHED`.
+
+Prepare a receipt at a clean final commit and publish its SHA-256 before dispatching the full protocol.
+
+```sh
+head=$(git rev-parse HEAD)
+uv run --locked python -m hartland_sim.checks.s5_certify prepare data/build/s5-freeze --head "$head"
+gh workflow run data-gate.yml --ref <frozen-branch> -f s5_freeze=<published-receipt-sha256>
+```
+
+Each seed job builds its three worlds sequentially and stops on the first failed validation. The final job requires
+thirty successful world receipts from that workflow run. A three-month smoke checks the path and reports
+`NOT_CERTIFIED`. The finite-suite result concerns forecast-based decision quality. The retained historical spread
+fixtures document the original ratio outcomes. [Earlier development NO-GO](https://github.com/Collite/ttr-hartland/pull/22)

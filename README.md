@@ -20,10 +20,9 @@ of their own.
 ## The reveal
 
 The data hides six stories and a set of smaller anomalies — seasonality, TV promotions, the reps' hidden skills,
-store clustering, the area managers' PoS efficiency, discount efficiency — and the answer key is public:
+store clustering, display placement quality by manager group, discount efficiency — and the answer key is public:
 [`data/stories/`](data/stories/) (the stories' parameters, a detector SQL per story, a probe per anomaly, the pinned
-reps and customers). `just stories-check` runs it against a build; `just stories-check --null` proves the null world
-gives the opposite. *(The key lands at G0 S0.4.)*
+reps and customers). `just stories-check --csv RUN` runs it against a CSV build. Add `--null` for a full-null build.
 
 ## Quick start
 
@@ -33,6 +32,22 @@ just                        # the recipes
 just test                   # ruff · mypy --strict · pytest (the unit tier)
 just test -m component      # the Postgres 16 tier (Docker for testcontainers, or HARTLAND_TEST_PG=<server DSN>)
 ```
+
+### Display placement quality
+
+`just build-world --csv --run story` selects the S5 story pilot. Use `--null` for its full-null control,
+`--pilot skill-neutral` for the skill-neutral control, or `--legacy` to reproduce the historical generator path.
+The new comparison covers the 24 months of 2024–2025. A shorter build reports S5 as `NOT_CERTIFIED`.
+
+S5 reports the higher and lower groups' average forecast-based choice scores (`Q_H`, `Q_L`) and their gap
+(`D = Q_H − Q_L`). A gap of `0.10` is ten percentage points. The audit includes all six regions and checks
+whether the result holds over the full window and after removing each month and each pair of months.
+Actual costs, idle assets and cancellations remain visible. Causal return is `NOT_ESTABLISHED` and H-C's causal
+payback/withdrawal requirement remains open. The earlier outcome is recorded on [PR #22](https://github.com/Collite/ttr-hartland/pull/22).
+
+The full-protocol CI workflow uses the published freeze hash and requires all ten registered seeds in the three
+prescribed modes. A successful suite establishes the stated criterion for those thirty worlds. See the
+[S5 answer key](data/stories/README.md) for the audit and certification commands.
 
 The model verbs borrow a built ttr-core checkout at `toolchain.lock`'s ref — `TTR_CORE` (default `../tatrman`) — and,
 for `load-model`, the metadata service's loader at `[veles].ttr-metadata` — `TTR_LOADER` (default `../ttr-loader`,

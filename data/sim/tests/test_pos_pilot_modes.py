@@ -60,7 +60,7 @@ def test_a_pilot_build_carries_its_metadata_and_s5_is_not_certified(story: Built
     s5 = [v for v in check(story.run, STORIES) if v.story == "S5"]
     assert s5 and all((v.status, v.passed) == ("NOT_CERTIFIED", False) for v in s5)
     assert _rows(story.run / "pos_pilot_assignment.csv") == 8160 and _rows(story.run / "pos_placement_decision.csv")
-    assert {key: held[key] for key in evaluation.META_KEYS} == dict(evaluation.identity())  # G2 S2.9
+    assert {key: held[key] for key in evaluation.META_KEYS} == dict(evaluation.identity(evaluation.GROUP_FILE))
 
 
 def test_a_pilot_build_writes_its_audit_manifest(story: Built) -> None:
@@ -78,7 +78,7 @@ def test_stories_check_counts_not_certified_apart_and_refuses_the_wrong_directio
 ) -> None:
     """review-295 N2: the tail counts S5's NOT_CERTIFIED as neither run nor passed; `--null` must match the mode."""
     tail = report(check(story.run, STORIES), story.run, False).splitlines()[-1]
-    assert " 2 NOT_CERTIFIED;" in tail and tail.startswith(tuple(f"{n} of " for n in range(30)))
+    assert " 1 NOT_CERTIFIED;" in tail and tail.startswith(tuple(f"{n} of " for n in range(30)))
     capsys.readouterr()
     assert main(["stories-check", "--csv", str(story.run), "--null"]) == 1
     assert main(["stories-check", "--csv", str(reference.run)]) == 1

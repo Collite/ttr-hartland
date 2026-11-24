@@ -221,6 +221,7 @@ def parity(
     monthly: tuple[s5_monthly.Case, ...] | None = None,
     *,
     revision: str = MONTHLY_REVISION,
+    statement: str | None = None,
 ) -> Parity:
     """`run` loaded in a transaction that rolls back, and its SQL against `judged`'s frames (module docstring)."""
     started = time.perf_counter()
@@ -228,7 +229,7 @@ def parity(
         conn.execute("SET LOCAL search_path TO hartland")
         conn.execute("SET LOCAL work_mem = '256MB'")
         load(conn, run)
-        found = compare(conn, judged, monthly, revision=revision)
+        found = compare(conn, judged, monthly, revision=revision, statement=statement)
     return replace(found, seconds=round(time.perf_counter() - started, 1))
 
 
@@ -273,6 +274,7 @@ def compare(
     monthly: tuple[s5_monthly.Case, ...] | None = None,
     *,
     revision: str = MONTHLY_REVISION,
+    statement: str | None = None,
 ) -> Parity:
     """Both SQL files on the loaded rows against `judged`'s frames and metrics (module docstring)."""
     frame, rounds, v = judged.frame, judged.rounds, judged.verdict
@@ -304,7 +306,7 @@ def compare(
         if not group:
             metrics = ("rank", *metrics)
             flags = (*flags, "rank_holds")
-        result = conn.execute(monthly_sql(revision), (judged.mode,)).fetchone()
+        result = conn.execute(statement or monthly_sql(revision), (judged.mode,)).fetchone()
         assert result is not None
         region_rows, round_rows, case_rows, inconclusive = result
         regions = {r["region"]: r for r in region_rows or []}

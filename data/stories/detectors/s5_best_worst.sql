@@ -1,68 +1,601 @@
--- S5, the spread (design 04 §S5): gain ÷ cost of the displays in the region of the most skilled manager (PHA, 1.4)
--- over that in the region of the least skilled one who is not the generous one (VCH, 0.5). Gain ÷ cost is 1 + s5.sql's
--- return: positive unless a region's displays destroy margin. When VCH's do, the metric is NULL; when PHA's do, it is
--- ≤ 0: either fails. The threshold, 1.35, is derived from the mechanics (G2 S2.3 T6, before the first build;
--- s5.yaml): between the null world's expected 1.21 and the story's 1.54. It is provisional — S2.4 corrects the gain
--- and re-derives it (NH-D17); it is not certified. The block below is s5.sql's, byte for byte (a test keeps it so).
-WITH
--- region return: begin
--- Per region, up to the world's last order day: the gain of its displays and their cost. A loan's gain is the customer
--- margin at the display's store (at the customer, when the loan names no store) per day during the loan, minus that of
--- the 8 weeks before, times the loan's days: a store that bought nothing before gains all it buys, and a loan without
--- orders keeps its cost. Only loans lent from 2024-02-26 count, so their 8 weeks before are inside the history. The
--- cost is the asset's over 36 months for the loan's days, plus the region's give-aways from the same day on.
+-- NH-D28: audited group quality for a bound story, skill-neutral or full-null mode.
+-- The three scores are fractions. A gap of 0.10 is ten percentage points.
+-- Standalone SQL has no CSV source or export-manifest evidence. Acceptance also runs the Python source judge.
+WITH RECURSIVE skill (region, pos_skill) AS (
+    VALUES ('PHA', 1.4), ('JMV', 1.3), ('SJC', 1.0), ('ZSC', 0.6), ('VCH', 0.5), ('SMS', 0.5)
+),
+-- region quality: begin
+-- The observed quality of the pilot's placement decisions and its economic disclosure (design09 §§3–4), its twin
+-- `checks.s5_decision.regions`. A round is a region × a month-end decision day whose placements are effective the
+-- next day, inside W: the 24 month-ends 2023-12-31 … 2025-11-30, each reported, empty or not (`round_quality`). Its
+-- pool is every decision of the round with a forecast material and manager and a positive forecast gain, cost and
+-- score, whatever its outcome — a no_budget or no_asset candidate the draw reached stays in it; the initial no_asset,
+-- nonpositive_score and ineligible ones are counted apart. Chosen: selected or cancelled (a cancellation keeps its
+-- score); the rest of the pool is unchosen. q = the share of (chosen, unchosen) pairs whose chosen score is the
+-- greater, a tie half — from average ranks, (2 × the chosen's rank sum − k(k + 1)) ÷ (2k(n − k)) — and NULL without
+-- a chosen or an unchosen one; a region's Q is the mean q of its comparable rounds, its chosen and unchosen counted
+-- over those rounds. The score is the stored one, checked against its stored gain ÷ cost and theirs against their
+-- stored inputs (each within half its last digit: the generator rounds floats). No skill, uplift or replay is read.
+-- The disclosure, per region of the programme customers' assignment (each customer once), in W to the last order day
+-- (`as_of`): their whole Customer Margin, observed and unattributed (`sales_pl`); their displays' use — each loan's
+-- asset cost over `life_days` for its days from lent_on to the day before it came back (a warm-up loan's from W's first
+-- day, a loan pending past the last day none); every give-away handed to them; the customers without an order line and
+-- their cost; the fleet — every asset of the region, carried from acquisition to the day before its write-off — its
+-- cost, the part no loan used and the assets never lent in W.
+-- `integrity` is the first failure, the build's before the region's: W not the assignment's one window, a build short
+-- of W, a row of another revision, a customer assigned twice, a duplicate decision key or id or a loan chosen twice, an
+-- unknown outcome, an impossible decision (fields, rounding, a day not a month-end), a decision not linked to its
+-- programme customer, region, delivery point, manager, material or loan, a loan since the assignment without its
+-- selection or a cancellation with a loan, a cost of a missing or non-programme small-retail customer, a loan without
+-- its asset, a give-away without its visit, an asset out twice on one day, a loan of another region's asset, a region
+-- without programme customers; then a region short of `least_rounds` comparable rounds or of `least_chosen` and
+-- `least_unchosen` decisions over them; else valid.
+evaluation (
+    pilot_revision, policy_revision, first_day, last_day, baseline_days, term_days, forecast_days, life_days,
+    least_rounds, least_chosen, least_unchosen
+) AS (
+    VALUES ('s5-pilot-v1', 'nh-d21-b-r1', DATE '2024-01-01', DATE '2025-12-31', 56, 182.625, 183, 36 * 30.4, 12, 100, 100)
+),
 as_of AS (
-    SELECT MAX(ordered_on) AS day, DATE '2024-02-26' AS first_day FROM sales_order
+    SELECT MAX(ordered_on) AS day FROM sales_order
+),
+assigned AS (
+    SELECT a.customer_id, a.region_id, a.arm, a.assigned_on, a.window_from, a.window_until
+    FROM pos_pilot_assignment a
+    JOIN evaluation e ON e.pilot_revision = a.pilot_revision
+),
+w AS (
+    SELECT
+        COUNT(DISTINCT a.window_from) = 1 AND COUNT(DISTINCT a.window_until) = 1
+            AND MIN(a.window_from) = MIN(e.first_day) AND MIN(a.window_until) = MIN(e.last_day) AS one,
+        MIN(a.assigned_on) AS assigned_on
+    FROM assigned a
+    CROSS JOIN evaluation e
+),
+programme AS (
+    SELECT DISTINCT customer_id, region_id FROM assigned WHERE arm = 'programme'
+),
+decided AS (
+    SELECT
+        d.pos_placement_decision_id,
+        d.pilot_revision,
+        d.policy_revision,
+        d.decision_day,
+        d.customer_id,
+        d.delivery_point_id,
+        d.region_id,
+        d.manager_id,
+        d.forecast_material_id,
+        d.outcome,
+        d.loan_id,
+        d.score,
+        d.forecast_gain > 0 AND d.forecast_cost > 0 AND d.score > 0 AND d.forecast_material_id IS NOT NULL
+            AND d.manager_id IS NOT NULL AS viable,
+        d.decision_day + 1 BETWEEN e.first_day AND e.last_day AS inside,
+        COALESCE(
+            CASE
+                WHEN d.outcome IN ('selected', 'cancelled', 'no_budget')
+                    THEN d.score > 0 AND d.manager_id IS NOT NULL AND (d.loan_id IS NOT NULL) = (d.outcome = 'selected')
+                WHEN d.outcome = 'no_asset'
+                    THEN d.loan_id IS NULL AND d.manager_id IS NOT NULL
+                        AND (d.score > 0 OR d.score = 0 AND d.forecast_material_id IS NULL)
+                WHEN d.outcome = 'nonpositive_score'
+                    THEN d.loan_id IS NULL AND d.manager_id IS NOT NULL AND d.score = 0 AND d.forecast_gain = 0
+                        AND d.forecast_cost > 0
+                WHEN d.outcome = 'ineligible'
+                    THEN d.loan_id IS NULL AND d.score = 0 AND (d.manager_id IS NULL OR NOT d.forecast_cost > 0)
+            END
+            AND (d.forecast_material_id IS NULL) = (d.forecast_gain IS NULL)
+            AND (d.forecast_gain IS NULL) = (d.forecast_cost IS NULL)
+            AND (d.forecast_cost IS NULL) = (d.asset_cost IS NULL)
+            AND d.score >= 0
+            AND CASE  -- a positive score at a cost of 0 is impossible, never a division by zero
+                WHEN d.score = 0 THEN true
+                WHEN d.forecast_cost > 0 THEN ABS(d.score - d.forecast_gain / d.forecast_cost) <= 0.0000000050001
+                ELSE false
+            END
+            AND (
+                d.forecast_material_id IS NULL
+                OR ABS(d.forecast_gain - GREATEST(d.prior56_line_margin / e.baseline_days, 0) * d.catalogue_fit * e.term_days)
+                    <= 0.005000001
+                AND ABS(
+                    d.forecast_cost
+                    - (d.asset_cost * e.term_days / e.life_days + d.prior56_handout_cost / e.baseline_days * e.term_days)
+                ) <= 0.005000001
+            )
+            AND d.forecast_days = e.forecast_days
+            AND EXTRACT(DAY FROM d.decision_day + 1) = 1,
+            false
+        ) AS sound
+    FROM pos_placement_decision d
+    CROSS JOIN evaluation e
+),
+calendar AS (
+    SELECT r.region_id, r.code AS region, m.month::date - 1 AS decision_day
+    FROM region r
+    CROSS JOIN evaluation e
+    CROSS JOIN generate_series(e.first_day::timestamp, e.last_day::timestamp, INTERVAL '1 month') AS m (month)
+),
+ranked AS (
+    SELECT
+        region_id,
+        decision_day,
+        outcome IN ('selected', 'cancelled') AS chosen,
+        RANK() OVER (PARTITION BY region_id, decision_day ORDER BY score) AS low,
+        COUNT(*) OVER (PARTITION BY region_id, decision_day, score) AS ties
+    FROM decided
+    WHERE inside AND viable
+),
+pooled AS (
+    SELECT
+        region_id,
+        decision_day,
+        COUNT(*) AS viable,
+        COUNT(*) FILTER (WHERE chosen) AS chosen,
+        SUM(2 * low + ties - 1) FILTER (WHERE chosen) AS twice_ranks
+    FROM ranked
+    GROUP BY region_id, decision_day
+),
+counted AS (
+    SELECT
+        region_id,
+        decision_day,
+        COUNT(*) AS decisions,
+        COUNT(*) FILTER (WHERE outcome = 'selected') AS selected,
+        COUNT(*) FILTER (WHERE outcome = 'cancelled') AS cancelled,
+        COUNT(*) FILTER (WHERE outcome = 'no_budget') AS no_budget,
+        COUNT(*) FILTER (WHERE outcome = 'no_asset' AND score > 0) AS no_asset,
+        COUNT(*) FILTER (WHERE outcome = 'no_asset' AND NOT score > 0) AS no_asset_initial,
+        COUNT(*) FILTER (WHERE outcome = 'nonpositive_score') AS nonpositive_score,
+        COUNT(*) FILTER (WHERE outcome = 'ineligible') AS ineligible
+    FROM decided
+    WHERE inside
+    GROUP BY region_id, decision_day
+),
+round_quality AS (
+    SELECT
+        k.region_id,
+        k.region,
+        k.decision_day,
+        COALESCE(c.decisions, 0) AS decisions,
+        COALESCE(p.viable, 0) AS viable,
+        COALESCE(p.chosen, 0) AS chosen,
+        COALESCE(p.viable, 0) - COALESCE(p.chosen, 0) AS unchosen,
+        CASE
+            WHEN p.chosen > 0 AND p.viable > p.chosen
+                THEN (p.twice_ranks - p.chosen * (p.chosen + 1)) / (2.0 * p.chosen * (p.viable - p.chosen))
+        END AS q
+    FROM calendar k
+    LEFT JOIN pooled p ON p.region_id = k.region_id AND p.decision_day = k.decision_day
+    LEFT JOIN counted c ON c.region_id = k.region_id AND c.decision_day = k.decision_day
 ),
 loan AS (
     SELECT
-        pl.pos_loan_id,
-        r.code AS region,
-        pl.customer_id,
-        pl.store_id,
-        pl.lent_on,
-        LEAST(COALESCE(pl.returned_on, as_of.day), as_of.day) AS until,
+        l.pos_loan_id,
+        l.pos_asset_id,
+        l.customer_id,
+        l.lent_on,
+        pa.pos_asset_id IS NOT NULL AS has_asset,
+        pa.region_id AS asset_region_id,
+        GREATEST(l.lent_on, e.first_day) AS first_day,
+        LEAST(COALESCE(l.returned_on - 1, as_of.day), as_of.day, e.last_day) AS last_day,
         pa.cost
-    FROM pos_loan pl
+    FROM pos_loan l
+    LEFT JOIN pos_asset pa ON pa.pos_asset_id = l.pos_asset_id
+    CROSS JOIN evaluation e
     CROSS JOIN as_of
-    JOIN pos_asset pa ON pa.pos_asset_id = pl.pos_asset_id
-    JOIN region r ON r.region_id = pa.region_id
-    WHERE pl.lent_on BETWEEN as_of.first_day AND as_of.day
 ),
-margin AS (
+used AS (
     SELECT
-        loan.pos_loan_id,
-        loan.region,
-        loan.cost * (loan.until - loan.lent_on + 1) / (36 * 30.4) AS cost,
-        (
-            COALESCE(SUM(s.customer_margin) FILTER (WHERE s.ordered_on >= loan.lent_on), 0)
-                / (loan.until - loan.lent_on + 1)
-            - COALESCE(SUM(s.customer_margin) FILTER (WHERE s.ordered_on < loan.lent_on), 0) / 56.0
-        ) * (loan.until - loan.lent_on + 1) AS gain
+        loan.*,
+        GREATEST(loan.last_day - loan.first_day + 1, 0) AS days,
+        COALESCE(loan.cost, 0) * GREATEST(loan.last_day - loan.first_day + 1, 0) / e.life_days AS use_cost
     FROM loan
-    LEFT JOIN sales_pl s ON s.customer_id = loan.customer_id
-        AND (loan.store_id IS NULL OR s.store_id = loan.store_id)
-        AND s.ordered_on BETWEEN loan.lent_on - 56 AND loan.until
-    GROUP BY loan.pos_loan_id, loan.region, loan.lent_on, loan.until, loan.cost
+    CROSS JOIN evaluation e
 ),
-giveaway AS (
-    SELECT r.code AS region, SUM(h.cost) AS cost
+handed AS (
+    SELECT h.pos_handout_id, h.cost, v.visit_id IS NOT NULL AS has_visit, v.customer_id, v.day
     FROM pos_handout h
-    JOIN visit v ON v.visit_id = h.visit_id
-    JOIN store st ON st.store_id = v.store_id
-    JOIN area a ON a.area_id = st.area_id
-    JOIN region r ON r.region_id = a.region_id
-    CROSS JOIN as_of
-    WHERE v.day BETWEEN as_of.first_day AND as_of.day
-    GROUP BY r.code
+    LEFT JOIN visit v ON v.visit_id = h.visit_id
 ),
-region_return AS (
-    SELECT m.region, SUM(m.gain) AS gain, SUM(m.cost) + COALESCE(MAX(g.cost), 0) AS cost
-    FROM margin m
-    LEFT JOIN giveaway g ON g.region = m.region
-    GROUP BY m.region
+spending AS (
+    SELECT u.customer_id, u.days, u.use_cost AS cost FROM used u WHERE u.days > 0
+    UNION ALL
+    SELECT h.customer_id, 1, h.cost
+    FROM handed h
+    CROSS JOIN evaluation e
+    WHERE h.has_visit AND h.day BETWEEN e.first_day AND e.last_day
+),
+fault AS (
+    SELECT
+        (
+            SELECT COUNT(*)
+            FROM decided d
+            CROSS JOIN evaluation e
+            WHERE d.pilot_revision IS DISTINCT FROM e.pilot_revision OR d.policy_revision IS DISTINCT FROM e.policy_revision
+        ) + (
+            SELECT COUNT(*)
+            FROM pos_pilot_assignment a
+            CROSS JOIN evaluation e
+            WHERE a.pilot_revision IS DISTINCT FROM e.pilot_revision
+        ) AS revision,
+        (SELECT COUNT(*) - COUNT(DISTINCT pos_placement_decision_id) FROM decided)
+            + (
+                SELECT COUNT(*)
+                FROM (
+                    SELECT 1
+                    FROM decided
+                    GROUP BY pilot_revision, decision_day, delivery_point_id
+                    HAVING COUNT(*) > 1
+                ) twice
+            )
+            + (SELECT COUNT(loan_id) - COUNT(DISTINCT loan_id) FROM decided)
+            + (SELECT COUNT(*) - COUNT(DISTINCT customer_id) FROM assigned) AS duplicate,
+        (
+            SELECT COUNT(*)
+            FROM decided
+            WHERE outcome IS NULL
+                OR outcome NOT IN ('selected', 'no_budget', 'no_asset', 'nonpositive_score', 'ineligible', 'cancelled')
+        ) AS outcome,
+        (SELECT COUNT(*) FROM decided WHERE NOT sound) AS fields,
+        (
+            SELECT COUNT(*)
+            FROM decided d
+            LEFT JOIN programme p ON p.customer_id = d.customer_id
+            LEFT JOIN region r ON r.region_id = d.region_id
+            LEFT JOIN delivery_point dp ON dp.delivery_point_id = d.delivery_point_id
+            LEFT JOIN store st ON st.store_id = dp.store_id
+            LEFT JOIN area ar ON ar.area_id = st.area_id
+            LEFT JOIN employee em ON em.employee_id = d.manager_id
+            LEFT JOIN pos_material pm ON pm.pos_material_id = d.forecast_material_id
+            LEFT JOIN pos_loan l ON l.pos_loan_id = d.loan_id
+            LEFT JOIN pos_asset pa ON pa.pos_asset_id = l.pos_asset_id
+            WHERE p.customer_id IS NULL
+                OR p.region_id IS DISTINCT FROM d.region_id
+                OR r.region_id IS NULL
+                OR dp.customer_id IS DISTINCT FROM d.customer_id
+                OR ar.region_id IS DISTINCT FROM d.region_id
+                OR d.manager_id IS NOT NULL AND em.employee_id IS NULL
+                OR d.forecast_material_id IS NOT NULL AND pm.pos_material_id IS NULL
+                OR d.loan_id IS NOT NULL AND (
+                    l.pos_loan_id IS NULL
+                    OR l.customer_id IS DISTINCT FROM d.customer_id
+                    OR l.lent_on IS DISTINCT FROM d.decision_day + 1
+                    OR pa.pos_asset_id IS NOT NULL AND pa.region_id IS DISTINCT FROM d.region_id
+                )
+        ) AS links,
+        (
+            SELECT COUNT(*)
+            FROM pos_loan l
+            CROSS JOIN w
+            WHERE l.lent_on >= w.assigned_on
+                AND NOT EXISTS (SELECT 1 FROM decided d WHERE d.outcome = 'selected' AND d.loan_id = l.pos_loan_id)
+        ) + (
+            SELECT COUNT(*)
+            FROM decided d
+            WHERE d.outcome = 'cancelled'
+                AND EXISTS (
+                    SELECT 1 FROM pos_loan l WHERE l.customer_id = d.customer_id AND l.lent_on = d.decision_day + 1
+                )
+        ) AS loans,
+        (
+            SELECT COUNT(*)
+            FROM spending s
+            LEFT JOIN customer c ON c.customer_id = s.customer_id
+            LEFT JOIN programme p ON p.customer_id = s.customer_id
+            WHERE c.customer_id IS NULL OR c.channel = 'small_retail' AND p.customer_id IS NULL
+        ) AS ownership,
+        (SELECT COUNT(*) FROM loan WHERE NOT has_asset) AS asset,
+        (SELECT COUNT(*) FROM handed WHERE NOT has_visit) AS visit,
+        (
+            SELECT COUNT(*)
+            FROM used x
+            JOIN used y ON y.pos_asset_id = x.pos_asset_id AND y.pos_loan_id > x.pos_loan_id
+            WHERE x.days > 0 AND y.days > 0 AND x.first_day <= y.last_day AND y.first_day <= x.last_day
+        ) AS overlap,
+        (
+            SELECT COUNT(*)
+            FROM used u
+            JOIN programme p ON p.customer_id = u.customer_id
+            WHERE u.days > 0 AND u.has_asset AND u.asset_region_id <> p.region_id
+        ) AS astray
+),
+round_sums AS (
+    SELECT
+        region_id,
+        COUNT(*) AS rounds,
+        COUNT(q) AS comparable_rounds,
+        SUM(decisions) AS decisions,
+        SUM(viable) AS viable,
+        COALESCE(SUM(chosen) FILTER (WHERE q IS NOT NULL), 0) AS chosen,
+        COALESCE(SUM(unchosen) FILTER (WHERE q IS NOT NULL), 0) AS unchosen,
+        AVG(q) AS quality
+    FROM round_quality
+    GROUP BY region_id
+),
+outcomes AS (
+    SELECT
+        region_id,
+        SUM(selected) AS selected,
+        SUM(cancelled) AS cancelled,
+        SUM(no_budget) AS no_budget,
+        SUM(no_asset) AS no_asset,
+        SUM(no_asset_initial) AS no_asset_initial,
+        SUM(nonpositive_score) AS nonpositive_score,
+        SUM(ineligible) AS ineligible
+    FROM counted
+    GROUP BY region_id
+),
+sold AS (
+    SELECT s.customer_id, SUM(s.customer_margin) AS margin, COUNT(*) AS lines
+    FROM sales_pl s
+    CROSS JOIN evaluation e
+    WHERE s.customer_id IN (SELECT customer_id FROM programme) AND s.ordered_on BETWEEN e.first_day AND e.last_day
+    GROUP BY s.customer_id
+),
+lent AS (
+    SELECT customer_id, SUM(use_cost) AS cost FROM used GROUP BY customer_id
+),
+given AS (
+    SELECT h.customer_id, SUM(h.cost) AS cost
+    FROM handed h
+    CROSS JOIN evaluation e
+    WHERE h.has_visit AND h.day BETWEEN e.first_day AND e.last_day
+    GROUP BY h.customer_id
+),
+spent AS (
+    SELECT
+        p.region_id,
+        COALESCE(s.margin, 0) AS margin,
+        COALESCE(s.lines, 0) AS lines,
+        COALESCE(l.cost, 0) AS asset_use_cost,
+        COALESCE(g.cost, 0) AS handout_cost
+    FROM programme p
+    LEFT JOIN sold s ON s.customer_id = p.customer_id
+    LEFT JOIN lent l ON l.customer_id = p.customer_id
+    LEFT JOIN given g ON g.customer_id = p.customer_id
+),
+economics AS (
+    SELECT
+        region_id,
+        COUNT(*) AS programme_customers,
+        SUM(margin) AS observed_margin,
+        SUM(asset_use_cost) AS asset_use_cost,
+        SUM(handout_cost) AS handout_cost,
+        COUNT(*) FILTER (WHERE lines = 0) AS no_sales_customers,
+        COALESCE(SUM(asset_use_cost + handout_cost) FILTER (WHERE lines = 0), 0) AS no_sales_cost
+    FROM spent
+    GROUP BY region_id
+),
+carried AS (
+    SELECT
+        pa.pos_asset_id,
+        pa.region_id,
+        pa.cost,
+        GREATEST(
+            LEAST(COALESCE(pa.written_off_on - 1, as_of.day), as_of.day, e.last_day) - GREATEST(pa.acquired_on, e.first_day)
+                + 1,
+            0
+        ) AS days
+    FROM pos_asset pa
+    CROSS JOIN evaluation e
+    CROSS JOIN as_of
+),
+fleet AS (
+    SELECT
+        c.region_id,
+        SUM(c.cost * c.days / e.life_days) AS fleet_cost,
+        COUNT(*) FILTER (WHERE c.days > 0 AND COALESCE(u.days, 0) = 0) AS idle_assets
+    FROM carried c
+    CROSS JOIN evaluation e
+    LEFT JOIN (SELECT pos_asset_id, SUM(days) AS days FROM used GROUP BY pos_asset_id) u
+        ON u.pos_asset_id = c.pos_asset_id
+    GROUP BY c.region_id
+),
+fleet_used AS (
+    SELECT asset_region_id AS region_id, SUM(use_cost) AS cost FROM used WHERE has_asset GROUP BY asset_region_id
+),
+region_sums AS (
+    SELECT
+        r.code AS region,
+        COALESCE(rs.rounds, 0) AS rounds,
+        COALESCE(rs.comparable_rounds, 0) AS comparable_rounds,
+        COALESCE(rs.decisions, 0) AS decisions,
+        COALESCE(rs.viable, 0) AS viable,
+        COALESCE(rs.chosen, 0) AS chosen,
+        COALESCE(rs.unchosen, 0) AS unchosen,
+        COALESCE(o.selected, 0) AS selected,
+        COALESCE(o.cancelled, 0) AS cancelled,
+        COALESCE(o.no_budget, 0) AS no_budget,
+        COALESCE(o.no_asset, 0) AS no_asset,
+        COALESCE(o.no_asset_initial, 0) AS no_asset_initial,
+        COALESCE(o.nonpositive_score, 0) AS nonpositive_score,
+        COALESCE(o.ineligible, 0) AS ineligible,
+        rs.quality,
+        COALESCE(ec.programme_customers, 0) AS programme_customers,
+        COALESCE(ec.observed_margin, 0) AS observed_margin,
+        COALESCE(ec.asset_use_cost, 0) AS asset_use_cost,
+        COALESCE(ec.handout_cost, 0) AS handout_cost,
+        COALESCE(ec.asset_use_cost, 0) + COALESCE(ec.handout_cost, 0) AS programme_cost,
+        COALESCE(ec.no_sales_customers, 0) AS no_sales_customers,
+        COALESCE(ec.no_sales_cost, 0) AS no_sales_cost,
+        COALESCE(fl.fleet_cost, 0) AS fleet_cost,
+        COALESCE(fl.fleet_cost, 0) - COALESCE(fu.cost, 0) AS idle_cost,
+        COALESCE(fl.idle_assets, 0) AS idle_assets
+    FROM region r
+    LEFT JOIN round_sums rs ON rs.region_id = r.region_id
+    LEFT JOIN outcomes o ON o.region_id = r.region_id
+    LEFT JOIN economics ec ON ec.region_id = r.region_id
+    LEFT JOIN fleet fl ON fl.region_id = r.region_id
+    LEFT JOIN fleet_used fu ON fu.region_id = r.region_id
+),
+region_quality AS (
+    SELECT
+        s.*,
+        CASE
+            WHEN NOT w.one THEN 'window'
+            WHEN as_of.day IS NULL OR as_of.day < e.last_day THEN 'short'
+            WHEN f.revision > 0 THEN 'revision'
+            WHEN f.duplicate > 0 THEN 'duplicate'
+            WHEN f.outcome > 0 THEN 'outcome'
+            WHEN f.fields > 0 THEN 'fields'
+            WHEN f.links > 0 THEN 'links'
+            WHEN f.loans > 0 THEN 'loans'
+            WHEN f.ownership > 0 THEN 'ownership'
+            WHEN f.asset > 0 THEN 'asset'
+            WHEN f.visit > 0 THEN 'visit'
+            WHEN f.overlap > 0 THEN 'overlap'
+            WHEN f.astray > 0 THEN 'astray'
+            WHEN MIN(s.programme_customers) OVER () = 0 THEN 'regions'
+            WHEN NOT (
+                s.comparable_rounds >= e.least_rounds AND s.chosen >= e.least_chosen AND s.unchosen >= e.least_unchosen
+            ) THEN 'support'
+            ELSE 'valid'
+        END AS integrity
+    FROM region_sums s
+    CROSS JOIN w
+    CROSS JOIN as_of
+    CROSS JOIN fault f
+    CROSS JOIN evaluation e
 )
--- region return: end
-SELECT MAX(gain / NULLIF(cost, 0)) FILTER (WHERE region = 'PHA')
-    / NULLIF(GREATEST(MAX(gain / NULLIF(cost, 0)) FILTER (WHERE region = 'VCH'), 0), 0) AS metric
-FROM region_return
+-- region quality: end
+,
+-- Extend the NH-D25 rank statement's CTEs. Reuse the audited rows and economic disclosure.
+-- Count coverage in the effective calendar month, one day after the decision.
+effective_calendar AS (
+    SELECT month::date AS month
+    FROM evaluation e
+    CROSS JOIN generate_series(e.first_day::timestamp, e.last_day::timestamp, INTERVAL '1 month') AS m (month)
+),
+month_counts AS (
+    SELECT
+        region_id,
+        date_trunc('month', (decision_day + 1)::timestamp)::date AS month,
+        COUNT(*) AS rounds,
+        MIN(chosen) AS chosen,
+        MIN(unchosen) AS unchosen,
+        SUM(unchosen) AS total_unchosen
+    FROM round_quality
+    GROUP BY region_id, 2
+),
+monthly_support AS (
+    SELECT
+        r.region_id,
+        COUNT(m.month) = (SELECT COUNT(*) FROM effective_calendar)
+            AND COUNT(k.month) = (SELECT COUNT(*) FROM effective_calendar)
+            AND COALESCE(BOOL_AND(m.rounds = 1 AND m.chosen >= 2 AND m.unchosen >= 2), false)
+            AND COALESCE(SUM(m.total_unchosen), 0) >= 100 AS supported
+    FROM region r
+    LEFT JOIN month_counts m USING (region_id)
+    LEFT JOIN effective_calendar k ON k.month = m.month
+    GROUP BY r.region_id
+),
+monthly_regions AS (
+    SELECT
+        r.*,
+        CASE
+            WHEN r.integrity NOT IN ('valid', 'support') THEN r.integrity
+            WHEN m.supported THEN 'valid'
+            ELSE 'support'
+        END AS monthly_integrity
+    FROM region_quality r
+    JOIN region k ON k.code = r.region
+    JOIN monthly_support m ON m.region_id = k.region_id
+),
+-- Use exact, common integer weights for comparisons and ties. The display division is the final step.
+supported_world AS (
+    SELECT COUNT(*) = 6 AND COUNT(DISTINCT k.region) = 6
+        AND BOOL_AND(r.monthly_integrity = 'valid') AS valid
+    FROM monthly_regions r
+    LEFT JOIN skill k USING (region)
+),
+q_terms AS (
+    SELECT
+        row_number() OVER (ORDER BY r.region, r.decision_day) AS n,
+        r.region,
+        (r.decision_day + 1)::date AS month,
+        round(r.q * denominator) AS numerator,
+        denominator
+    FROM round_quality r
+    CROSS JOIN supported_world w
+    CROSS JOIN LATERAL (SELECT 2 * r.chosen::numeric * r.unchosen AS denominator) d
+    WHERE w.valid
+),
+q_denominator(n, common) AS (
+    SELECT 0::bigint, 1::numeric
+    UNION ALL
+    SELECT t.n, lcm(d.common, t.denominator)
+    FROM q_denominator d
+    JOIN q_terms t ON t.n = d.n + 1
+),
+q_weight AS (
+    SELECT t.region, t.month, numerator * div(common, denominator) AS weight, common
+    FROM q_terms t
+    CROSS JOIN (SELECT common FROM q_denominator ORDER BY n DESC LIMIT 1) d
+),
+omissions(omitted) AS (
+    SELECT ARRAY[]::date[]
+    UNION ALL
+    SELECT ARRAY[m.month] FROM effective_calendar m
+    UNION ALL
+    SELECT ARRAY[a.month, b.month] FROM effective_calendar a JOIN effective_calendar b ON a.month < b.month
+),
+scores AS (
+    SELECT o.omitted, q.region, SUM(q.weight) AS raw, COUNT(*) * MIN(q.common) AS total
+    FROM omissions o
+    CROSS JOIN q_weight q
+    WHERE q.month <> ALL(o.omitted)
+    GROUP BY o.omitted, q.region
+),
+-- NH-D28/v1 extends the audited monthly CTEs through the per-region scores.
+-- Each sum below has the same regional denominator. Compare the group bars before division.
+group_totals AS (
+    SELECT
+        omitted,
+        json_object_agg(region, raw / total) AS regions,
+        SUM(raw) FILTER (WHERE region IN ('PHA', 'JMV')) AS high,
+        SUM(raw) FILTER (WHERE region IN ('ZSC', 'VCH', 'SMS')) AS low,
+        MIN(total) AS total
+    FROM scores
+    GROUP BY omitted
+),
+group_bars AS (
+    SELECT
+        omitted, regions,
+        high / (2 * total) AS q_high,
+        low / (3 * total) AS q_low,
+        (3 * high - 2 * low) / (6 * total) AS difference,
+        high >= 0.70 * 2 * total AS q_high_holds,
+        3 * high - 2 * low >= 0.10 * 6 * total AS difference_holds
+    FROM group_totals
+),
+group_mode AS (
+    SELECT %s::text AS mode
+),
+cases AS (
+    SELECT
+        b.*,
+        CASE
+            WHEN mode = 'story' AND q_high_holds AND difference_holds THEN 'PASS'
+            WHEN mode IN ('skill-neutral', 'full-null') AND difference_holds THEN 'FAIL'
+            ELSE 'REJECTED'
+        END AS status,
+        mode IN ('skill-neutral', 'full-null') AND NOT difference_holds AS control_rejects,
+        array_remove(ARRAY[
+            CASE WHEN mode = 'story' AND NOT q_high_holds THEN 'q_high' END,
+            CASE WHEN (mode = 'story' AND NOT difference_holds)
+                OR (mode IN ('skill-neutral', 'full-null') AND difference_holds) THEN 'difference' END
+        ], NULL) AS failures
+    FROM group_bars b
+    CROSS JOIN group_mode
+)
+SELECT
+    (SELECT json_agg(to_jsonb(r) - 'integrity' - 'monthly_integrity'
+        || jsonb_build_object('integrity', monthly_integrity)) FROM monthly_regions r) AS regions,
+    (SELECT json_agg(round_quality) FROM round_quality) AS rounds,
+    (SELECT json_agg(cases ORDER BY cardinality(omitted), omitted) FROM cases) AS cases,
+    (SELECT json_build_object(
+        'status', 'INCONCLUSIVE',
+        'q_high', avg(quality) FILTER (WHERE region IN ('PHA', 'JMV')),
+        'q_low', avg(quality) FILTER (WHERE region IN ('ZSC', 'VCH', 'SMS'))
+    ) FROM monthly_regions) AS inconclusive

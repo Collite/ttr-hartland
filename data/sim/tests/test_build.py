@@ -102,7 +102,8 @@ def test_the_verb_builds_into_its_run(tmp_path: Path, capsys: pytest.CaptureFixt
     run = tmp_path / "verb"
     assert main(["build-world", "--until", "2023-01-01", "--csv", "--null", "--run", str(run)]) == 0
     assert "build id" in capsys.readouterr().out
-    assert Meta.load(run).stories_sha256 == STORIES.null().sha256
-    assert json.loads((run / BUILD_JSON).read_text(encoding="utf-8"))["null"] is True
+    meta = Meta.load(run)
+    assert meta.stories_sha256 == STORIES.null().sha256 and meta.pilot_mode == "full-null"
+    assert json.loads((run / BUILD_JSON).read_text(encoding="utf-8"))["pilot"]["pilot_mode"] == "full-null"
     assert not _rows(run, "sales_order")  # the warm-up writes nothing
     assert main(["build-world", "--until", "2023-01-01", "--csv", "--run", str(run)]) == 1
