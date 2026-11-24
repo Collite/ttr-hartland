@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from hartland_sim.checks.s3 import rates as s3_rates
 from hartland_sim.checks.stories import (
     S6_FROM,
     Build,
@@ -355,7 +356,7 @@ def test_the_runner_judges_what_it_can_and_names_what_it_cannot(tmp_path: Path) 
     verdicts = {v.check: v for v in check(tmp_path, STORIES)}
     assert verdicts["detectors/s2_affluence.sql"].passed is True
     assert verdicts["detectors/s2.sql"].passed is None and "promotion_result" in verdicts["detectors/s2.sql"].note
-    assert verdicts["detectors/s3.sql"].passed is None and verdicts["detectors/s3.sql"].note == "no pandas twin yet"
+    assert verdicts["detectors/s3.sql"].passed is None and "no assignment.csv" in verdicts["detectors/s3.sql"].note
     s1_found = verdicts["detectors/s1.sql"]
     assert s1_found.passed is False and math.isnan(s1_found.value or math.nan)  # Gold only: no curve's weeks both
     assert verdicts["kmeans"].passed is None
@@ -365,6 +366,80 @@ def test_the_runner_judges_what_it_can_and_names_what_it_cannot(tmp_path: Path) 
     assert "| S2 | `detectors/s2_affluence.sql` | tv_rich_over_poor_lift | >= 1.35 | 2.000 | pass |" in text
     assert "not run (no promotion_result.csv (G4 S4.3 writes it))" in text
     assert "| S4 | `kmeans` | adjusted_rand_index | >= 0.6 |" in text
+
+
+def test_s3_cli_reports_a_composite_miss_and_attributes_churn_after_a_move(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    story = STORIES.story("S3")
+    only_s3 = replace(STORIES, stories=(story,), anomalies=())
+    monkeypatch.setattr(StoriesConfig, "load", staticmethod(lambda: only_s3))
+    _catalogue(tmp_path)
+    _write(tmp_path, "area", [{"area_id": 1, "code": "PHA-03"}])
+    _write(tmp_path, "chain", [{"chain_id": 1, "is_key_account": False}])
+    _write(
+        tmp_path,
+        "assignment",
+        [
+            {"employee_id": rep, "kind": "rep_area", "area_id": 1, "valid_from": start, "valid_to": end}
+            for rep, start, end in ((1, date(2023, 1, 1), date(2024, 2, 29)), (2, date(2024, 3, 1), date(2025, 1, 1)))
+        ],
+    )
+    _write(
+        tmp_path,
+        "store",
+        [
+            {
+                "store_id": store,
+                "area_id": 1,
+                "chain_id": 1,
+                "store_class": "minimarket",
+                "opened_on": None,
+                "closed_on": None,
+            }
+            for store in (1, 2)
+        ],
+    )
+    _write(
+        tmp_path,
+        "customer",
+        [
+            {
+                "customer_id": store,
+                "store_id": store,
+                "channel": "small_retail",
+                "since": date(2023, 1, 1),
+                "until": until,
+                "status": status,
+            }
+            for store, until, status in ((1, date(2024, 2, 29), "lost"), (2, None, "active"))
+        ],
+    )
+    _write(
+        tmp_path,
+        "visit",
+        [
+            {
+                "employee_id": 2,
+                "store_id": 2,
+                "customer_id": 2,
+                "kind": "sales",
+                "day": date(2024, 3, 31),
+                "outcome": "order",
+            }
+        ],
+    )
+    orders = Orders()
+    orders.add(date(2024, 3, 31), "GOLD", 1.0)
+    orders.orders[0]["customer_id"] = 2
+    orders.write(tmp_path)
+    assert s3_rates(Build(tmp_path))["churn"].to_dict() == {1: 0, 2: pytest.approx(1 / 31)}
+    assert main(["stories-check", "--csv", str(tmp_path)]) == 1
+    report_text = capsys.readouterr().out
+    assert (
+        f"| S3 | `detectors/s3.sql` | pinned_placements | >= {story.detector.threshold} | 1.000 | FAIL |" in report_text
+    )
+    assert (tmp_path / "stories.md").read_text(encoding="utf-8") == report_text
 
 
 def _disabled(*names: str) -> StoriesConfig:
