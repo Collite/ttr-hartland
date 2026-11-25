@@ -122,13 +122,16 @@ def counts(build: Build, *, reconcile: bool = False) -> pd.DataFrame:
 
 def exact_rates(observed: pd.DataFrame) -> pd.DataFrame:
     """Signed fractions for ranking, with zero or missing exposure undefined."""
-    return pd.DataFrame({
-        measure: [
-            Fraction(int(n) * (-1 if measure == "retention" else 1), int(d)) if d > 0 else None
-            for n, d in zip(observed[numerator], observed[exposure], strict=True)
-        ]
-        for measure, (numerator, exposure) in MEASURES.items()
-    }, index=observed.index)
+    return pd.DataFrame(
+        {
+            measure: [
+                Fraction(int(n) * (-1 if measure == "retention" else 1), int(d)) if d > 0 else None
+                for n, d in zip(observed[numerator], observed[exposure], strict=True)
+            ]
+            for measure, (numerator, exposure) in MEASURES.items()
+        },
+        index=observed.index,
+    )
 
 
 def rates(build: Build) -> pd.DataFrame:
@@ -199,8 +202,11 @@ def business_report(build: Build, stories: StoriesConfig) -> str:
         rows.append(f"| {employee} | {warmup.get(employee, '—')} | " + " | ".join(cells) + " |")
     historical = ranks(rates(build))["place"].to_dict()
     names = {pin.slot for pin in stories.pins.reps if pin.profile in {"star", "weak"}}
-    places = [f"{code} {int(historical[employee])}."
-              for employee, code in warmup.items() if code in names and employee in historical]
+    places = [
+        f"{code} {int(historical[employee])}."
+        for employee, code in warmup.items()
+        if code in names and employee in historical
+    ]
     if places:
         rows.extend(("", "Původní souhrnné pořadí · " + ", ".join(places)))
     return "\n".join(rows) + "\n"

@@ -917,7 +917,9 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
             if story.story == "S3" and meta is not None and meta.last_day_done == date(2025, 12, 31):
                 old_result = "pass" if verdict.passed else "FAIL"
                 verdict = replace(
-                    verdict, passed=None, note=f"historical verdict: {old_result}",
+                    verdict,
+                    passed=None,
+                    note=f"historical verdict: {old_result}",
                     detail=business_report(build, stories),
                 )
             out.append(verdict)

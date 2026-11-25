@@ -68,7 +68,8 @@ def read_labels(run: Path) -> dict[str, dict[str, float]]:
     actors = Checkpoint.load(run, WARM_UP_END).restore().actors
     values = {
         str(employee): {measure: getattr(actor.skills, measure) for measure in s3.MEASURES}
-        for employee, actor in actors.items() if actor.role == "rep"
+        for employee, actor in actors.items()
+        if actor.role == "rep"
     }
     if len(values) != REP_COUNT or not all(math.isfinite(v) for row in values.values() for v in row.values()):
         raise ValueError(f"{run}: expected 50 employees with finite skill labels")
@@ -114,19 +115,18 @@ def csv_readout(
     reps = []
     for employee, row in observed.iterrows():
         key = str(employee)
-        reps.append({
-            **{name: int(value) for name, value in row.items()},
-            "employee_id": key,
-            "place": int(places[key]),
-            "profile": profiles.get(key),
-            "periods": periods[key],
-            "ranks": {m: int(rank_by_employee[key][m]) for m in rank_columns if pd.notna(rank_by_employee[key][m])}
-            or None,
-        })
-    probes = {
-        case: int(PROBES[stories.anomaly(case).probe.sql](build, stories))
-        for case in FIELD_PROBES
-    }
+        reps.append(
+            {
+                **{name: int(value) for name, value in row.items()},
+                "employee_id": key,
+                "place": int(places[key]),
+                "profile": profiles.get(key),
+                "periods": periods[key],
+                "ranks": {m: int(rank_by_employee[key][m]) for m in rank_columns if pd.notna(rank_by_employee[key][m])}
+                or None,
+            }
+        )
+    probes = {case: int(PROBES[stories.anomaly(case).probe.sql](build, stories)) for case in FIELD_PROBES}
     return {
         "last_order": last_order.date().isoformat(),
         "slots": slots,
@@ -191,13 +191,17 @@ def legacy_places(rows: dict[str, Any]) -> dict[str, int]:
     by_employee = {str(employee): code for employee, code in rows["slots"]}
     return {
         by_employee[row["employee_id"]]: int(row["place"])
-        for row in rows["reps"] if row["profile"] in PINS and row["employee_id"] in by_employee
+        for row in rows["reps"]
+        if row["profile"] in PINS and row["employee_id"] in by_employee
     }
 
 
 def validate(
-    csv_rows: dict[str, Any], pg_rows: dict[str, Any], labels: dict[str, dict[str, float]],
-    stories: StoriesConfig, null: bool,
+    csv_rows: dict[str, Any],
+    pg_rows: dict[str, Any],
+    labels: dict[str, dict[str, float]],
+    stories: StoriesConfig,
+    null: bool,
 ) -> list[str]:
     failures = []
     for field in ("last_order", "slots", "reps", "probes"):
@@ -208,9 +212,12 @@ def validate(
     slots = csv_rows["slots"]
     ids = {str(employee) for employee, _ in slots}
     if (
-        len(slots) != REP_COUNT or len(ids) != REP_COUNT or ids != set(labels)
+        len(slots) != REP_COUNT
+        or len(ids) != REP_COUNT
+        or ids != set(labels)
         or len({slot for _, slot in slots}) != REP_COUNT
-        or len(csv_rows["reps"]) != REP_COUNT or {row["employee_id"] for row in csv_rows["reps"]} != ids
+        or len(csv_rows["reps"]) != REP_COUNT
+        or {row["employee_id"] for row in csv_rows["reps"]} != ids
     ):
         failures.append("employee identities or warm-up slot mapping differ")
     for row in csv_rows["reps"]:
@@ -242,7 +249,7 @@ def validate(
         if n != pg_rows["legacy_metric"]:
             failures.append("historical placement verdict differs")
     for case, value in csv_rows["probes"].items():
-        if (value != 0 if null else not holds(value, *expected(stories.anomaly(case).probe.expect))):
+        if value != 0 if null else not holds(value, *expected(stories.anomaly(case).probe.expect)):
             failures.append(f"{case}: anomaly probe failed ({value})")
     return failures
 
@@ -251,9 +258,12 @@ def read_pair(story: Path, full_null: Path, dsn: str, out: Path) -> int:
     stories = StoriesConfig.load()
     meta, control = Meta.load(story), Meta.load(full_null)
     if (
-        meta.master_seed != control.master_seed or meta.world_sha256 != control.world_sha256
-        or meta.last_day_done != LAST_DAY or control.last_day_done != LAST_DAY
-        or meta.pilot_mode != "story" or control.pilot_mode != "full-null"
+        meta.master_seed != control.master_seed
+        or meta.world_sha256 != control.world_sha256
+        or meta.last_day_done != LAST_DAY
+        or control.last_day_done != LAST_DAY
+        or meta.pilot_mode != "story"
+        or control.pilot_mode != "full-null"
         or meta.stories_sha256 == control.stories_sha256
     ):
         raise ValueError("expected the same seed/source and full history in story and full-null modes")
@@ -281,13 +291,16 @@ def read_pair(story: Path, full_null: Path, dsn: str, out: Path) -> int:
         write_json(out, {"seed": meta.master_seed, "comparisons": comparisons, "failures": failures})
     if comparisons["story"]["csv"]["slots"] != comparisons["full-null"]["csv"]["slots"]:
         failures.append("warm-up slot mapping differs between story and full null")
-    write_json(out, {
-        "seed": meta.master_seed,
-        "comparisons": comparisons,
-        "null_own_skill_correlations": {measure: None for measure in s3.MEASURES},
-        "failures": failures,
-        "passed": not failures,
-    })
+    write_json(
+        out,
+        {
+            "seed": meta.master_seed,
+            "comparisons": comparisons,
+            "null_own_skill_correlations": {measure: None for measure in s3.MEASURES},
+            "failures": failures,
+            "passed": not failures,
+        },
+    )
     for failure in failures:
         print(failure)
     return int(bool(failures))
