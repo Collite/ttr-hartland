@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -44,7 +44,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from hartland_sim.checks.s3 import s3
+from hartland_sim.checks.s3 import business_report, s3
 from hartland_sim.config import Detector, StoriesConfig, inventory
 from hartland_sim.ids import row_id
 from hartland_sim.world import META_FILE, Meta
@@ -913,7 +913,14 @@ def check(run: Path, stories: StoriesConfig, null: bool = False) -> list[Verdict
                     )
                 )
                 continue
-            out.append(judge(story.story, detector, value, null, note))
+            verdict = judge(story.story, detector, value, null, note)
+            if story.story == "S3" and meta is not None and meta.last_day_done == date(2025, 12, 31):
+                old_result = "pass" if verdict.passed else "FAIL"
+                verdict = replace(
+                    verdict, passed=None, note=f"historical verdict: {old_result}",
+                    detail=business_report(build, stories),
+                )
+            out.append(verdict)
         if story.story == "S4":
             note = "04's bar, no detector's threshold yet"
             try:
