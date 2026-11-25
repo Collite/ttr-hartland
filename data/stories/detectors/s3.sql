@@ -65,14 +65,18 @@ active_days AS (
     JOIN patron p ON p.area_id = d.area_id
     GROUP BY d.employee_id
 ),
-conversion AS (
-    SELECT v.employee_id, AVG(CASE WHEN v.outcome = 'order' THEN 1.0 ELSE 0.0 END) AS rate
+sales_visit AS (
+    SELECT v.visit_id, v.employee_id, v.outcome
     FROM visit v
     JOIN market m ON m.store_id = v.store_id
     JOIN customer c ON c.customer_id = v.customer_id AND c.channel = 'small_retail'
     CROSS JOIN as_of
     WHERE v.kind = 'sales' AND v.day BETWEEN DATE '2024-01-01' AND as_of.day
-    GROUP BY v.employee_id
+),
+conversion AS (
+    SELECT employee_id, COUNT(*) AS sales_visits, COUNT(*) FILTER (WHERE outcome = 'order') AS converting_visits
+    FROM sales_visit
+    GROUP BY employee_id
 ),
 won AS (
     SELECT d.employee_id, COUNT(*) AS n
@@ -103,20 +107,31 @@ added AS (
     WHERE f.first_on > GREATEST(p.since, DATE '2024-01-01') + 90
     GROUP BY d.employee_id
 ),
-rates AS (
+observed AS (
     SELECT
         r.employee_id,
-        COALESCE(conversion.rate, 0) AS conversion,
-        COALESCE(won.n, 0)::numeric / NULLIF(sd.days - COALESCE(ad.days, 0), 0) AS acquisition,
-        COALESCE(lost.n, 0)::numeric / NULLIF(ad.days, 0) AS churn,
-        COALESCE(added.n, 0)::numeric / NULLIF(ad.days, 0) AS cross_sell
+        COALESCE(c.sales_visits, 0) AS sales_visits,
+        COALESCE(c.converting_visits, 0) AS converting_visits,
+        COALESCE(sd.days - COALESCE(ad.days, 0), 0) AS potential_days,
+        COALESCE(won.n, 0) AS wins,
+        COALESCE(ad.days, 0) AS active_days,
+        COALESCE(lost.n, 0) AS losses,
+        COALESCE(added.n, 0) AS first_paid_lines
     FROM (SELECT DISTINCT employee_id FROM duty) r
     LEFT JOIN store_days sd ON sd.employee_id = r.employee_id
     LEFT JOIN active_days ad ON ad.employee_id = r.employee_id
-    LEFT JOIN conversion ON conversion.employee_id = r.employee_id
+    LEFT JOIN conversion c ON c.employee_id = r.employee_id
     LEFT JOIN won ON won.employee_id = r.employee_id
     LEFT JOIN lost ON lost.employee_id = r.employee_id
     LEFT JOIN added ON added.employee_id = r.employee_id
+),
+rates AS (
+    SELECT employee_id,
+        COALESCE(converting_visits::numeric / NULLIF(sales_visits, 0), 0) AS conversion,
+        wins::numeric / NULLIF(potential_days, 0) AS acquisition,
+        losses::numeric / NULLIF(active_days, 0) AS churn,
+        first_paid_lines::numeric / NULLIF(active_days, 0) AS cross_sell
+    FROM observed
 ),
 ranked AS (
     SELECT
